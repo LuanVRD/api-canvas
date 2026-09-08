@@ -202,6 +202,61 @@ describe('OpenApiParserService', () => {
       expect(analyticsRes!.operations.length).toBe(1);
       expect(analyticsRes!.operations[0].path).toBe('/analytics/reports');
     });
+
+    it('should handle complex paths with version prefixes, parameters and special actions', () => {
+      const complexSpec = {
+        openapi: '3.0.0',
+        info: { title: 'Complex Path API', version: '1.0' },
+        tags: [
+          { name: 'Reports', description: 'System reports and audit logs' }
+        ],
+        paths: {
+          '/api/v1/{tenantId}/orders/{id}/approve': {
+            post: {
+              summary: 'Approve order',
+              responses: { '200': { description: 'Approved' } }
+            }
+          },
+          '/api/v1/{tenantId}/orders/{id}/cancel': {
+            post: {
+              summary: 'Cancel order',
+              responses: { '200': { description: 'Cancelled' } }
+            }
+          },
+          '/v2.0/reports/monthly': {
+            get: {
+              tags: ['Reports'],
+              summary: 'Monthly report',
+              responses: { '200': { description: 'Report' } }
+            }
+          },
+          '/health': {
+            get: {
+              summary: 'Health check',
+              responses: { '200': { description: 'OK' } }
+            }
+          }
+        }
+      };
+
+      const def = service.parse(complexSpec);
+      expect(def.resources.length).toBe(3);
+
+      const ordersRes = def.resources.find((r) => r.id === 'orders');
+      expect(ordersRes).toBeDefined();
+      expect(ordersRes!.operations.length).toBe(2);
+      expect(ordersRes!.operations.map((o) => o.path)).toContain('/api/v1/{tenantId}/orders/{id}/approve');
+      expect(ordersRes!.operations.map((o) => o.path)).toContain('/api/v1/{tenantId}/orders/{id}/cancel');
+
+      const reportsRes = def.resources.find((r) => r.id === 'reports');
+      expect(reportsRes).toBeDefined();
+      expect(reportsRes!.description).toBe('System reports and audit logs');
+      expect(reportsRes!.operations.length).toBe(1);
+
+      const healthRes = def.resources.find((r) => r.id === 'health');
+      expect(healthRes).toBeDefined();
+      expect(healthRes!.operations.length).toBe(1);
+    });
   });
 
   describe('Error handling', () => {

@@ -91,7 +91,16 @@ export class OpenApiParserService {
     }
 
     // Group operations into resources
-    const resources = ResourceMapper.groupOperationsByResource(operations);
+    const rootTags = Array.isArray(doc['tags'])
+      ? (doc['tags'] as Array<Record<string, unknown>>)
+          .filter((t) => t && typeof t === 'object' && typeof t['name'] === 'string')
+          .map((t) => ({
+            name: t['name'] as string,
+            description: typeof t['description'] === 'string' ? (t['description'] as string) : undefined
+          }))
+      : undefined;
+
+    const resources = ResourceMapper.groupOperationsByResource(operations, rootTags);
 
     return {
       title,
