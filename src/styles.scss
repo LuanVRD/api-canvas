@@ -1,0 +1,122 @@
+@use '@angular/material' as mat;
+
+@include mat.core();
+
+// Dark theme definition tailored for developer tools (sober, high contrast, non-distracting)
+$dark-theme: mat.define-theme((
+  color: (
+    theme-type: dark,
+    primary: mat.$azure-palette,
+    tertiary: mat.$blue-palette,
+  ),
+  typography: (
+    plain-family: 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+    brand-family: 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+  ),
+  density: (
+    scale: -1, // Compact density for technical developer tooling
+  )
+));
+
+:root {
+  @include mat.all-component-themes($dark-theme);
+
+  // ApiCanvas Technical Design System Tokens
+  --canvas-bg: #0d1117;
+  --canvas-surface: #161b22;
+  --canvas-surface-elevated: #21262d;
+  --canvas-border: #30363d;
+  --canvas-border-subtle: #21262d;
+  
+  --canvas-text-primary: #e6edf3;
+  --canvas-text-secondary: #8b949e;
+  --canvas-text-muted: #6e7681;
+  --canvas-text-link: #58a6ff;
+
+  // HTTP Method Semantic Tokens
+  --http-get: #3fb950;
+  --http-get-bg: rgba(63, 185, 80, 0.12);
+  --http-get-border: rgba(63, 185, 80, 0.3);
+
+  --http-post: #58a6ff;
+  --http-post-bg: rgba(88, 166, 255, 0.12);
+  --http-post-border: rgba(88, 166, 255, 0.3);
+
+  --http-put: #d29922;
+  --http-put-bg: rgba(210, 153, 34, 0.12);
+  --http-put-border: rgba(210, 153, 34, 0.3);
+
+  --http-patch: #db61a2;
+  --http-patch-bg: rgba(219, 97, 162, 0.12);
+  --http-patch-border: rgba(219, 97, 162, 0.3);
+
+  --http-delete: #f85149;
+  --http-delete-bg: rgba(248, 81, 73, 0.12);
+  --http-delete-border: rgba(248, 81, 73, 0.3);
+
+  // Status & Accents
+  --color-success: #2ea043;
+  --color-warning: #bb8009;
+  --color-danger: #da3633;
+  --color-info: #1f6feb;
+
+  --font-mono: 'JetBrains Mono', 'Fira Code', Consolas, Monaco, monospace;
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+}
+
+html, body {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  background-color: var(--canvas-bg);
+  color: var(--canvas-text-primary);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  box-sizing: border-box;
+}
+
+*, *::before, *::after {
+  box-sizing: inherit;
+}
+
+code, pre, .font-mono {
+  font-family: var(--font-mono);
+}
+
+// Clean custom scrollbar for technical developer tools
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--canvas-bg);
+}
+
+::-webkit-scrollbar-thumb {
+  background: #30363d;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #484f58;
+}
+
+// Overrides for Material Components to match Developer Tool aesthetic
+.mat-mdc-card {
+  --mdc-elevated-card-container-color: var(--canvas-surface) !important;
+  border: 1px solid var(--canvas-border) !important;
+  box-shadow: none !important;
+  border-radius: var(--radius-md) !important;
+}
+
+.mat-mdc-form-field {
+  font-size: 13px;
+}

@@ -1,0 +1,32 @@
+<div class="app-layout">
+  <!-- Top Global Navigation Bar (Developer Tooling Header) -->
+  <header class="app-header">
+    <div class="brand-section">
+      <a routerLink="/connect" class="brand-link">
+        <mat-icon class="brand-icon">auto_stories</mat-icon>
+        <span class="brand-name">{{ title() }}</span>
+      </a>
+      <span class="version-tag font-mono">v0.1.0-alpha</span>
+    </div>
+
+    <nav class="nav-links">
+      <a routerLink="/connect" routerLinkActive="active" class="nav-item">
+        <mat-icon class="nav-icon">link</mat-icon>
+        <span>Connect</span>
+      </a>
+      <a routerLink="/workspace" routerLinkActive="active" class="nav-item">
+        <mat-icon class="nav-icon">dashboard</mat-icon>
+        <span>Workspace</span>
+      </a>
+    </nav>
+
+    <div class="header-right">
+      <span class="env-badge font-mono">DEV MODE</span>
+    </div>
+  </header>
+
+  <!-- Router Outlet for Features -->
+  <main class="app-main">
+    <router-outlet></router-outlet>
+  </main>
+</div>
