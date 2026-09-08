@@ -1,13 +1,45 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, EventEmitter, Output, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
-import { Router } from '@angular/router';
-import { MatCardModule } from '@angular/material/card';
+import {
+  AbstractControl,
+  FormBuilder,
+  ReactiveFormsModule,
+  ValidationErrors,
+  ValidatorFn,
+  Validators
+} from '@angular/forms';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
+
+export interface ApiConnectionConfig {
+  openApiUrl: string;
+  baseUrl?: string;
+}
+
+/**
+ * Validates that an input string is a well-formed HTTP/HTTPS URL.
+ */
+export function httpUrlValidator(): ValidatorFn {
+  return (control: AbstractControl): ValidationErrors | null => {
+    const raw = control.value;
+    if (raw === null || raw === undefined || (typeof raw === 'string' && raw.trim() === '')) {
+      return null;
+    }
+    const val = String(raw).trim();
+    try {
+      const parsed = new URL(val);
+      if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+        return { invalidUrl: true };
+      }
+      return null;
+    } catch {
+      return { invalidUrl: true };
+    }
+  };
+}
 
 @Component({
   selector: 'app-api-connect-page',
@@ -15,7 +47,6 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
   imports: [
     CommonModule,
     ReactiveFormsModule,
-    MatCardModule,
     MatFormFieldModule,
     MatInputModule,
     MatButtonModule,
@@ -24,77 +55,106 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
   ],
   template: `
     <div class="connect-container">
-      <div class="connect-card">
-        <div class="card-header">
-          <div class="logo-wrapper">
-            <mat-icon class="logo-icon">dataset</mat-icon>
+      <div class="connect-panel">
+        <header class="connect-header">
+          <div class="brand-row">
+            <mat-icon class="brand-icon">terminal</mat-icon>
+            <h1 class="brand-title">ApiCanvas</h1>
           </div>
-          <h1 class="title">ApiCanvas</h1>
-          <p class="subtitle">Universal OpenAPI Explorer & Admin Panel</p>
-        </div>
+          <p class="brand-tagline">Your API, rendered.</p>
+        </header>
 
-        <form [formGroup]="form" (ngSubmit)="onConnect()" class="connect-form">
-          <mat-form-field appearance="outline" class="w-full">
-            <mat-label>OpenAPI / Swagger JSON URL</mat-label>
-            <input 
-              matInput 
-              formControlName="openApiUrl" 
-              placeholder="https://petstore.swagger.io/v2/swagger.json"
-              autocomplete="off"
-            >
-            <mat-icon matPrefix class="input-icon">link</mat-icon>
-            @if (form.get('openApiUrl')?.hasError('required') && form.get('openApiUrl')?.touched) {
-              <mat-error>A URL do OpenAPI é obrigatória.</mat-error>
-            }
-          </mat-form-field>
-
-          <mat-form-field appearance="outline" class="w-full">
-            <mat-label>Base URL da API (opcional)</mat-label>
-            <input 
-              matInput 
-              formControlName="baseUrl" 
-              placeholder="Ex: https://api.exemplo.com/v1"
-              autocomplete="off"
-            >
-            <mat-icon matPrefix class="input-icon">dns</mat-icon>
-            <mat-hint>Deixe em branco para usar o servidor definido no OpenAPI</mat-hint>
-          </mat-form-field>
-
-          @if (errorMessage()) {
-            <div class="error-banner">
-              <mat-icon class="error-icon">error_outline</mat-icon>
-              <span>{{ errorMessage() }}</span>
+        @if (errorMessage()) {
+          <div class="error-banner" role="alert">
+            <mat-icon class="error-icon">error_outline</mat-icon>
+            <div class="error-content">
+              <span class="error-text">{{ errorMessage() }}</span>
             </div>
-          }
+            <button
+              type="button"
+              class="error-dismiss"
+              (click)="clearError()"
+              aria-label="Dismiss error"
+            >
+              <mat-icon>close</mat-icon>
+            </button>
+          </div>
+        }
+
+        <form [formGroup]="form" (ngSubmit)="onConnect()" class="connect-form" novalidate>
+          <div class="form-field-group">
+            <mat-form-field appearance="outline" class="w-full">
+              <mat-label>OpenAPI URL</mat-label>
+              <input
+                matInput
+                formControlName="openApiUrl"
+                placeholder="https://petstore.swagger.io/v2/swagger.json"
+                autocomplete="off"
+                spellcheck="false"
+                class="font-mono"
+              />
+              <mat-icon matPrefix class="field-icon">link</mat-icon>
+              @if (form.controls.openApiUrl.hasError('required') && form.controls.openApiUrl.touched) {
+                <mat-error>OpenAPI URL is required.</mat-error>
+              } @else if (form.controls.openApiUrl.hasError('invalidUrl') && form.controls.openApiUrl.touched) {
+                <mat-error>Enter a valid HTTP or HTTPS URL.</mat-error>
+              }
+              <mat-hint>URL to an OpenAPI 3.x or Swagger 2.0 JSON/YAML specification</mat-hint>
+            </mat-form-field>
+          </div>
+
+          <div class="form-field-group">
+            <mat-form-field appearance="outline" class="w-full">
+              <mat-label>Base URL (Optional)</mat-label>
+              <input
+                matInput
+                formControlName="baseUrl"
+                placeholder="https://api.example.com/v1"
+                autocomplete="off"
+                spellcheck="false"
+                class="font-mono"
+              />
+              <mat-icon matPrefix class="field-icon">dns</mat-icon>
+              @if (form.controls.baseUrl.hasError('invalidUrl') && form.controls.baseUrl.touched) {
+                <mat-error>Enter a valid HTTP or HTTPS URL.</mat-error>
+              }
+              <mat-hint>Optional override for the server URL specified in the schema</mat-hint>
+            </mat-form-field>
+          </div>
 
           <div class="form-actions">
-            <button 
-              mat-flat-button 
-              color="primary" 
-              type="submit" 
+            <button
+              mat-flat-button
+              color="primary"
+              type="submit"
               class="connect-button"
               [disabled]="form.invalid || loading()"
             >
               @if (loading()) {
-                <mat-spinner diameter="18" class="button-spinner" />
-                <span>Conectando...</span>
+                <span class="btn-inner">
+                  <mat-spinner diameter="16" class="button-spinner" />
+                  <span>Connecting...</span>
+                </span>
               } @else {
-                <span class="btn-content">
-                  <mat-icon>play_arrow</mat-icon>
-                  <span>Explorar API</span>
+                <span class="btn-inner">
+                  <mat-icon class="btn-icon">bolt</mat-icon>
+                  <span>Connect</span>
                 </span>
               }
             </button>
           </div>
         </form>
 
-        <div class="quick-examples">
-          <span class="examples-label">Exemplos rápidos:</span>
-          <div class="examples-pills">
-            <button type="button" class="example-pill" (click)="setExample('https://petstore.swagger.io/v2/swagger.json')">
-              Swagger Petstore
-            </button>
-          </div>
+        <div class="presets-section">
+          <span class="presets-label">Preset:</span>
+          <button
+            type="button"
+            class="preset-pill"
+            (click)="setPreset('https://petstore.swagger.io/v2/swagger.json')"
+            [disabled]="loading()"
+          >
+            Swagger Petstore
+          </button>
         </div>
       </div>
     </div>
@@ -104,122 +164,187 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
       display: flex;
       align-items: center;
       justify-content: center;
-      min-height: calc(100vh - 64px);
-      padding: 24px;
+      min-height: calc(100vh - 48px);
+      padding: 24px 16px;
+      background-color: var(--canvas-bg);
     }
-    .connect-card {
+
+    .connect-panel {
       width: 100%;
-      max-width: 520px;
-      background: var(--canvas-surface);
+      max-width: 500px;
+      background-color: var(--canvas-surface);
       border: 1px solid var(--canvas-border);
-      border-radius: var(--radius-lg);
-      padding: 32px;
+      border-radius: var(--radius-md);
+      padding: 28px 24px;
+      box-shadow: none;
     }
-    .card-header {
-      text-align: center;
-      margin-bottom: 28px;
-      .logo-wrapper {
-        display: inline-flex;
+
+    .connect-header {
+      margin-bottom: 24px;
+
+      .brand-row {
+        display: flex;
         align-items: center;
-        justify-content: center;
-        width: 48px;
-        height: 48px;
-        background: var(--canvas-surface-elevated);
-        border: 1px solid var(--canvas-border);
-        border-radius: var(--radius-md);
-        margin-bottom: 12px;
-        .logo-icon {
+        gap: 8px;
+
+        .brand-icon {
           color: var(--canvas-text-link);
-          font-size: 26px;
-          width: 26px;
-          height: 26px;
+          font-size: 20px;
+          width: 20px;
+          height: 20px;
+        }
+
+        .brand-title {
+          margin: 0;
+          font-size: 18px;
+          font-weight: 700;
+          letter-spacing: -0.3px;
+          color: var(--canvas-text-primary);
         }
       }
-      .title {
-        margin: 0;
-        font-size: 22px;
-        font-weight: 700;
-        letter-spacing: -0.5px;
-        color: var(--canvas-text-primary);
-      }
-      .subtitle {
-        margin: 6px 0 0;
-        font-size: 13px;
-        color: var(--canvas-text-secondary);
+
+      .brand-tagline {
+        margin: 4px 0 0;
+        font-size: 12px;
+        color: var(--canvas-text-muted);
+        letter-spacing: 0.2px;
       }
     }
-    .connect-form {
-      display: flex;
-      flex-direction: column;
-      gap: 16px;
-    }
-    .w-full {
-      width: 100%;
-    }
-    .input-icon {
-      color: var(--canvas-text-muted);
-      margin-right: 8px;
-    }
+
     .error-banner {
       display: flex;
       align-items: center;
-      gap: 8px;
+      gap: 10px;
       padding: 10px 12px;
+      margin-bottom: 20px;
       background: var(--http-delete-bg);
       border: 1px solid var(--http-delete-border);
       border-radius: var(--radius-sm);
       color: var(--http-delete);
-      font-size: 12px;
+      font-size: 13px;
+
       .error-icon {
+        font-size: 18px;
+        width: 18px;
+        height: 18px;
+        flex-shrink: 0;
+      }
+
+      .error-content {
+        flex: 1;
+        line-height: 1.4;
+      }
+
+      .error-dismiss {
+        background: transparent;
+        border: none;
+        color: var(--http-delete);
+        cursor: pointer;
+        padding: 0;
+        display: flex;
+        align-items: center;
+        opacity: 0.8;
+        transition: opacity 0.15s ease;
+
+        mat-icon {
+          font-size: 16px;
+          width: 16px;
+          height: 16px;
+        }
+
+        &:hover {
+          opacity: 1;
+        }
+      }
+    }
+
+    .connect-form {
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+
+    .form-field-group {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .w-full {
+      width: 100%;
+    }
+
+    .field-icon {
+      color: var(--canvas-text-muted);
+      margin-right: 6px;
+      font-size: 18px;
+      width: 18px;
+      height: 18px;
+    }
+
+    .form-actions {
+      display: flex;
+      justify-content: flex-end;
+      margin-top: 4px;
+    }
+
+    .connect-button {
+      height: 36px;
+      padding: 0 16px;
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 0.2px;
+      border-radius: var(--radius-sm);
+
+      .btn-inner {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+      }
+
+      .btn-icon {
         font-size: 16px;
         width: 16px;
         height: 16px;
       }
+
+      .button-spinner {
+        display: inline-block;
+        margin-right: 6px;
+      }
     }
-    .form-actions {
-      display: flex;
-      justify-content: flex-end;
-      margin-top: 8px;
-    }
-    .connect-button {
-      height: 38px;
-      padding: 0 20px;
-      font-weight: 600;
-      font-size: 13px;
-    }
-    .btn-content {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-    }
-    .quick-examples {
-      margin-top: 24px;
-      padding-top: 16px;
+
+    .presets-section {
+      margin-top: 20px;
+      padding-top: 14px;
       border-top: 1px solid var(--canvas-border-subtle);
       display: flex;
       align-items: center;
       gap: 8px;
       font-size: 12px;
-      .examples-label {
+
+      .presets-label {
         color: var(--canvas-text-muted);
       }
-      .examples-pills {
-        display: flex;
-        gap: 6px;
-      }
-      .example-pill {
+
+      .preset-pill {
         background: var(--canvas-surface-elevated);
         border: 1px solid var(--canvas-border);
         color: var(--canvas-text-secondary);
-        padding: 4px 8px;
+        padding: 3px 8px;
         border-radius: var(--radius-sm);
         cursor: pointer;
         font-size: 11px;
         font-family: var(--font-mono);
-        transition: all 0.15s ease;
-        &:hover {
+        transition: color 0.15s ease, border-color 0.15s ease;
+
+        &:hover:not(:disabled) {
           color: var(--canvas-text-link);
           border-color: var(--canvas-text-link);
+        }
+
+        &:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
         }
       }
     }
@@ -227,22 +352,54 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 })
 export class ApiConnectPage {
   private readonly fb = inject(FormBuilder);
-  private readonly router = inject(Router);
 
-  readonly loading = signal(false);
+  @Output() readonly connected = new EventEmitter<ApiConnectionConfig>();
+
+  readonly loading = signal<boolean>(false);
   readonly errorMessage = signal<string | null>(null);
 
   readonly form = this.fb.group({
-    openApiUrl: ['', [Validators.required]],
-    baseUrl: ['']
+    openApiUrl: ['', [Validators.required, httpUrlValidator()]],
+    baseUrl: ['', [httpUrlValidator()]]
   });
 
-  setExample(url: string): void {
+  setPreset(url: string): void {
     this.form.patchValue({ openApiUrl: url });
+    this.form.controls.openApiUrl.markAsDirty();
+    this.form.controls.openApiUrl.markAsTouched();
+    this.form.controls.openApiUrl.updateValueAndValidity();
+  }
+
+  clearError(): void {
+    this.errorMessage.set(null);
+  }
+
+  setLoading(state: boolean): void {
+    this.loading.set(state);
+    if (state) {
+      this.form.disable();
+    } else {
+      this.form.enable();
+    }
+  }
+
+  setError(message: string | null): void {
+    this.errorMessage.set(message);
   }
 
   onConnect(): void {
-    if (this.form.invalid) return;
-    this.router.navigate(['/workspace']);
+    if (this.form.invalid || this.loading()) {
+      this.form.markAllAsTouched();
+      return;
+    }
+
+    this.clearError();
+    const rawValues = this.form.getRawValue();
+    const config: ApiConnectionConfig = {
+      openApiUrl: (rawValues.openApiUrl || '').trim(),
+      baseUrl: rawValues.baseUrl && rawValues.baseUrl.trim() !== '' ? rawValues.baseUrl.trim() : undefined
+    };
+
+    this.connected.emit(config);
   }
 }

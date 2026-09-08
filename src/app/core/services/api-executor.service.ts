@@ -2,7 +2,8 @@ import { inject, Injectable } from '@angular/core';
 import { HttpClient, HttpHeaders, HttpParams, HttpResponse } from '@angular/common/http';
 import { Observable, catchError, map, of } from 'rxjs';
 import { ApiOperation } from '../models/api-operation.model';
-import { ApiExecutionResult, ApiRequestInput } from '../models/api-execution-result.model';
+import { ApiExecutionResult } from '../models/api-execution-result.model';
+import { ApiRequestInput } from '../models/api-request-input.model';
 
 @Injectable({
   providedIn: 'root'
@@ -30,7 +31,9 @@ export class ApiExecutorService {
     let headers = new HttpHeaders();
     if (input.headers) {
       Object.entries(input.headers).forEach(([key, val]) => {
-        headers = headers.set(key, val);
+        if (val !== undefined && val !== null) {
+          headers = headers.set(key, String(val));
+        }
       });
     }
 
@@ -41,7 +44,7 @@ export class ApiExecutorService {
       observe: 'response',
       responseType: 'json'
     }).pipe(
-      map((response: HttpResponse<unknown>) => {
+      map((response: HttpResponse<unknown>): ApiExecutionResult => {
         const duration = Math.round(performance.now() - startTime);
         const resHeaders: Record<string, string> = {};
         response.headers.keys().forEach(k => {
@@ -53,16 +56,25 @@ export class ApiExecutorService {
           statusText: response.statusText,
           headers: resHeaders,
           data: response.body,
-          duration
+          duration,
+          durationMs: duration,
+          isSuccess: response.ok || (response.status >= 200 && response.status < 300)
         };
       }),
-      catchError((error) => {
+      catchError((error): Observable<ApiExecutionResult> => {
         const duration = Math.round(performance.now() - startTime);
         return of({
           status: error.status || 0,
           statusText: error.statusText || 'Network Error',
           data: error.error || error.message,
-          duration
+          duration,
+          durationMs: duration,
+          isSuccess: false,
+          error: {
+            message: error.message || 'Unknown network error',
+            status: error.status,
+            details: error.error
+          }
         });
       })
     );
