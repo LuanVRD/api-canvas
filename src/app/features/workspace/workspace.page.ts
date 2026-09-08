@@ -4,6 +4,7 @@ import { ActivatedRoute, Router } from '@angular/router';
 import { Subscription } from 'rxjs';
 import { ResourceSidebarComponent } from './resource-sidebar.component';
 import { ApiResource } from '../../core/models/api-resource.model';
+import { ApiOperation } from '../../core/models/api-operation.model';
 import { StatusIndicatorComponent } from '../../shared/components/status-indicator/status-indicator.component';
 import { HttpBadgeComponent } from '../../shared/components/http-badge/http-badge.component';
 import { ApiSessionService } from '../../core/services/api-session.service';
@@ -95,7 +96,14 @@ import { MatIconModule } from '@angular/material/icon';
 
                 <div class="operations-list" role="list">
                   @for (op of selectedResource()?.operations; track op.id) {
-                    <div class="operation-row" role="listitem">
+                    <div
+                      class="operation-row"
+                      role="button"
+                      tabindex="0"
+                      (click)="onOpenOperation(op)"
+                      (keydown.enter)="onOpenOperation(op)"
+                      title="Inspect operation details"
+                    >
                       <div class="op-main">
                         <app-http-badge [method]="op.method" />
                         <span class="op-path font-mono" [title]="op.path">{{ op.path }}</span>
@@ -117,6 +125,8 @@ import { MatIconModule } from '@angular/material/icon';
                             {{ op.parameters.length }} param{{ op.parameters.length > 1 ? 's' : '' }}
                           </span>
                         }
+
+                        <mat-icon class="op-chevron">chevron_right</mat-icon>
                       </div>
                     </div>
                   } @empty {
@@ -352,14 +362,21 @@ import { MatIconModule } from '@angular/material/icon';
         padding: 10px 14px;
         border-bottom: 1px solid var(--canvas-border-subtle);
         gap: 16px;
-        transition: background 0.12s ease;
+        cursor: pointer;
+        transition: background 0.12s ease, border-color 0.12s ease;
+        outline: none;
 
         &:last-child {
           border-bottom: none;
         }
 
-        &:hover {
+        &:hover, &:focus-visible {
           background: var(--canvas-surface-elevated);
+
+          .op-chevron {
+            color: var(--canvas-text-primary);
+            transform: translateX(2px);
+          }
         }
 
         .op-main {
@@ -424,6 +441,15 @@ import { MatIconModule } from '@angular/material/icon';
             border-radius: var(--radius-sm);
             border: 1px solid var(--canvas-border-subtle);
             white-space: nowrap;
+            flex-shrink: 0;
+          }
+
+          .op-chevron {
+            font-size: 16px;
+            width: 16px;
+            height: 16px;
+            color: var(--canvas-text-muted);
+            transition: transform 0.12s ease, color 0.12s ease;
             flex-shrink: 0;
           }
         }
@@ -546,6 +572,11 @@ export class WorkspacePage implements OnInit, OnDestroy {
   onSelectResource(resource: ApiResource): void {
     this.sessionService.selectResource(resource);
     this.router.navigate(['/workspace', resource.id]);
+  }
+
+  onOpenOperation(op: ApiOperation): void {
+    const targetId = op.operationId || op.id;
+    this.router.navigate(['/operation', targetId]);
   }
 
   onReconnect(): void {

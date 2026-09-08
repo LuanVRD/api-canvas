@@ -173,6 +173,16 @@ describe('WorkspacePage', () => {
     expect(resourceTitle?.textContent?.trim()).toBe('Orders');
   });
 
+  it('should navigate to /operation/:operationId when an operation row is clicked', () => {
+    const element: HTMLElement = fixture.nativeElement;
+    const operationRows = element.querySelectorAll<HTMLElement>('.operation-row');
+    expect(operationRows.length).toBeGreaterThan(0);
+
+    operationRows[0].click();
+
+    expect(router.navigate).toHaveBeenCalledWith(['/operation', 'get_products']);
+  });
+
   it('should navigate to /connect when Change API button is clicked', () => {
     component.onReconnect();
     expect(router.navigate).toHaveBeenCalledWith(['/connect']);

@@ -154,6 +154,20 @@ describe('ApiSessionService', () => {
     expect(service.baseUrl()).toBe('');
   });
 
+  it('should find operation and resource for operation by id or operationId', () => {
+    service.setSession(mockApiDefinition);
+
+    const op = service.getOperation('get_products');
+    expect(op).toBeDefined();
+    expect(op?.path).toBe('/api/products');
+
+    const resource = service.getResourceForOperation('get_products');
+    expect(resource?.id).toBe('products');
+
+    expect(service.getOperation('non_existing')).toBeNull();
+    expect(service.getResourceForOperation('non_existing')).toBeNull();
+  });
+
   it('should clear session completely', () => {
     service.setSession(mockApiDefinition, {
       openApiUrl: 'https://api.store.com/openapi.json',

@@ -1,5 +1,6 @@
 import { computed, Injectable, signal } from '@angular/core';
 import { ApiDefinition } from '../models/api-definition.model';
+import { ApiOperation } from '../models/api-operation.model';
 import { ApiResource } from '../models/api-resource.model';
 
 export interface ApiSessionMetadata {
@@ -129,6 +130,43 @@ export class ApiSessionService {
   }
 
   /**
+   * Retrieves an operation by its id or operationId from the active API session.
+   */
+  getOperation(idOrOperationId: string): ApiOperation | null {
+    const def = this._apiDefinition();
+    if (!def || !idOrOperationId) return null;
+
+    for (const resource of def.resources) {
+      const match = resource.operations.find(
+        (op) => op.id === idOrOperationId || op.operationId === idOrOperationId
+      );
+      if (match) return match;
+    }
+
+    return null;
+  }
+
+  /**
+   * Retrieves the parent resource containing the specified operation by id or operationId.
+   */
+  getResourceForOperation(idOrOperationId: string): ApiResource | null {
+    const def = this._apiDefinition();
+    if (!def || !idOrOperationId) return null;
+
+    for (const resource of def.resources) {
+      if (
+        resource.operations.some(
+          (op) => op.id === idOrOperationId || op.operationId === idOrOperationId
+        )
+      ) {
+        return resource;
+      }
+    }
+
+    return null;
+  }
+
+  /**
    * Clears the current active session state.
    */
   clearSession(): void {
@@ -138,3 +176,4 @@ export class ApiSessionService {
     this._rawSpec.set(null);
   }
 }
+
