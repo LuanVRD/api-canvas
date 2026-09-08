@@ -2,15 +2,25 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideAnimationsAsync } from '@angular/platform-browser/animations/async';
 import { ApiConnectPage, httpUrlValidator, ApiConnectionConfig } from './api-connect.page';
 import { FormControl } from '@angular/forms';
+import { OpenApiLoaderService } from '../../openapi/services/openapi-loader.service';
+import { of, throwError, Subject } from 'rxjs';
 
 describe('ApiConnectPage', () => {
   let component: ApiConnectPage;
   let fixture: ComponentFixture<ApiConnectPage>;
+  let openApiLoaderMock: { load: ReturnType<typeof vi.fn> };
 
   beforeEach(async () => {
+    openApiLoaderMock = {
+      load: vi.fn()
+    };
+
     await TestBed.configureTestingModule({
       imports: [ApiConnectPage],
-      providers: [provideAnimationsAsync()]
+      providers: [
+        provideAnimationsAsync(),
+        { provide: OpenApiLoaderService, useValue: openApiLoaderMock }
+      ]
     }).compileComponents();
 
     fixture = TestBed.createComponent(ApiConnectPage);
@@ -183,16 +193,21 @@ describe('ApiConnectPage', () => {
     });
   });
 
-  describe('Connection Submission', () => {
-    it('should not emit connected when form is invalid', () => {
+  describe('Connection Submission with OpenApiLoaderService', () => {
+    it('should not emit connected nor call loader when form is invalid', () => {
       let emitted: ApiConnectionConfig | undefined;
       component.connected.subscribe((val) => (emitted = val));
 
       component.onConnect();
+
+      expect(openApiLoaderMock.load).not.toHaveBeenCalled();
       expect(emitted).toBeUndefined();
     });
 
-    it('should emit connected with config when form is valid', () => {
+    it('should trigger loader, set loading state, and emit connected with rawSpec upon success', () => {
+      const mockRawSpec = { openapi: '3.0.0', info: { title: 'Petstore' } };
+      openApiLoaderMock.load.mockReturnValue(of(mockRawSpec));
+
       let emitted: ApiConnectionConfig | undefined;
       component.connected.subscribe((val) => (emitted = val));
 
@@ -203,13 +218,19 @@ describe('ApiConnectPage', () => {
 
       component.onConnect();
 
+      expect(openApiLoaderMock.load).toHaveBeenCalledWith('https://petstore.swagger.io/v2/swagger.json');
+      expect(component.loading()).toBe(false);
       expect(emitted).toEqual({
         openApiUrl: 'https://petstore.swagger.io/v2/swagger.json',
-        baseUrl: 'https://api.custom.com'
+        baseUrl: 'https://api.custom.com',
+        rawSpec: mockRawSpec
       });
     });
 
     it('should omit baseUrl if blank when emitting connection payload', () => {
+      const mockRawSpec = { swagger: '2.0', info: { title: 'Swagger API' } };
+      openApiLoaderMock.load.mockReturnValue(of(mockRawSpec));
+
       let emitted: ApiConnectionConfig | undefined;
       component.connected.subscribe((val) => (emitted = val));
 
@@ -222,8 +243,77 @@ describe('ApiConnectPage', () => {
 
       expect(emitted).toEqual({
         openApiUrl: 'https://petstore.swagger.io/v2/swagger.json',
-        baseUrl: undefined
+        baseUrl: undefined,
+        rawSpec: mockRawSpec
       });
+    });
+
+    it('should handle pending load by showing loading state', () => {
+      const subject = new Subject<unknown>();
+      openApiLoaderMock.load.mockReturnValue(subject.asObservable());
+
+      component.form.setValue({
+        openApiUrl: 'https://petstore.swagger.io/v2/swagger.json',
+        baseUrl: ''
+      });
+
+      component.onConnect();
+      fixture.detectChanges();
+
+      expect(component.loading()).toBe(true);
+      expect(component.form.disabled).toBe(true);
+
+      subject.next({ openapi: '3.0.0' });
+      subject.complete();
+      fixture.detectChanges();
+
+      expect(component.loading()).toBe(false);
+      expect(component.form.disabled).toBe(false);
+    });
+
+    it('should display error banner and reset loading when loader fails with CORS/Network error', () => {
+      const corsErrorMessage =
+        'Falha de rede ou restrição de CORS. Verifique sua conexão e se o servidor da API permite requisições Cross-Origin (CORS).';
+      openApiLoaderMock.load.mockReturnValue(throwError(() => new Error(corsErrorMessage)));
+
+      let emitted: ApiConnectionConfig | undefined;
+      component.connected.subscribe((val) => (emitted = val));
+
+      component.form.setValue({
+        openApiUrl: 'https://blocked-cors.example.com/openapi.json',
+        baseUrl: ''
+      });
+
+      component.onConnect();
+      fixture.detectChanges();
+
+      expect(component.loading()).toBe(false);
+      expect(emitted).toBeUndefined();
+      expect(component.errorMessage()).toBe(corsErrorMessage);
+
+      const banner = fixture.nativeElement.querySelector('.error-banner');
+      expect(banner).toBeTruthy();
+      expect(banner.textContent).toContain('CORS');
+    });
+
+    it('should display error banner when loader fails with invalid JSON error', () => {
+      const jsonErrorMessage = 'O conteúdo retornado não pôde ser interpretado como um documento JSON válido.';
+      openApiLoaderMock.load.mockReturnValue(throwError(() => new Error(jsonErrorMessage)));
+
+      component.form.setValue({
+        openApiUrl: 'https://example.com/invalid-doc.json',
+        baseUrl: ''
+      });
+
+      component.onConnect();
+      fixture.detectChanges();
+
+      expect(component.loading()).toBe(false);
+      expect(component.errorMessage()).toBe(jsonErrorMessage);
+
+      const banner = fixture.nativeElement.querySelector('.error-banner');
+      expect(banner).toBeTruthy();
+      expect(banner.textContent).toContain('JSON válido');
     });
   });
 });

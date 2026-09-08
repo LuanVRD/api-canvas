@@ -13,10 +13,12 @@ import { MatInputModule } from '@angular/material/input';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
+import { OpenApiLoaderService } from '../../openapi/services/openapi-loader.service';
 
 export interface ApiConnectionConfig {
   openApiUrl: string;
   baseUrl?: string;
+  rawSpec?: unknown;
 }
 
 /**
@@ -352,6 +354,7 @@ export function httpUrlValidator(): ValidatorFn {
 })
 export class ApiConnectPage {
   private readonly fb = inject(FormBuilder);
+  private readonly openApiLoader = inject(OpenApiLoaderService);
 
   @Output() readonly connected = new EventEmitter<ApiConnectionConfig>();
 
@@ -395,11 +398,25 @@ export class ApiConnectPage {
 
     this.clearError();
     const rawValues = this.form.getRawValue();
-    const config: ApiConnectionConfig = {
-      openApiUrl: (rawValues.openApiUrl || '').trim(),
-      baseUrl: rawValues.baseUrl && rawValues.baseUrl.trim() !== '' ? rawValues.baseUrl.trim() : undefined
-    };
+    const openApiUrl = (rawValues.openApiUrl || '').trim();
+    const baseUrl = rawValues.baseUrl && rawValues.baseUrl.trim() !== '' ? rawValues.baseUrl.trim() : undefined;
 
-    this.connected.emit(config);
+    this.setLoading(true);
+
+    this.openApiLoader.load(openApiUrl).subscribe({
+      next: (rawSpec) => {
+        this.setLoading(false);
+        this.connected.emit({
+          openApiUrl,
+          baseUrl,
+          rawSpec
+        });
+      },
+      error: (err: Error) => {
+        this.setLoading(false);
+        this.setError(err.message || 'Falha ao carregar a especificação OpenAPI.');
+      }
+    });
   }
 }
+
