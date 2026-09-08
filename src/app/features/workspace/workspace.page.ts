@@ -1,9 +1,11 @@
-import { Component, OnInit, inject } from '@angular/core';
+import { Component, OnInit, OnDestroy, inject, effect } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router } from '@angular/router';
+import { Subscription } from 'rxjs';
 import { ResourceSidebarComponent } from './resource-sidebar.component';
 import { ApiResource } from '../../core/models/api-resource.model';
 import { StatusIndicatorComponent } from '../../shared/components/status-indicator/status-indicator.component';
+import { HttpBadgeComponent } from '../../shared/components/http-badge/http-badge.component';
 import { ApiSessionService } from '../../core/services/api-session.service';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
@@ -15,69 +17,123 @@ import { MatIconModule } from '@angular/material/icon';
     CommonModule,
     ResourceSidebarComponent,
     StatusIndicatorComponent,
+    HttpBadgeComponent,
     MatButtonModule,
     MatIconModule
   ],
   template: `
     <div class="workspace-layout">
-      <!-- Workspace Top Info Bar -->
-      <div class="workspace-header">
+      <!-- Workspace Topbar: API Metadata -->
+      <header class="workspace-header">
         <div class="api-meta">
-          <span class="api-title">{{ apiTitle() || 'No API Connected' }}</span>
-          @if (apiVersion()) {
-            <span class="api-version font-mono">v{{ apiVersion() }}</span>
-          }
+          <div class="api-identity">
+            <span class="api-title" [title]="apiTitle() || 'No API Connected'">
+              {{ apiTitle() || 'ApiCanvas Workspace' }}
+            </span>
+            @if (apiVersion()) {
+              <span class="api-version font-mono">v{{ apiVersion() }}</span>
+            }
+          </div>
+
           @if (baseUrl()) {
-            <span class="api-base-url font-mono">{{ baseUrl() }}</span>
+            <div class="api-endpoint" title="{{ baseUrl() }}">
+              <span class="endpoint-label">Base URL:</span>
+              <span class="endpoint-value font-mono">{{ baseUrl() }}</span>
+            </div>
           }
-          <app-status-indicator [connected]="hasActiveApi()" [label]="hasActiveApi() ? 'Ready' : 'Disconnected'" />
+
+          <app-status-indicator
+            [connected]="hasActiveApi()"
+            [label]="hasActiveApi() ? 'Connected' : 'Disconnected'"
+          />
         </div>
+
         <div class="header-actions">
-          <button mat-stroked-button class="action-btn" (click)="onReconnect()">
-            <mat-icon>swap_horiz</mat-icon>
+          <button
+            type="button"
+            class="action-btn disconnect-btn"
+            (click)="onReconnect()"
+            title="Change connected API specification"
+          >
+            <mat-icon class="btn-icon">swap_horiz</mat-icon>
             <span>Change API</span>
           </button>
         </div>
-      </div>
+      </header>
 
-      <!-- Main Body: Sidebar + Content -->
+      <!-- Workspace Body: Navigation Sidebar + Content Area -->
       <div class="workspace-body">
-        <app-resource-sidebar 
+        <app-resource-sidebar
           [resources]="resources()"
           [selectedResourceId]="selectedResourceId() ?? undefined"
           (resourceSelect)="onSelectResource($event)"
         />
 
-        <main class="workspace-content">
+        <main class="workspace-content" role="main">
           @if (selectedResource()) {
-            <div class="resource-view">
+            <section class="resource-panel" aria-label="Resource Operations">
+              <!-- Resource Header: Label, ID, Description -->
               <div class="resource-header">
-                <h2>{{ selectedResource()?.label }}</h2>
-                <span class="resource-desc">{{ selectedResource()?.description || 'Operations available for this resource' }}</span>
-              </div>
-              
-              <div class="operations-grid">
-                @for (op of selectedResource()?.operations; track op.id) {
-                  <div class="op-card">
-                    <div class="op-method-path">
-                      <span class="method-tag font-mono" [attr.data-method]="op.method">{{ op.method }}</span>
-                      <span class="path-text font-mono">{{ op.path }}</span>
-                    </div>
-                    <span class="op-summary">{{ op.summary || 'No description provided' }}</span>
-                  </div>
-                } @empty {
-                  <div class="empty-operations">
-                    <span>No operations defined for this resource.</span>
-                  </div>
+                <div class="resource-title-row">
+                  <h1 class="resource-title">{{ selectedResource()?.label }}</h1>
+                  <span class="resource-id font-mono">{{ selectedResource()?.id }}</span>
+                </div>
+
+                @if (selectedResource()?.description) {
+                  <p class="resource-description">
+                    {{ selectedResource()?.description }}
+                  </p>
                 }
               </div>
-            </div>
+
+              <!-- Operations List -->
+              <div class="operations-section">
+                <div class="section-header">
+                  <span class="section-title">OPERATIONS</span>
+                  <span class="ops-total font-mono">{{ selectedResource()?.operations?.length || 0 }} endpoints</span>
+                </div>
+
+                <div class="operations-list" role="list">
+                  @for (op of selectedResource()?.operations; track op.id) {
+                    <div class="operation-row" role="listitem">
+                      <div class="op-main">
+                        <app-http-badge [method]="op.method" />
+                        <span class="op-path font-mono" [title]="op.path">{{ op.path }}</span>
+                        @if (op.type && op.type !== 'unknown') {
+                          <span class="op-type-badge">{{ op.type }}</span>
+                        }
+                        @if (op.deprecated) {
+                          <span class="deprecated-badge">deprecated</span>
+                        }
+                      </div>
+
+                      <div class="op-details">
+                        <span class="op-summary" [title]="op.summary || op.description || ''">
+                          {{ op.summary || op.description || 'No description provided' }}
+                        </span>
+
+                        @if (op.parameters && op.parameters.length > 0) {
+                          <span class="param-count font-mono" title="{{ op.parameters.length }} parameters">
+                            {{ op.parameters.length }} param{{ op.parameters.length > 1 ? 's' : '' }}
+                          </span>
+                        }
+                      </div>
+                    </div>
+                  } @empty {
+                    <div class="empty-operations">
+                      <mat-icon class="empty-icon">info_outline</mat-icon>
+                      <p>No operations found for this resource in the OpenAPI specification.</p>
+                    </div>
+                  }
+                </div>
+              </div>
+            </section>
           } @else {
-            <div class="empty-selection">
-              <mat-icon class="empty-icon">dashboard_customize</mat-icon>
-              <h3>Select a resource to inspect operations</h3>
-              <p>Choose an item from the left sidebar to view endpoints, schemas and forms.</p>
-            </div>
+            <section class="empty-workspace">
+              <mat-icon class="empty-icon">account_tree</mat-icon>
+              <h2>Select a Resource</h2>
+              <p>Select an API resource from the sidebar to inspect its available operations and schemas.</p>
+            </section>
           }
         </main>
       </div>
@@ -87,148 +143,315 @@ import { MatIconModule } from '@angular/material/icon';
     .workspace-layout {
       display: flex;
       flex-direction: column;
-      height: calc(100vh - 48px);
+      height: 100vh;
+      background: var(--canvas-bg);
+      color: var(--canvas-text-primary);
+      overflow: hidden;
     }
+
     .workspace-header {
-      height: 44px;
+      height: 48px;
+      min-height: 48px;
       background: var(--canvas-surface);
       border-bottom: 1px solid var(--canvas-border);
       padding: 0 16px;
       display: flex;
       align-items: center;
       justify-content: space-between;
+      gap: 16px;
+      z-index: 10;
 
       .api-meta {
         display: flex;
         align-items: center;
-        gap: 12px;
+        gap: 14px;
         overflow: hidden;
+        flex: 1;
 
-        .api-title {
-          font-weight: 600;
-          font-size: 14px;
-          color: var(--canvas-text-primary);
-          white-space: nowrap;
+        .api-identity {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          flex-shrink: 0;
+
+          .api-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--canvas-text-primary);
+            white-space: nowrap;
+          }
+
+          .api-version {
+            font-size: 11px;
+            background: var(--canvas-surface-elevated);
+            color: var(--canvas-text-secondary);
+            padding: 1px 6px;
+            border-radius: var(--radius-sm);
+            border: 1px solid var(--canvas-border-subtle);
+          }
         }
-        .api-version {
-          font-size: 11px;
-          background: var(--canvas-surface-elevated);
-          padding: 2px 6px;
-          border-radius: var(--radius-sm);
-          color: var(--canvas-text-secondary);
-          white-space: nowrap;
-        }
-        .api-base-url {
-          font-size: 11px;
-          color: var(--canvas-text-muted);
-          background: var(--canvas-surface-elevated);
-          padding: 2px 6px;
-          border-radius: var(--radius-sm);
-          max-width: 250px;
+
+        .api-endpoint {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          min-width: 0;
           overflow: hidden;
-          text-overflow: ellipsis;
-          white-space: nowrap;
+
+          .endpoint-label {
+            font-size: 11px;
+            color: var(--canvas-text-muted);
+            text-transform: uppercase;
+            font-weight: 600;
+            white-space: nowrap;
+          }
+
+          .endpoint-value {
+            font-size: 12px;
+            color: var(--canvas-text-secondary);
+            background: var(--canvas-bg);
+            padding: 2px 6px;
+            border-radius: var(--radius-sm);
+            border: 1px solid var(--canvas-border-subtle);
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+          }
         }
       }
-      .action-btn {
-        height: 28px;
-        font-size: 12px;
-        mat-icon {
-          font-size: 16px;
-          width: 16px;
-          height: 16px;
+
+      .header-actions {
+        display: flex;
+        align-items: center;
+        flex-shrink: 0;
+
+        .action-btn {
+          height: 28px;
+          padding: 0 10px;
+          font-size: 12px;
+          font-weight: 500;
+          color: var(--canvas-text-secondary);
+          background: var(--canvas-surface-elevated);
+          border: 1px solid var(--canvas-border);
+          border-radius: var(--radius-sm);
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          transition: all 0.15s ease;
+
+          &:hover {
+            color: var(--canvas-text-primary);
+            border-color: var(--canvas-text-muted);
+            background: #282e37;
+          }
+
+          .btn-icon {
+            font-size: 16px;
+            width: 16px;
+            height: 16px;
+          }
         }
       }
     }
+
     .workspace-body {
       display: flex;
       flex: 1;
+      height: calc(100vh - 48px);
       overflow: hidden;
     }
+
     .workspace-content {
       flex: 1;
       overflow-y: auto;
-      padding: 24px;
+      padding: 24px 32px;
       background: var(--canvas-bg);
     }
+
+    .resource-panel {
+      max-width: 1080px;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+    }
+
     .resource-header {
-      margin-bottom: 20px;
-      h2 {
-        margin: 0 0 4px;
-        font-size: 18px;
-        font-weight: 600;
-        color: var(--canvas-text-primary);
+      border-bottom: 1px solid var(--canvas-border-subtle);
+      padding-bottom: 16px;
+
+      .resource-title-row {
+        display: flex;
+        align-items: baseline;
+        gap: 12px;
+        margin-bottom: 6px;
+
+        .resource-title {
+          margin: 0;
+          font-size: 20px;
+          font-weight: 600;
+          color: var(--canvas-text-primary);
+          letter-spacing: -0.2px;
+        }
+
+        .resource-id {
+          font-size: 12px;
+          color: var(--canvas-text-muted);
+          background: var(--canvas-surface-elevated);
+          padding: 1px 6px;
+          border-radius: var(--radius-sm);
+        }
       }
-      .resource-desc {
+
+      .resource-description {
+        margin: 0;
         font-size: 13px;
+        line-height: 1.6;
         color: var(--canvas-text-secondary);
       }
     }
-    .operations-grid {
+
+    .operations-section {
       display: flex;
       flex-direction: column;
       gap: 10px;
-    }
-    .op-card {
-      background: var(--canvas-surface);
-      border: 1px solid var(--canvas-border);
-      border-radius: var(--radius-md);
-      padding: 12px 16px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
 
-      .op-method-path {
+      .section-header {
         display: flex;
         align-items: center;
-        gap: 12px;
-      }
-      .method-tag {
-        font-size: 11px;
-        font-weight: 700;
-        padding: 2px 6px;
-        border-radius: var(--radius-sm);
-        &[data-method="GET"] {
-          background: var(--http-get-bg);
-          color: var(--http-get);
-          border: 1px solid var(--http-get-border);
+        justify-content: space-between;
+        padding: 0 4px;
+
+        .section-title {
+          font-size: 11px;
+          font-weight: 700;
+          color: var(--canvas-text-muted);
+          letter-spacing: 0.6px;
         }
-        &[data-method="POST"] {
-          background: var(--http-post-bg);
-          color: var(--http-post);
-          border: 1px solid var(--http-post-border);
-        }
-        &[data-method="PUT"] {
-          background: var(--http-put-bg);
-          color: var(--http-put);
-          border: 1px solid var(--http-put-border);
-        }
-        &[data-method="PATCH"] {
-          background: var(--http-patch-bg);
-          color: var(--http-patch);
-          border: 1px solid var(--http-patch-border);
-        }
-        &[data-method="DELETE"] {
-          background: var(--http-delete-bg);
-          color: var(--http-delete);
-          border: 1px solid var(--http-delete-border);
+
+        .ops-total {
+          font-size: 11px;
+          color: var(--canvas-text-muted);
         }
       }
-      .path-text {
-        font-size: 13px;
-        color: var(--canvas-text-primary);
+
+      .operations-list {
+        display: flex;
+        flex-direction: column;
+        background: var(--canvas-surface);
+        border: 1px solid var(--canvas-border);
+        border-radius: var(--radius-md);
+        overflow: hidden;
       }
-      .op-summary {
-        font-size: 12px;
-        color: var(--canvas-text-secondary);
+
+      .operation-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 10px 14px;
+        border-bottom: 1px solid var(--canvas-border-subtle);
+        gap: 16px;
+        transition: background 0.12s ease;
+
+        &:last-child {
+          border-bottom: none;
+        }
+
+        &:hover {
+          background: var(--canvas-surface-elevated);
+        }
+
+        .op-main {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          min-width: 0;
+          flex-shrink: 0;
+
+          .op-path {
+            font-size: 13px;
+            color: var(--canvas-text-primary);
+            font-weight: 500;
+          }
+
+          .op-type-badge {
+            font-size: 10px;
+            text-transform: uppercase;
+            font-family: var(--font-mono);
+            color: var(--canvas-text-muted);
+            background: var(--canvas-bg);
+            border: 1px solid var(--canvas-border-subtle);
+            padding: 1px 5px;
+            border-radius: var(--radius-sm);
+          }
+
+          .deprecated-badge {
+            font-size: 10px;
+            text-transform: uppercase;
+            font-family: var(--font-mono);
+            color: var(--color-danger);
+            background: rgba(218, 54, 51, 0.12);
+            border: 1px solid rgba(218, 54, 51, 0.3);
+            padding: 1px 5px;
+            border-radius: var(--radius-sm);
+          }
+        }
+
+        .op-details {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          min-width: 0;
+          overflow: hidden;
+          justify-content: flex-end;
+          flex: 1;
+
+          .op-summary {
+            font-size: 12px;
+            color: var(--canvas-text-secondary);
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            text-align: right;
+          }
+
+          .param-count {
+            font-size: 11px;
+            color: var(--canvas-text-muted);
+            background: var(--canvas-bg);
+            padding: 1px 6px;
+            border-radius: var(--radius-sm);
+            border: 1px solid var(--canvas-border-subtle);
+            white-space: nowrap;
+            flex-shrink: 0;
+          }
+        }
+      }
+
+      .empty-operations {
+        padding: 32px 16px;
+        text-align: center;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 8px;
+        color: var(--canvas-text-muted);
+
+        .empty-icon {
+          font-size: 24px;
+          width: 24px;
+          height: 24px;
+        }
+
+        p {
+          margin: 0;
+          font-size: 13px;
+        }
       }
     }
-    .empty-operations {
-      padding: 16px;
-      font-size: 13px;
-      color: var(--canvas-text-muted);
-    }
-    .empty-selection {
+
+    .empty-workspace {
       display: flex;
       flex-direction: column;
       align-items: center;
@@ -236,28 +459,62 @@ import { MatIconModule } from '@angular/material/icon';
       height: 100%;
       text-align: center;
       color: var(--canvas-text-muted);
+      padding: 48px 16px;
+
       .empty-icon {
-        font-size: 48px;
-        width: 48px;
-        height: 48px;
+        font-size: 44px;
+        width: 44px;
+        height: 44px;
         margin-bottom: 12px;
+        color: var(--canvas-text-muted);
       }
-      h3 {
+
+      h2 {
         margin: 0 0 6px;
         font-size: 16px;
+        font-weight: 600;
         color: var(--canvas-text-secondary);
       }
+
       p {
         margin: 0;
         font-size: 13px;
+        max-width: 380px;
+        line-height: 1.5;
+      }
+    }
+
+    @media (max-width: 768px) {
+      .workspace-header {
+        .api-endpoint {
+          display: none !important;
+        }
+      }
+      .workspace-content {
+        padding: 16px;
+      }
+      .operation-row {
+        flex-direction: column;
+        align-items: flex-start !important;
+        gap: 6px !important;
+
+        .op-details {
+          justify-content: flex-start !important;
+          width: 100%;
+          .op-summary {
+            text-align: left !important;
+          }
+        }
       }
     }
   `]
 })
-export class WorkspacePage implements OnInit {
+export class WorkspacePage implements OnInit, OnDestroy {
   private readonly sessionService = inject(ApiSessionService);
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
+
+  private routeSub?: Subscription;
 
   readonly hasActiveApi = this.sessionService.hasActiveApi;
   readonly apiTitle = this.sessionService.apiTitle;
@@ -268,18 +525,30 @@ export class WorkspacePage implements OnInit {
   readonly selectedResource = this.sessionService.selectedResource;
 
   ngOnInit(): void {
-    const routeResourceId = this.route.snapshot.paramMap.get('resourceId');
-    if (routeResourceId) {
-      this.sessionService.selectResource(routeResourceId);
-    }
+    this.routeSub = this.route.paramMap.subscribe((params) => {
+      const routeResourceId = params.get('resourceId');
+      if (routeResourceId) {
+        this.sessionService.selectResource(routeResourceId);
+      } else {
+        const currentSelectedId = this.sessionService.selectedResourceId();
+        if (currentSelectedId) {
+          // If accessing /workspace directly with an already selected resource, keep session synced
+          this.sessionService.selectResource(currentSelectedId);
+        }
+      }
+    });
+  }
+
+  ngOnDestroy(): void {
+    this.routeSub?.unsubscribe();
   }
 
   onSelectResource(resource: ApiResource): void {
     this.sessionService.selectResource(resource);
+    this.router.navigate(['/workspace', resource.id]);
   }
 
   onReconnect(): void {
     this.router.navigate(['/connect']);
   }
 }
-
