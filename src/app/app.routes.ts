@@ -1,4 +1,5 @@
 import { Routes } from '@angular/router';
+import { apiSessionGuard } from './core/guards/api-session.guard';
 
 export const routes: Routes = [
   {
@@ -13,16 +14,19 @@ export const routes: Routes = [
   },
   {
     path: 'workspace',
+    canActivate: [apiSessionGuard],
     loadComponent: () =>
       import('./features/workspace/workspace.page').then(m => m.WorkspacePage)
   },
   {
     path: 'workspace/:resourceId',
+    canActivate: [apiSessionGuard],
     loadComponent: () =>
       import('./features/workspace/workspace.page').then(m => m.WorkspacePage)
   },
   {
     path: 'operation/:operationId',
+    canActivate: [apiSessionGuard],
     loadComponent: () =>
       import('./features/operation/operation.page').then(m => m.OperationPage)
   },
@@ -31,3 +35,4 @@ export const routes: Routes = [
     redirectTo: 'connect'
   }
 ];
+

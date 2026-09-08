@@ -1,25 +1,61 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideAnimationsAsync } from '@angular/platform-browser/animations/async';
+import { Router } from '@angular/router';
 import { ApiConnectPage, httpUrlValidator, ApiConnectionConfig } from './api-connect.page';
 import { FormControl } from '@angular/forms';
 import { OpenApiLoaderService } from '../../openapi/services/openapi-loader.service';
+import { OpenApiParserService } from '../../openapi/services/openapi-parser.service';
+import { ApiSessionService } from '../../core/services/api-session.service';
+import { ApiDefinition } from '../../core/models/api-definition.model';
 import { of, throwError, Subject } from 'rxjs';
 
 describe('ApiConnectPage', () => {
   let component: ApiConnectPage;
   let fixture: ComponentFixture<ApiConnectPage>;
   let openApiLoaderMock: { load: ReturnType<typeof vi.fn> };
+  let openApiParserMock: { parse: ReturnType<typeof vi.fn> };
+  let sessionServiceMock: { setSession: ReturnType<typeof vi.fn> };
+  let routerMock: { navigate: ReturnType<typeof vi.fn> };
+
+  const mockParsedDefinition: ApiDefinition = {
+    title: 'Petstore API',
+    version: '1.0.0',
+    baseUrl: 'https://petstore.swagger.io/v2',
+    resources: [
+      {
+        id: 'pet',
+        name: 'pet',
+        label: 'Pet',
+        operations: []
+      }
+    ]
+  };
 
   beforeEach(async () => {
     openApiLoaderMock = {
       load: vi.fn()
     };
 
+    openApiParserMock = {
+      parse: vi.fn().mockReturnValue({ ...mockParsedDefinition })
+    };
+
+    sessionServiceMock = {
+      setSession: vi.fn()
+    };
+
+    routerMock = {
+      navigate: vi.fn()
+    };
+
     await TestBed.configureTestingModule({
       imports: [ApiConnectPage],
       providers: [
         provideAnimationsAsync(),
-        { provide: OpenApiLoaderService, useValue: openApiLoaderMock }
+        { provide: OpenApiLoaderService, useValue: openApiLoaderMock },
+        { provide: OpenApiParserService, useValue: openApiParserMock },
+        { provide: ApiSessionService, useValue: sessionServiceMock },
+        { provide: Router, useValue: routerMock }
       ]
     }).compileComponents();
 
@@ -193,7 +229,7 @@ describe('ApiConnectPage', () => {
     });
   });
 
-  describe('Connection Submission with OpenApiLoaderService', () => {
+  describe('Connection Submission, Parsing and Navigation', () => {
     it('should not emit connected nor call loader when form is invalid', () => {
       let emitted: ApiConnectionConfig | undefined;
       component.connected.subscribe((val) => (emitted = val));
@@ -202,11 +238,13 @@ describe('ApiConnectPage', () => {
 
       expect(openApiLoaderMock.load).not.toHaveBeenCalled();
       expect(emitted).toBeUndefined();
+      expect(routerMock.navigate).not.toHaveBeenCalled();
     });
 
-    it('should trigger loader, set loading state, and emit connected with rawSpec upon success', () => {
+    it('should trigger loader, parse spec, set session, override baseUrl, and navigate to /workspace', () => {
       const mockRawSpec = { openapi: '3.0.0', info: { title: 'Petstore' } };
       openApiLoaderMock.load.mockReturnValue(of(mockRawSpec));
+      openApiParserMock.parse.mockReturnValue({ ...mockParsedDefinition });
 
       let emitted: ApiConnectionConfig | undefined;
       component.connected.subscribe((val) => (emitted = val));
@@ -219,17 +257,30 @@ describe('ApiConnectPage', () => {
       component.onConnect();
 
       expect(openApiLoaderMock.load).toHaveBeenCalledWith('https://petstore.swagger.io/v2/swagger.json');
+      expect(openApiParserMock.parse).toHaveBeenCalledWith(mockRawSpec);
+      expect(sessionServiceMock.setSession).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'Petstore API',
+          baseUrl: 'https://api.custom.com'
+        }),
+        {
+          openApiUrl: 'https://petstore.swagger.io/v2/swagger.json',
+          rawSpec: mockRawSpec
+        }
+      );
       expect(component.loading()).toBe(false);
       expect(emitted).toEqual({
         openApiUrl: 'https://petstore.swagger.io/v2/swagger.json',
         baseUrl: 'https://api.custom.com',
         rawSpec: mockRawSpec
       });
+      expect(routerMock.navigate).toHaveBeenCalledWith(['/workspace']);
     });
 
-    it('should omit baseUrl if blank when emitting connection payload', () => {
+    it('should keep parsed baseUrl if baseUrl form control is empty', () => {
       const mockRawSpec = { swagger: '2.0', info: { title: 'Swagger API' } };
       openApiLoaderMock.load.mockReturnValue(of(mockRawSpec));
+      openApiParserMock.parse.mockReturnValue({ ...mockParsedDefinition, baseUrl: 'https://petstore.swagger.io/v2' });
 
       let emitted: ApiConnectionConfig | undefined;
       component.connected.subscribe((val) => (emitted = val));
@@ -241,11 +292,18 @@ describe('ApiConnectPage', () => {
 
       component.onConnect();
 
+      expect(sessionServiceMock.setSession).toHaveBeenCalledWith(
+        expect.objectContaining({
+          baseUrl: 'https://petstore.swagger.io/v2'
+        }),
+        expect.any(Object)
+      );
       expect(emitted).toEqual({
         openApiUrl: 'https://petstore.swagger.io/v2/swagger.json',
         baseUrl: undefined,
         rawSpec: mockRawSpec
       });
+      expect(routerMock.navigate).toHaveBeenCalledWith(['/workspace']);
     });
 
     it('should handle pending load by showing loading state', () => {
@@ -269,6 +327,31 @@ describe('ApiConnectPage', () => {
 
       expect(component.loading()).toBe(false);
       expect(component.form.disabled).toBe(false);
+    });
+
+    it('should display error banner and reset loading when parser throws an error', () => {
+      const mockRawSpec = { invalid: true };
+      openApiLoaderMock.load.mockReturnValue(of(mockRawSpec));
+      openApiParserMock.parse.mockImplementation(() => {
+        throw new Error('Documento inválido: a propriedade "openapi" ou "swagger" não foi encontrada.');
+      });
+
+      component.form.setValue({
+        openApiUrl: 'https://example.com/spec.json',
+        baseUrl: ''
+      });
+
+      component.onConnect();
+      fixture.detectChanges();
+
+      expect(component.loading()).toBe(false);
+      expect(component.errorMessage()).toBe('Documento inválido: a propriedade "openapi" ou "swagger" não foi encontrada.');
+      expect(sessionServiceMock.setSession).not.toHaveBeenCalled();
+      expect(routerMock.navigate).not.toHaveBeenCalled();
+
+      const banner = fixture.nativeElement.querySelector('.error-banner');
+      expect(banner).toBeTruthy();
+      expect(banner.textContent).toContain('Documento inválido');
     });
 
     it('should display error banner and reset loading when loader fails with CORS/Network error', () => {
@@ -317,3 +400,4 @@ describe('ApiConnectPage', () => {
     });
   });
 });
+

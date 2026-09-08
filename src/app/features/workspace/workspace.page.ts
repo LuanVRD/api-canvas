@@ -1,8 +1,10 @@
-import { Component, signal } from '@angular/core';
+import { Component, OnInit, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { ActivatedRoute, Router } from '@angular/router';
 import { ResourceSidebarComponent } from './resource-sidebar.component';
 import { ApiResource } from '../../core/models/api-resource.model';
 import { StatusIndicatorComponent } from '../../shared/components/status-indicator/status-indicator.component';
+import { ApiSessionService } from '../../core/services/api-session.service';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 
@@ -21,14 +23,19 @@ import { MatIconModule } from '@angular/material/icon';
       <!-- Workspace Top Info Bar -->
       <div class="workspace-header">
         <div class="api-meta">
-          <span class="api-title">{{ apiTitle() }}</span>
-          <span class="api-version font-mono">v{{ apiVersion() }}</span>
-          <app-status-indicator [connected]="true" label="Ready" />
+          <span class="api-title">{{ apiTitle() || 'No API Connected' }}</span>
+          @if (apiVersion()) {
+            <span class="api-version font-mono">v{{ apiVersion() }}</span>
+          }
+          @if (baseUrl()) {
+            <span class="api-base-url font-mono">{{ baseUrl() }}</span>
+          }
+          <app-status-indicator [connected]="hasActiveApi()" [label]="hasActiveApi() ? 'Ready' : 'Disconnected'" />
         </div>
         <div class="header-actions">
-          <button mat-stroked-button class="action-btn">
-            <mat-icon>refresh</mat-icon>
-            <span>Reload Spec</span>
+          <button mat-stroked-button class="action-btn" (click)="onReconnect()">
+            <mat-icon>swap_horiz</mat-icon>
+            <span>Change API</span>
           </button>
         </div>
       </div>
@@ -36,8 +43,8 @@ import { MatIconModule } from '@angular/material/icon';
       <!-- Main Body: Sidebar + Content -->
       <div class="workspace-body">
         <app-resource-sidebar 
-          [resources]="mockResources"
-          [selectedResourceId]="selectedResourceId()"
+          [resources]="resources()"
+          [selectedResourceId]="selectedResourceId() ?? undefined"
           (resourceSelect)="onSelectResource($event)"
         />
 
@@ -57,6 +64,10 @@ import { MatIconModule } from '@angular/material/icon';
                       <span class="path-text font-mono">{{ op.path }}</span>
                     </div>
                     <span class="op-summary">{{ op.summary || 'No description provided' }}</span>
+                  </div>
+                } @empty {
+                  <div class="empty-operations">
+                    <span>No operations defined for this resource.</span>
                   </div>
                 }
               </div>
@@ -91,17 +102,32 @@ import { MatIconModule } from '@angular/material/icon';
         display: flex;
         align-items: center;
         gap: 12px;
+        overflow: hidden;
+
         .api-title {
           font-weight: 600;
           font-size: 14px;
           color: var(--canvas-text-primary);
+          white-space: nowrap;
         }
         .api-version {
           font-size: 11px;
           background: var(--canvas-surface-elevated);
           padding: 2px 6px;
-          border-radius: 4px;
+          border-radius: var(--radius-sm);
           color: var(--canvas-text-secondary);
+          white-space: nowrap;
+        }
+        .api-base-url {
+          font-size: 11px;
+          color: var(--canvas-text-muted);
+          background: var(--canvas-surface-elevated);
+          padding: 2px 6px;
+          border-radius: var(--radius-sm);
+          max-width: 250px;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
         }
       }
       .action-btn {
@@ -131,6 +157,7 @@ import { MatIconModule } from '@angular/material/icon';
         margin: 0 0 4px;
         font-size: 18px;
         font-weight: 600;
+        color: var(--canvas-text-primary);
       }
       .resource-desc {
         font-size: 13px;
@@ -171,6 +198,16 @@ import { MatIconModule } from '@angular/material/icon';
           color: var(--http-post);
           border: 1px solid var(--http-post-border);
         }
+        &[data-method="PUT"] {
+          background: var(--http-put-bg);
+          color: var(--http-put);
+          border: 1px solid var(--http-put-border);
+        }
+        &[data-method="PATCH"] {
+          background: var(--http-patch-bg);
+          color: var(--http-patch);
+          border: 1px solid var(--http-patch-border);
+        }
         &[data-method="DELETE"] {
           background: var(--http-delete-bg);
           color: var(--http-delete);
@@ -185,6 +222,11 @@ import { MatIconModule } from '@angular/material/icon';
         font-size: 12px;
         color: var(--canvas-text-secondary);
       }
+    }
+    .empty-operations {
+      padding: 16px;
+      font-size: 13px;
+      color: var(--canvas-text-muted);
     }
     .empty-selection {
       display: flex;
@@ -212,70 +254,32 @@ import { MatIconModule } from '@angular/material/icon';
     }
   `]
 })
-export class WorkspacePage {
-  readonly apiTitle = signal('Sample Store API');
-  readonly apiVersion = signal('1.0.0');
-  readonly selectedResourceId = signal<string | undefined>('products');
+export class WorkspacePage implements OnInit {
+  private readonly sessionService = inject(ApiSessionService);
+  private readonly router = inject(Router);
+  private readonly route = inject(ActivatedRoute);
 
-  readonly mockResources: ApiResource[] = [
-    {
-      id: 'products',
-      name: 'products',
-      label: 'Products',
-      description: 'Product catalog operations',
-      operations: [
-        {
-          id: 'get_products',
-          method: 'GET',
-          path: '/api/products',
-          summary: 'List all products in catalog',
-          parameters: [],
-          responses: [],
-          type: 'list'
-        },
-        {
-          id: 'post_products',
-          method: 'POST',
-          path: '/api/products',
-          summary: 'Create a new product',
-          parameters: [],
-          responses: [],
-          type: 'create'
-        },
-        {
-          id: 'delete_product',
-          method: 'DELETE',
-          path: '/api/products/{id}',
-          summary: 'Delete product by ID',
-          parameters: [],
-          responses: [],
-          type: 'delete'
-        }
-      ]
-    },
-    {
-      id: 'orders',
-      name: 'orders',
-      label: 'Orders',
-      description: 'Order processing and checkout',
-      operations: [
-        {
-          id: 'get_orders',
-          method: 'GET',
-          path: '/api/orders',
-          summary: 'List recent orders',
-          parameters: [],
-          responses: [],
-          type: 'list'
-        }
-      ]
+  readonly hasActiveApi = this.sessionService.hasActiveApi;
+  readonly apiTitle = this.sessionService.apiTitle;
+  readonly apiVersion = this.sessionService.apiVersion;
+  readonly baseUrl = this.sessionService.baseUrl;
+  readonly resources = this.sessionService.resources;
+  readonly selectedResourceId = this.sessionService.selectedResourceId;
+  readonly selectedResource = this.sessionService.selectedResource;
+
+  ngOnInit(): void {
+    const routeResourceId = this.route.snapshot.paramMap.get('resourceId');
+    if (routeResourceId) {
+      this.sessionService.selectResource(routeResourceId);
     }
-  ];
-
-  selectedResource = signal<ApiResource | undefined>(this.mockResources[0]);
+  }
 
   onSelectResource(resource: ApiResource): void {
-    this.selectedResourceId.set(resource.id);
-    this.selectedResource.set(resource);
+    this.sessionService.selectResource(resource);
+  }
+
+  onReconnect(): void {
+    this.router.navigate(['/connect']);
   }
 }
+

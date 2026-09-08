@@ -1,5 +1,6 @@
 import { Component, EventEmitter, Output, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { Router } from '@angular/router';
 import {
   AbstractControl,
   FormBuilder,
@@ -14,6 +15,9 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { OpenApiLoaderService } from '../../openapi/services/openapi-loader.service';
+import { OpenApiParserService } from '../../openapi/services/openapi-parser.service';
+import { ApiSessionService } from '../../core/services/api-session.service';
+
 
 export interface ApiConnectionConfig {
   openApiUrl: string;
@@ -355,6 +359,9 @@ export function httpUrlValidator(): ValidatorFn {
 export class ApiConnectPage {
   private readonly fb = inject(FormBuilder);
   private readonly openApiLoader = inject(OpenApiLoaderService);
+  private readonly openApiParser = inject(OpenApiParserService);
+  private readonly sessionService = inject(ApiSessionService);
+  private readonly router = inject(Router);
 
   @Output() readonly connected = new EventEmitter<ApiConnectionConfig>();
 
@@ -405,12 +412,33 @@ export class ApiConnectPage {
 
     this.openApiLoader.load(openApiUrl).subscribe({
       next: (rawSpec) => {
-        this.setLoading(false);
-        this.connected.emit({
-          openApiUrl,
-          baseUrl,
-          rawSpec
-        });
+        try {
+          const apiDefinition = this.openApiParser.parse(rawSpec);
+
+          if (baseUrl) {
+            apiDefinition.baseUrl = baseUrl;
+          }
+
+          this.sessionService.setSession(apiDefinition, {
+            openApiUrl,
+            rawSpec
+          });
+
+          this.setLoading(false);
+
+          this.connected.emit({
+            openApiUrl,
+            baseUrl,
+            rawSpec
+          });
+
+          this.router.navigate(['/workspace']);
+        } catch (err: unknown) {
+          this.setLoading(false);
+          const message =
+            err instanceof Error ? err.message : 'Falha ao processar a especificação OpenAPI.';
+          this.setError(message);
+        }
       },
       error: (err: Error) => {
         this.setLoading(false);
@@ -419,4 +447,5 @@ export class ApiConnectPage {
     });
   }
 }
+
 
