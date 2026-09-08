@@ -128,4 +128,58 @@ describe('ApiExecutorService', () => {
     expect(req.request.method).toBe('DELETE');
     req.flush('Not Found', { status: 404, statusText: 'Not Found' });
   });
+
+  it('should return structured validation error when required parameters are missing', () => {
+    const operation: ApiOperation = {
+      id: 'get_user_by_uuid',
+      method: 'GET',
+      path: '/users/{userUuid}',
+      type: 'details',
+      parameters: [
+        { name: 'userUuid', location: 'path', required: true, schema: { type: 'string' } }
+      ],
+      responses: []
+    };
+
+    service.execute('https://api.example.com', operation, {}).subscribe((result) => {
+      expect(result.isSuccess).toBe(false);
+      expect(result.status).toBe(0);
+      expect(result.statusText).toBe('Validation Error');
+      expect(result.error).toBeDefined();
+      expect(result.error?.message).toContain('Missing required path parameter "userUuid"');
+    });
+
+    // Não deve disparar nenhuma requisição HTTP
+    httpMock.expectNone('https://api.example.com/users/{userUuid}');
+  });
+
+  it('should pass query parameters and headers correctly to HttpClient', () => {
+    const operation: ApiOperation = {
+      id: 'filter_items',
+      method: 'GET',
+      path: '/items',
+      type: 'list',
+      parameters: [],
+      responses: []
+    };
+
+    service
+      .execute('https://api.example.com', operation, {
+        query: { category: 'electronics', tag: ['a', 'b'] },
+        headers: { 'X-Custom-Auth': 'token123' }
+      })
+      .subscribe((result) => {
+        expect(result.isSuccess).toBe(true);
+      });
+
+    const req = httpMock.expectOne(
+      (r) =>
+        r.url === 'https://api.example.com/items' &&
+        r.params.get('category') === 'electronics' &&
+        r.params.getAll('tag')?.length === 2 &&
+        r.headers.get('X-Custom-Auth') === 'token123'
+    );
+    expect(req.request.method).toBe('GET');
+    req.flush([]);
+  });
 });
