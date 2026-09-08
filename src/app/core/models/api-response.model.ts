@@ -5,4 +5,5 @@ export interface ApiResponse {
   description?: string;
   schema?: ApiSchema;
   contentType?: string;
+  headers?: Record<string, ApiSchema>;
 }

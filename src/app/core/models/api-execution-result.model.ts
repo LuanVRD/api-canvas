@@ -1,8 +1,7 @@
-export interface ApiRequestInput {
-  path?: Record<string, unknown>;
-  query?: Record<string, unknown>;
-  headers?: Record<string, string>;
-  body?: unknown;
+export interface ApiExecutionError {
+  message: string;
+  status?: number;
+  details?: unknown;
 }
 
 export interface ApiExecutionResult {
@@ -10,5 +9,8 @@ export interface ApiExecutionResult {
   statusText?: string;
   headers?: Record<string, string>;
   data?: unknown;
+  durationMs?: number;
   duration?: number;
+  isSuccess: boolean;
+  error?: ApiExecutionError;
 }

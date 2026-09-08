@@ -8,4 +8,7 @@ export interface ApiParameter {
   required: boolean;
   schema: ApiSchema;
   description?: string;
+  deprecated?: boolean;
+  default?: unknown;
+  example?: unknown;
 }

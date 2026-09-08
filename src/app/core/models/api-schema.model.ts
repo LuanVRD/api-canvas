@@ -5,6 +5,7 @@ export type SchemaPrimitiveType =
   | 'boolean'
   | 'object'
   | 'array'
+  | 'null'
   | 'unknown';
 
 export interface ApiSchema {
@@ -13,11 +14,16 @@ export interface ApiSchema {
   title?: string;
   description?: string;
   required?: boolean;
+  // Lista explícita de chaves obrigatórias quando o schema representa um objeto
+  requiredProperties?: string[];
   enum?: unknown[];
   properties?: Record<string, ApiSchema>;
   items?: ApiSchema;
   default?: unknown;
+  example?: unknown;
   nullable?: boolean;
+  readOnly?: boolean;
+  writeOnly?: boolean;
   minimum?: number;
   maximum?: number;
   minLength?: number;
