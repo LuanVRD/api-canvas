@@ -56,7 +56,12 @@ export class OpenApiParserService {
       }
     }
 
-    const baseUrl = servers[0]?.url || (typeof doc['host'] === 'string' ? `https://${doc['host']}` : '');
+    let baseUrl = servers[0]?.url || '';
+    if (!baseUrl && typeof doc['host'] === 'string') {
+      const schemes = Array.isArray(doc['schemes']) && doc['schemes'].length > 0 ? doc['schemes'][0] : 'https';
+      const basePath = typeof doc['basePath'] === 'string' ? doc['basePath'] : '';
+      baseUrl = `${schemes}://${doc['host']}${basePath}`;
+    }
 
     // Parse paths and operations
     const operations: ApiOperation[] = [];

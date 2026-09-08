@@ -289,3 +289,277 @@ export const INVALID_REF_SPEC = {
     }
   }
 };
+
+export const FULL_PETSTORE_SPEC = {
+  openapi: '3.0.3',
+  info: {
+    title: 'Petstore Extended API',
+    version: '1.5.0',
+    description: 'A comprehensive Petstore API with full parameters, headers, cookies, and responses'
+  },
+  servers: [
+    { url: 'https://api.petstore.com/v1', description: 'Production' },
+    { url: 'https://sandbox.petstore.com/v1', description: 'Sandbox' }
+  ],
+  paths: {
+    '/pets': {
+      parameters: [
+        {
+          name: 'X-Request-ID',
+          in: 'header',
+          required: true,
+          description: 'Unique tracking identifier',
+          schema: { type: 'string', format: 'uuid' }
+        }
+      ],
+      get: {
+        operationId: 'findPets',
+        summary: 'Find all pets',
+        description: 'Returns a paginated list of pets matching filter criteria',
+        tags: ['Pets'],
+        parameters: [
+          {
+            name: 'limit',
+            in: 'query',
+            required: false,
+            schema: { type: 'integer', default: 20 },
+            description: 'Number of items to return'
+          },
+          {
+            name: 'session_token',
+            in: 'cookie',
+            required: false,
+            schema: { type: 'string' },
+            description: 'Client session cookie'
+          }
+        ],
+        responses: {
+          '200': {
+            description: 'A list of pets',
+            headers: {
+              'X-Total-Count': {
+                description: 'Total number of items available',
+                schema: { type: 'integer' }
+              }
+            },
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'array',
+                  items: {
+                    $ref: '#/components/schemas/Pet'
+                  }
+                }
+              }
+            }
+          },
+          'default': {
+            description: 'Unexpected error',
+            content: {
+              'application/json': {
+                schema: {
+                  $ref: '#/components/schemas/Error'
+                }
+              }
+            }
+          }
+        }
+      },
+      post: {
+        operationId: 'addPet',
+        summary: 'Add a new pet',
+        description: 'Creates a new pet entry in the store',
+        tags: ['Pets'],
+        deprecated: true,
+        requestBody: {
+          description: 'Pet creation payload',
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                $ref: '#/components/schemas/NewPet'
+              }
+            }
+          }
+        },
+        responses: {
+          '201': {
+            description: 'Pet created successfully',
+            content: {
+              'application/json': {
+                schema: {
+                  $ref: '#/components/schemas/Pet'
+                }
+              }
+            }
+          },
+          '400': {
+            description: 'Invalid input provided'
+          }
+        }
+      }
+    },
+    '/pets/{id}': {
+      get: {
+        operationId: 'findPetById',
+        summary: 'Find pet by ID',
+        tags: ['Pets'],
+        parameters: [
+          {
+            name: 'id',
+            in: 'path',
+            required: true,
+            schema: { type: 'integer', format: 'int64' }
+          }
+        ],
+        responses: {
+          '200': {
+            description: 'Pet found',
+            content: {
+              'application/json': {
+                schema: {
+                  $ref: '#/components/schemas/Pet'
+                }
+              }
+            }
+          },
+          '404': {
+            description: 'Pet not found'
+          }
+        }
+      },
+      delete: {
+        operationId: 'deletePet',
+        summary: 'Deletes a pet',
+        tags: ['Pets'],
+        parameters: [
+          {
+            name: 'id',
+            in: 'path',
+            required: true,
+            schema: { type: 'integer', format: 'int64' }
+          }
+        ],
+        responses: {
+          '204': {
+            description: 'Pet deleted'
+          }
+        }
+      }
+    }
+  },
+  components: {
+    schemas: {
+      Pet: {
+        type: 'object',
+        required: ['id', 'name'],
+        properties: {
+          id: { type: 'integer', format: 'int64' },
+          name: { type: 'string' },
+          tag: { type: 'string' }
+        }
+      },
+      NewPet: {
+        type: 'object',
+        required: ['name'],
+        properties: {
+          name: { type: 'string' },
+          tag: { type: 'string' }
+        }
+      },
+      Error: {
+        type: 'object',
+        required: ['code', 'message'],
+        properties: {
+          code: { type: 'integer', format: 'int32' },
+          message: { type: 'string' }
+        }
+      }
+    }
+  }
+};
+
+export const SWAGGER_2_SPEC = {
+  swagger: '2.0',
+  info: {
+    title: 'Legacy Swagger API',
+    version: '1.0.0',
+    description: 'Swagger 2.0 specification with body parameters and direct response schema'
+  },
+  host: 'legacy.api.com',
+  basePath: '/v2',
+  schemes: ['https'],
+  paths: {
+    '/users': {
+      post: {
+        operationId: 'createUser',
+        summary: 'Create user',
+        tags: ['Users'],
+        parameters: [
+          {
+            name: 'Authorization',
+            in: 'header',
+            required: true,
+            type: 'string'
+          },
+          {
+            name: 'user',
+            in: 'body',
+            required: true,
+            schema: {
+              $ref: '#/definitions/User'
+            }
+          }
+        ],
+        responses: {
+          '200': {
+            description: 'Successful operation',
+            schema: {
+              $ref: '#/definitions/User'
+            }
+          }
+        }
+      }
+    }
+  },
+  definitions: {
+    User: {
+      type: 'object',
+      required: ['username', 'email'],
+      properties: {
+        username: { type: 'string' },
+        email: { type: 'string' }
+      }
+    }
+  }
+};
+
+export const UNTAGGED_API_SPEC = {
+  openapi: '3.0.3',
+  info: {
+    title: 'Untagged Routes API',
+    version: '3.0.0'
+  },
+  paths: {
+    '/orders/{orderId}/items': {
+      get: {
+        summary: 'Get order items',
+        responses: {
+          '200': {
+            description: 'List of items'
+          }
+        }
+      }
+    },
+    '/analytics/reports': {
+      get: {
+        summary: 'Get analytics reports',
+        responses: {
+          '200': {
+            description: 'Report data'
+          }
+        }
+      }
+    }
+  }
+};

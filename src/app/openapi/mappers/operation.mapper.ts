@@ -6,7 +6,7 @@ import { OperationClassifierService } from '../services/operation-classifier.ser
 
 export class OperationMapper {
   /**
-   * Maps an OpenAPI 3.x path operation object into an internal ApiOperation model,
+   * Maps an OpenAPI 3.x / Swagger 2.0 path operation object into an internal ApiOperation model,
    * resolving all schemas, parameters, request body, and responses.
    */
   static toInternal(
@@ -29,7 +29,7 @@ export class OperationMapper {
     ];
 
     const parameters = this.extractParameters(rawParams, rootDocument, schemaResolver);
-    const requestBody = this.extractRequestBody(rawOperation['requestBody'], rootDocument, schemaResolver);
+    const requestBody = this.extractRequestBody(rawOperation['requestBody'], rawParams, rootDocument, schemaResolver);
     const responses = this.extractResponses(rawOperation['responses'], rootDocument, schemaResolver);
     const type = classifier.classify(httpMethod, rawPath);
 
@@ -64,26 +64,38 @@ export class OperationMapper {
         paramDict = schemaResolver.resolveRawNode(paramDict['$ref'], rootDocument);
       }
 
+      const locationStr = typeof paramDict['in'] === 'string' ? paramDict['in'].toLowerCase() : 'query';
+      // Swagger 2.0 body params are handled in extractRequestBody
+      if (locationStr === 'body') continue;
+
       const name = paramDict['name'] as string;
-      const location = (paramDict['in'] as ParameterLocation) || 'query';
       if (!name) continue;
 
-      const rawSchema = paramDict['schema'] || {};
+      const validLocation: ParameterLocation =
+        locationStr === 'path' || locationStr === 'header' || locationStr === 'cookie'
+          ? (locationStr as ParameterLocation)
+          : 'query';
+
+      const rawSchema =
+        paramDict['schema'] && typeof paramDict['schema'] === 'object'
+          ? (paramDict['schema'] as Record<string, unknown>)
+          : paramDict;
+
       const resolvedSchema = schemaResolver.resolveSchema(rawSchema, rootDocument);
 
       const parameter: ApiParameter = {
         name,
-        location,
-        required: location === 'path' ? true : !!paramDict['required'],
+        location: validLocation,
+        required: validLocation === 'path' ? true : !!paramDict['required'],
         schema: resolvedSchema,
         description: paramDict['description'] as string | undefined,
         deprecated: !!paramDict['deprecated'],
-        default: paramDict['default'],
-        example: paramDict['example']
+        default: paramDict['default'] ?? resolvedSchema.default,
+        example: paramDict['example'] ?? resolvedSchema.example
       };
 
-      // Key by name + location to prevent duplicate path/operation parameters (operation overrides path)
-      paramsMap.set(`${location}:${name}`, parameter);
+      // Key by location + name so operation parameters override path-level parameters
+      paramsMap.set(`${validLocation}:${name}`, parameter);
     }
 
     return Array.from(paramsMap.values());
@@ -91,38 +103,60 @@ export class OperationMapper {
 
   private static extractRequestBody(
     rawBody: unknown,
+    rawParams: unknown[],
     rootDocument: unknown,
     schemaResolver: SchemaResolverService
   ): ApiRequestBody | undefined {
-    if (!rawBody || typeof rawBody !== 'object') return undefined;
+    // 1. OpenAPI 3.x requestBody object
+    if (rawBody && typeof rawBody === 'object') {
+      let bodyDict = rawBody as Record<string, unknown>;
+      if (typeof bodyDict['$ref'] === 'string') {
+        bodyDict = schemaResolver.resolveRawNode(bodyDict['$ref'], rootDocument);
+      }
 
-    let bodyDict = rawBody as Record<string, unknown>;
-    if (typeof bodyDict['$ref'] === 'string') {
-      bodyDict = schemaResolver.resolveRawNode(bodyDict['$ref'], rootDocument);
+      const content = bodyDict['content'] as Record<string, unknown> | undefined;
+      if (content && typeof content === 'object') {
+        const mediaTypes = Object.keys(content);
+        const selectedMediaType =
+          mediaTypes.find((t) => t.includes('json')) ||
+          mediaTypes.find((t) => t.includes('form') || t.includes('xml')) ||
+          mediaTypes[0];
+
+        if (selectedMediaType) {
+          const mediaObject = content[selectedMediaType] as Record<string, unknown> | undefined;
+          const rawSchema = mediaObject?.['schema'] || {};
+          const resolvedSchema = schemaResolver.resolveSchema(rawSchema, rootDocument);
+
+          return {
+            description: bodyDict['description'] as string | undefined,
+            required: !!bodyDict['required'],
+            contentType: selectedMediaType,
+            schema: resolvedSchema
+          };
+        }
+      }
     }
 
-    const content = bodyDict['content'] as Record<string, unknown> | undefined;
-    if (!content || typeof content !== 'object') {
-      return undefined;
+    // 2. Swagger 2.0 parameter with in: 'body'
+    for (const raw of rawParams) {
+      if (!raw || typeof raw !== 'object') continue;
+      let paramDict = raw as Record<string, unknown>;
+      if (typeof paramDict['$ref'] === 'string') {
+        paramDict = schemaResolver.resolveRawNode(paramDict['$ref'], rootDocument);
+      }
+      if (paramDict['in'] === 'body') {
+        const rawSchema = paramDict['schema'] || {};
+        const resolvedSchema = schemaResolver.resolveSchema(rawSchema, rootDocument);
+        return {
+          description: paramDict['description'] as string | undefined,
+          required: !!paramDict['required'],
+          contentType: 'application/json',
+          schema: resolvedSchema
+        };
+      }
     }
 
-    // Prioritize application/json, or use the first defined media type
-    const mediaTypes = Object.keys(content);
-    const selectedMediaType =
-      mediaTypes.find((t) => t.includes('json')) || mediaTypes[0];
-
-    if (!selectedMediaType) return undefined;
-
-    const mediaObject = content[selectedMediaType] as Record<string, unknown> | undefined;
-    const rawSchema = mediaObject?.['schema'] || {};
-    const resolvedSchema = schemaResolver.resolveSchema(rawSchema, rootDocument);
-
-    return {
-      description: bodyDict['description'] as string | undefined,
-      required: !!bodyDict['required'],
-      contentType: selectedMediaType,
-      schema: resolvedSchema
-    };
+    return undefined;
   }
 
   private static extractResponses(
@@ -146,10 +180,14 @@ export class OperationMapper {
       let selectedContentType: string | undefined;
       let resolvedSchema = undefined;
 
+      // OpenAPI 3.x content dictionary
       const content = respDict['content'] as Record<string, unknown> | undefined;
       if (content && typeof content === 'object') {
         const mediaTypes = Object.keys(content);
-        selectedContentType = mediaTypes.find((t) => t.includes('json')) || mediaTypes[0];
+        selectedContentType =
+          mediaTypes.find((t) => t.includes('json')) ||
+          mediaTypes.find((t) => t.includes('text') || t.includes('xml')) ||
+          mediaTypes[0];
         if (selectedContentType) {
           const mediaObj = content[selectedContentType] as Record<string, unknown> | undefined;
           if (mediaObj?.['schema']) {
@@ -158,11 +196,32 @@ export class OperationMapper {
         }
       }
 
+      // Swagger 2.0 direct schema on response
+      if (!resolvedSchema && respDict['schema']) {
+        resolvedSchema = schemaResolver.resolveSchema(respDict['schema'], rootDocument);
+        selectedContentType = selectedContentType || 'application/json';
+      }
+
+      // Response headers mapping
+      const headersDict = respDict['headers'] as Record<string, unknown> | undefined;
+      let mappedHeaders: Record<string, import('../../core/models/api-schema.model').ApiSchema> | undefined;
+      if (headersDict && typeof headersDict === 'object') {
+        mappedHeaders = {};
+        for (const [hName, hDef] of Object.entries(headersDict)) {
+          if (hDef && typeof hDef === 'object') {
+            const headerObj = hDef as Record<string, unknown>;
+            const hSchema = headerObj['schema'] || headerObj;
+            mappedHeaders[hName] = schemaResolver.resolveSchema(hSchema, rootDocument);
+          }
+        }
+      }
+
       result.push({
         statusCode,
         description: respDict['description'] as string | undefined,
         contentType: selectedContentType,
-        schema: resolvedSchema
+        schema: resolvedSchema,
+        headers: mappedHeaders && Object.keys(mappedHeaders).length > 0 ? mappedHeaders : undefined
       });
     }
 

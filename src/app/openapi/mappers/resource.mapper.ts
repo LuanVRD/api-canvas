@@ -29,6 +29,11 @@ export class ResourceMapper {
   }
 
   private static formatLabel(name: string): string {
-    return name.charAt(0).toUpperCase() + name.slice(1);
+    if (!name) return 'Default';
+    return name
+      .replace(/[-_]+/g, ' ')
+      .replace(/([a-z])([A-Z])/g, '$1 $2')
+      .replace(/\b\w/g, (c) => c.toUpperCase())
+      .trim();
   }
 }
