@@ -1,0 +1,131 @@
+import { TestBed } from '@angular/core/testing';
+import { provideHttpClient } from '@angular/common/http';
+import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
+import { ApiExecutorService } from './api-executor.service';
+import { ApiOperation } from '../models/api-operation.model';
+
+describe('ApiExecutorService', () => {
+  let service: ApiExecutorService;
+  let httpMock: HttpTestingController;
+
+  beforeEach(() => {
+    TestBed.configureTestingModule({
+      providers: [
+        ApiExecutorService,
+        provideHttpClient(),
+        provideHttpClientTesting()
+      ]
+    });
+
+    service = TestBed.inject(ApiExecutorService);
+    httpMock = TestBed.inject(HttpTestingController);
+  });
+
+  afterEach(() => {
+    httpMock.verify();
+  });
+
+  it('should be created', () => {
+    expect(service).toBeTruthy();
+  });
+
+  it('should execute a standard list operation', () => {
+    const operation: ApiOperation = {
+      id: 'get_products',
+      method: 'GET',
+      path: '/products',
+      type: 'list',
+      parameters: [],
+      responses: []
+    };
+
+    service.execute('https://api.example.com', operation, {}).subscribe((result) => {
+      expect(result.isSuccess).toBe(true);
+      expect(result.status).toBe(200);
+      expect(result.data).toEqual([{ id: '1', name: 'Widget' }]);
+    });
+
+    const req = httpMock.expectOne('https://api.example.com/products');
+    expect(req.request.method).toBe('GET');
+    req.flush([{ id: '1', name: 'Widget' }]);
+  });
+
+  it('should execute an action operation (e.g. POST /orders/{id}/approve)', () => {
+    const operation: ApiOperation = {
+      id: 'approve_order',
+      method: 'POST',
+      path: '/orders/{id}/approve',
+      type: 'action',
+      parameters: [],
+      responses: []
+    };
+
+    service
+      .execute('https://api.example.com', operation, {
+        path: { id: '123' },
+        body: { reason: 'Verified' }
+      })
+      .subscribe((result) => {
+        expect(result.isSuccess).toBe(true);
+        expect(result.status).toBe(200);
+        expect(result.data).toEqual({ approved: true });
+      });
+
+    const req = httpMock.expectOne('https://api.example.com/orders/123/approve');
+    expect(req.request.method).toBe('POST');
+    expect(req.request.body).toEqual({ reason: 'Verified' });
+    req.flush({ approved: true });
+  });
+
+  it('should execute an unknown operation successfully without blocking execution', () => {
+    const operation: ApiOperation = {
+      id: 'custom_calc',
+      method: 'POST',
+      path: '/rpc/calculator/run',
+      type: 'unknown',
+      parameters: [],
+      responses: []
+    };
+
+    service
+      .execute('https://api.example.com', operation, {
+        body: { expr: '2+2' }
+      })
+      .subscribe((result) => {
+        expect(result.isSuccess).toBe(true);
+        expect(result.status).toBe(200);
+        expect(result.data).toEqual({ result: 4 });
+      });
+
+    const req = httpMock.expectOne('https://api.example.com/rpc/calculator/run');
+    expect(req.request.method).toBe('POST');
+    expect(req.request.body).toEqual({ expr: '2+2' });
+    req.flush({ result: 4 });
+  });
+
+  it('should handle network errors gracefully returning structured execution result', () => {
+    const operation: ApiOperation = {
+      id: 'delete_product',
+      method: 'DELETE',
+      path: '/products/{id}',
+      type: 'delete',
+      parameters: [],
+      responses: []
+    };
+
+    service
+      .execute('https://api.example.com', operation, {
+        path: { id: '999' }
+      })
+      .subscribe((result) => {
+        expect(result.isSuccess).toBe(false);
+        expect(result.status).toBe(404);
+        expect(result.error).toBeDefined();
+        expect(result.error?.message).toBeTruthy();
+      });
+
+    const req = httpMock.expectOne('https://api.example.com/products/999');
+    expect(req.request.method).toBe('DELETE');
+    req.flush('Not Found', { status: 404, statusText: 'Not Found' });
+  });
+});
