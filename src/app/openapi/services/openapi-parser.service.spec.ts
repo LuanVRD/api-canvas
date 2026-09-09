@@ -3,7 +3,7 @@ import { OpenApiParserService } from './openapi-parser.service';
 import { SchemaResolverService } from './schema-resolver.service';
 import { OperationClassifierService } from './operation-classifier.service';
 import {
-  FULL_PETSTORE_SPEC,
+  FULL_EXTENDED_SPEC,
   REUSED_REFS_SPEC,
   SWAGGER_2_SPEC,
   UNTAGGED_API_SPEC
@@ -66,17 +66,17 @@ describe('OpenApiParserService', () => {
     });
   });
 
-  describe('FULL_PETSTORE_SPEC parsing', () => {
+  describe('FULL_EXTENDED_SPEC parsing', () => {
     it('should parse info metadata, multiple servers, path-level params, and all parameter locations', () => {
-      const def = service.parse(FULL_PETSTORE_SPEC);
+      const def = service.parse(FULL_EXTENDED_SPEC);
 
-      expect(def.title).toBe('Petstore Extended API');
+      expect(def.title).toBe('Extended API');
       expect(def.version).toBe('1.5.0');
-      expect(def.description).toBe('A comprehensive Petstore API with full parameters, headers, cookies, and responses');
-      expect(def.baseUrl).toBe('https://api.petstore.com/v1');
+      expect(def.description).toBe('A comprehensive Extended API with full parameters, headers, cookies, and responses');
+      expect(def.baseUrl).toBe('https://api.example.com/v1');
       expect(def.servers?.length).toBe(2);
-      expect(def.servers?.[0].url).toBe('https://api.petstore.com/v1');
-      expect(def.servers?.[1].url).toBe('https://sandbox.petstore.com/v1');
+      expect(def.servers?.[0].url).toBe('https://api.example.com/v1');
+      expect(def.servers?.[1].url).toBe('https://sandbox.example.com/v1');
 
       expect(def.resources.length).toBe(1);
       const petsResource = def.resources[0];

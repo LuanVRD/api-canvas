@@ -170,8 +170,8 @@ export class ResourceMapper {
    * Examples:
    * - 'order-items' -> 'Order Items'
    * - 'user_profiles' -> 'User Profiles'
-   * - 'petStore' -> 'Pet Store'
-   * - 'PetStore' -> 'Pet Store'
+   * - 'bookStore' -> 'Book Store'
+   * - 'BookStore' -> 'Book Store'
    * - 'api_v2_orders' -> 'Api V2 Orders'
    * - 'customers' -> 'Customers'
    */
@@ -182,7 +182,7 @@ export class ResourceMapper {
 
     const trimmed = name.trim();
 
-    // 1. Separate camelCase / PascalCase boundaries: e.g. "petStore" -> "pet Store", "OrderItems" -> "Order Items"
+    // 1. Separate camelCase / PascalCase boundaries: e.g. "bookStore" -> "book Store", "OrderItems" -> "Order Items"
     let formatted = trimmed.replace(/([a-z\d])([A-Z])/g, '$1 $2');
 
     // 2. Separate acronyms followed by normal words: e.g. "XMLParser" -> "XML Parser"

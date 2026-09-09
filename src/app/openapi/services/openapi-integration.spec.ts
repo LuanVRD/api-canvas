@@ -8,7 +8,7 @@ import { ApiRequestBuilderService } from '../../core/services/api-request-builde
 import {
   ALL_OF_SPEC,
   CIRCULAR_REF_SPEC,
-  FULL_PETSTORE_SPEC,
+  FULL_EXTENDED_SPEC,
   PRIMITIVES_AND_CONSTRAINTS_SPEC,
   REUSED_REFS_SPEC,
   SWAGGER_2_SPEC,
@@ -39,11 +39,11 @@ describe('OpenAPI Integration Pipeline', () => {
     requestBuilder = TestBed.inject(ApiRequestBuilderService);
   });
 
-  describe('FULL_PETSTORE_SPEC end-to-end integration', () => {
+  describe('FULL_EXTENDED_SPEC end-to-end integration', () => {
     it('should parse specification, produce valid schemas, and generate working dynamic UI schemas', () => {
-      const apiDef = parser.parse(FULL_PETSTORE_SPEC);
+      const apiDef = parser.parse(FULL_EXTENDED_SPEC);
 
-      expect(apiDef.title).toBe('Petstore Extended API');
+      expect(apiDef.title).toBe('Extended API');
       expect(apiDef.resources.length).toBeGreaterThan(0);
 
       const allOperations = apiDef.resources.flatMap((r) => r.operations);

@@ -130,8 +130,24 @@ code, pre, .font-mono {
   }
 }
 
-// Global Accessible Focus Indicator for Developer Tools
-*:focus-visible {
+// Reset focus outline on input and form controls so parent containers/form fields control borders
+input,
+textarea,
+select,
+.mat-mdc-input-element,
+.mdc-text-field__input {
+  outline: none !important;
+  box-shadow: none !important;
+
+  &:focus,
+  &:focus-visible {
+    outline: none !important;
+    box-shadow: none !important;
+  }
+}
+
+// Global Accessible Focus Indicator for interactive elements (buttons, links, custom list items)
+*:focus-visible:not(input):not(textarea):not(select):not(.mat-mdc-input-element):not(.mdc-text-field__input) {
   outline: 2px solid var(--canvas-text-link) !important;
   outline-offset: 1px !important;
 }

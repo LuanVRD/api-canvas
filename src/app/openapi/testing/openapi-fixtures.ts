@@ -290,16 +290,16 @@ export const INVALID_REF_SPEC = {
   }
 };
 
-export const FULL_PETSTORE_SPEC = {
+export const FULL_EXTENDED_SPEC = {
   openapi: '3.0.3',
   info: {
-    title: 'Petstore Extended API',
+    title: 'Extended API',
     version: '1.5.0',
-    description: 'A comprehensive Petstore API with full parameters, headers, cookies, and responses'
+    description: 'A comprehensive Extended API with full parameters, headers, cookies, and responses'
   },
   servers: [
-    { url: 'https://api.petstore.com/v1', description: 'Production' },
-    { url: 'https://sandbox.petstore.com/v1', description: 'Sandbox' }
+    { url: 'https://api.example.com/v1', description: 'Production' },
+    { url: 'https://sandbox.example.com/v1', description: 'Sandbox' }
   ],
   paths: {
     '/pets': {

@@ -26,14 +26,14 @@ describe('ApiConnectPage', () => {
   let routerMock: { navigate: ReturnType<typeof vi.fn> };
 
   const mockParsedDefinition: ApiDefinition = {
-    title: 'Petstore API',
+    title: 'Order API',
     version: '1.0.0',
-    baseUrl: 'https://petstore.swagger.io/v2',
+    baseUrl: 'https://api.example.com/v1',
     resources: [
       {
-        id: 'pet',
-        name: 'pet',
-        label: 'Pet',
+        id: 'orders',
+        name: 'orders',
+        label: 'Orders',
         operations: []
       }
     ]
@@ -42,9 +42,9 @@ describe('ApiConnectPage', () => {
   const initialRecentApis: RecentApiEntry[] = [
     {
       id: 'api_1',
-      openApiUrl: 'https://petstore.swagger.io/v2/swagger.json',
-      baseUrl: 'https://petstore.swagger.io/v2',
-      title: 'Petstore API',
+      openApiUrl: 'https://api.example.com/v1/swagger.json',
+      baseUrl: 'https://api.example.com/v1',
+      title: 'Order API',
       lastConnectedAt: 1600000000000
     },
     {
@@ -141,7 +141,7 @@ describe('ApiConnectPage', () => {
     it('should accept valid HTTP and HTTPS URLs for openApiUrl', () => {
       const control = component.form.controls.openApiUrl;
 
-      control.setValue('https://petstore.swagger.io/v2/swagger.json');
+      control.setValue('https://api.example.com/v1/swagger.json');
       expect(control.errors).toBeNull();
       expect(control.valid).toBe(true);
 
@@ -174,13 +174,13 @@ describe('ApiConnectPage', () => {
 
     it('should be valid when openApiUrl is valid and baseUrl is empty or valid', () => {
       component.form.setValue({
-        openApiUrl: 'https://petstore.swagger.io/v2/swagger.json',
+        openApiUrl: 'https://api.example.com/v1/swagger.json',
         baseUrl: ''
       });
       expect(component.form.valid).toBe(true);
 
       component.form.setValue({
-        openApiUrl: 'https://petstore.swagger.io/v2/swagger.json',
+        openApiUrl: 'https://api.example.com/v1/swagger.json',
         baseUrl: 'https://api.custom-server.com'
       });
       expect(component.form.valid).toBe(true);
@@ -208,17 +208,6 @@ describe('ApiConnectPage', () => {
     });
   });
 
-  describe('Presets', () => {
-    it('should populate openApiUrl when setPreset is called', () => {
-      const testUrl = 'https://petstore.swagger.io/v2/swagger.json';
-      component.setPreset(testUrl);
-
-      expect(component.form.controls.openApiUrl.value).toBe(testUrl);
-      expect(component.form.controls.openApiUrl.valid).toBe(true);
-      expect(component.form.valid).toBe(true);
-    });
-  });
-
   describe('Recent APIs Section', () => {
     it('should render recent APIs when list is not empty', () => {
       const element: HTMLElement = fixture.nativeElement;
@@ -227,8 +216,8 @@ describe('ApiConnectPage', () => {
 
       const items = element.querySelectorAll('.recent-item');
       expect(items.length).toBe(2);
-      expect(items[0].textContent).toContain('Petstore API');
-      expect(items[0].textContent).toContain('Base: https://petstore.swagger.io/v2');
+      expect(items[0].textContent).toContain('Order API');
+      expect(items[0].textContent).toContain('Base: https://api.example.com/v1');
       expect(items[1].textContent).toContain('Example API');
     });
 
@@ -327,7 +316,7 @@ describe('ApiConnectPage', () => {
     });
 
     it('should trigger loader, parse spec, set session, override baseUrl, persist recent API, and navigate to /workspace', () => {
-      const mockRawSpec = { openapi: '3.0.0', info: { title: 'Petstore' } };
+      const mockRawSpec = { openapi: '3.0.0', info: { title: 'Order API' } };
       openApiLoaderMock.load.mockReturnValue(of(mockRawSpec));
       openApiParserMock.parse.mockReturnValue({ ...mockParsedDefinition });
 
@@ -335,32 +324,32 @@ describe('ApiConnectPage', () => {
       component.connected.subscribe((val) => (emitted = val));
 
       component.form.setValue({
-        openApiUrl: 'https://petstore.swagger.io/v2/swagger.json',
+        openApiUrl: 'https://api.example.com/v1/swagger.json',
         baseUrl: 'https://api.custom.com'
       });
 
       component.onConnect();
 
-      expect(openApiLoaderMock.load).toHaveBeenCalledWith('https://petstore.swagger.io/v2/swagger.json');
+      expect(openApiLoaderMock.load).toHaveBeenCalledWith('https://api.example.com/v1/swagger.json');
       expect(openApiParserMock.parse).toHaveBeenCalledWith(mockRawSpec);
       expect(sessionServiceMock.setSession).toHaveBeenCalledWith(
         expect.objectContaining({
-          title: 'Petstore API',
+          title: 'Order API',
           baseUrl: 'https://api.custom.com'
         }),
         {
-          openApiUrl: 'https://petstore.swagger.io/v2/swagger.json',
+          openApiUrl: 'https://api.example.com/v1/swagger.json',
           rawSpec: mockRawSpec
         }
       );
       expect(storageServiceMock.addRecentApi).toHaveBeenCalledWith({
-        openApiUrl: 'https://petstore.swagger.io/v2/swagger.json',
+        openApiUrl: 'https://api.example.com/v1/swagger.json',
         baseUrl: 'https://api.custom.com',
-        title: 'Petstore API'
+        title: 'Order API'
       });
       expect(component.loading()).toBe(false);
       expect(emitted).toEqual({
-        openApiUrl: 'https://petstore.swagger.io/v2/swagger.json',
+        openApiUrl: 'https://api.example.com/v1/swagger.json',
         baseUrl: 'https://api.custom.com',
         rawSpec: mockRawSpec
       });
@@ -370,13 +359,13 @@ describe('ApiConnectPage', () => {
     it('should keep parsed baseUrl if baseUrl form control is empty', () => {
       const mockRawSpec = { swagger: '2.0', info: { title: 'Swagger API' } };
       openApiLoaderMock.load.mockReturnValue(of(mockRawSpec));
-      openApiParserMock.parse.mockReturnValue({ ...mockParsedDefinition, baseUrl: 'https://petstore.swagger.io/v2' });
+      openApiParserMock.parse.mockReturnValue({ ...mockParsedDefinition, baseUrl: 'https://api.example.com/v1' });
 
       let emitted: ApiConnectionConfig | undefined;
       component.connected.subscribe((val) => (emitted = val));
 
       component.form.setValue({
-        openApiUrl: 'https://petstore.swagger.io/v2/swagger.json',
+        openApiUrl: 'https://api.example.com/v1/swagger.json',
         baseUrl: '   '
       });
 
@@ -384,17 +373,17 @@ describe('ApiConnectPage', () => {
 
       expect(sessionServiceMock.setSession).toHaveBeenCalledWith(
         expect.objectContaining({
-          baseUrl: 'https://petstore.swagger.io/v2'
+          baseUrl: 'https://api.example.com/v1'
         }),
         expect.any(Object)
       );
       expect(storageServiceMock.addRecentApi).toHaveBeenCalledWith({
-        openApiUrl: 'https://petstore.swagger.io/v2/swagger.json',
+        openApiUrl: 'https://api.example.com/v1/swagger.json',
         baseUrl: undefined,
-        title: 'Petstore API'
+        title: 'Order API'
       });
       expect(emitted).toEqual({
-        openApiUrl: 'https://petstore.swagger.io/v2/swagger.json',
+        openApiUrl: 'https://api.example.com/v1/swagger.json',
         baseUrl: undefined,
         rawSpec: mockRawSpec
       });
@@ -406,7 +395,7 @@ describe('ApiConnectPage', () => {
       openApiLoaderMock.load.mockReturnValue(subject.asObservable());
 
       component.form.setValue({
-        openApiUrl: 'https://petstore.swagger.io/v2/swagger.json',
+        openApiUrl: 'https://api.example.com/v1/swagger.json',
         baseUrl: ''
       });
 

@@ -129,8 +129,8 @@ Você pode testar o ApiCanvas imediatamente utilizando especificações pública
 
 | API / Exemplo | URL da Especificação OpenAPI | Descrição |
 | :--- | :--- | :--- |
-| **Swagger Petstore (v2/v3)** | `https://petstore.swagger.io/v2/swagger.json` | API clássica com CRUD completo de pets, store e users |
 | **JSONPlaceholder (OpenAPI)** | `https://api.apis.guru/v2/specs/jsonplaceholder.typicode.com/1.0.0/openapi.json` | Posts, Users, Comments e Albuns |
+| **GitHub REST API (Subset)** | `https://api.apis.guru/v2/specs/github.com/1.1.4/openapi.json` | API pública robusta para exploração de recursos |
 | **Backend Local (.NET / Java / Node)** | `http://localhost:5000/swagger/v1/swagger.json` | Swagger gerado pelo Swashbuckle, Springdoc ou Swagger-UI |
 
 ---
@@ -236,11 +236,11 @@ Apresenta a tela de inicialização com histórico de APIs acessadas e detecçã
 │  ApiCanvas  /  Connect API                                      [Theme: Dark]│
 │                                                                             │
 │  OpenAPI Specification URL                                                  │
-│  [ https://petstore.swagger.io/v2/swagger.json                  ] [Connect] │
+│  [ https://api.example.com/v1/openapi.json                      ] [Connect] │
 │                                                                             │
 │  Recent APIs:                                                               │
-│  • Petstore Swagger 2.0 (https://petstore.swagger.io/v2/swagger.json)       │
-│  • E-Commerce Billing Service (http://localhost:5000/swagger/v1/swagger.json│
+│  • OrderFlow API (http://localhost:5000/swagger/v1/swagger.json)             │
+│  • E-Commerce Billing Service (https://api.example.com/billing.json)        │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 

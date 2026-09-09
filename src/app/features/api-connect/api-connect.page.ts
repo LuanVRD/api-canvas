@@ -97,7 +97,7 @@ export function httpUrlValidator(): ValidatorFn {
               <input
                 matInput
                 formControlName="openApiUrl"
-                placeholder="https://petstore.swagger.io/v2/swagger.json"
+                placeholder="https://api.example.com/openapi.json"
                 autocomplete="off"
                 spellcheck="false"
                 class="font-mono"
@@ -153,17 +153,6 @@ export function httpUrlValidator(): ValidatorFn {
           </div>
         </form>
 
-        <div class="presets-section">
-          <span class="presets-label">Preset:</span>
-          <button
-            type="button"
-            class="preset-pill"
-            (click)="setPreset('https://petstore.swagger.io/v2/swagger.json')"
-            [disabled]="loading()"
-          >
-            Swagger Petstore
-          </button>
-        </div>
 
         @if (recentApis().length > 0) {
           <div class="recent-section">
@@ -365,41 +354,6 @@ export function httpUrlValidator(): ValidatorFn {
       }
     }
 
-    .presets-section {
-      margin-top: 20px;
-      padding-top: 14px;
-      border-top: 1px solid var(--canvas-border-subtle);
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      font-size: 12px;
-
-      .presets-label {
-        color: var(--canvas-text-muted);
-      }
-
-      .preset-pill {
-        background: var(--canvas-surface-elevated);
-        border: 1px solid var(--canvas-border);
-        color: var(--canvas-text-secondary);
-        padding: 3px 8px;
-        border-radius: var(--radius-sm);
-        cursor: pointer;
-        font-size: 11px;
-        font-family: var(--font-mono);
-        transition: color 0.15s ease, border-color 0.15s ease;
-
-        &:hover:not(:disabled) {
-          color: var(--canvas-text-link);
-          border-color: var(--canvas-text-link);
-        }
-
-        &:disabled {
-          opacity: 0.5;
-          cursor: not-allowed;
-        }
-      }
-    }
 
     .recent-section {
       margin-top: 18px;
@@ -559,12 +513,6 @@ export class ApiConnectPage {
     baseUrl: ['', [httpUrlValidator()]]
   });
 
-  setPreset(url: string): void {
-    this.form.patchValue({ openApiUrl: url });
-    this.form.controls.openApiUrl.markAsDirty();
-    this.form.controls.openApiUrl.markAsTouched();
-    this.form.controls.openApiUrl.updateValueAndValidity();
-  }
 
   selectRecentApi(api: RecentApiEntry): void {
     this.form.patchValue({

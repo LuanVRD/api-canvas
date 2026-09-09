@@ -51,13 +51,13 @@ describe('StorageService', () => {
 
     it('should add a recent API entry and assign an ID and timestamp', () => {
       const entries = service.addRecentApi({
-        openApiUrl: 'https://petstore.swagger.io/v2/swagger.json',
-        title: 'Swagger Petstore'
+        openApiUrl: 'https://api.example.com/v1/swagger.json',
+        title: 'Example Store API'
       });
 
       expect(entries.length).toBe(1);
-      expect(entries[0].openApiUrl).toBe('https://petstore.swagger.io/v2/swagger.json');
-      expect(entries[0].title).toBe('Swagger Petstore');
+      expect(entries[0].openApiUrl).toBe('https://api.example.com/v1/swagger.json');
+      expect(entries[0].title).toBe('Example Store API');
       expect(entries[0].baseUrl).toBeUndefined();
       expect(entries[0].id).toBeTruthy();
       expect(typeof entries[0].lastConnectedAt).toBe('number');
