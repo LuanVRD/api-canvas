@@ -207,4 +207,28 @@ describe('EditRecordDialogComponent', () => {
     expect(closeSpy).toHaveBeenCalled();
     expect(mockRouter.navigate).toHaveBeenCalledWith(['/operation', 'updateProduct']);
   });
+
+  it('should detect error payload and toggle expanded view state', () => {
+    const errorResult: ApiExecutionResult = {
+      status: 400,
+      statusText: 'Bad Request',
+      data: { detail: 'Cannot change status from Cancelled to Completed' },
+      duration: 30,
+      durationMs: 30,
+      isSuccess: false,
+      error: {
+        message: 'Cannot change status from Cancelled to Completed',
+        status: 400,
+        details: { detail: 'Cannot change status from Cancelled to Completed' }
+      }
+    };
+
+    component.executionResult.set(errorResult);
+    expect(component.hasErrorPayload()).toBe(true);
+    expect(component.isErrorExpanded()).toBe(false);
+
+    component.toggleErrorExpanded();
+    expect(component.isErrorExpanded()).toBe(true);
+    expect(component.getErrorPayload()).toEqual({ detail: 'Cannot change status from Cancelled to Completed' });
+  });
 });

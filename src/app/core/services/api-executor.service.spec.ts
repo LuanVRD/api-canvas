@@ -350,5 +350,74 @@ describe('ApiExecutorService', () => {
     expect(req.request.params.get('api_token')).toBe('query-token-777');
     req.flush([{ item: 2 }]);
   });
+
+  it('should extract message from RFC 7807 ProblemDetails "detail" field', () => {
+    const op: ApiOperation = {
+      id: 'patch_order_status',
+      method: 'PATCH',
+      path: '/api/Orders/{id}/status',
+      type: 'update',
+      parameters: [{ name: 'id', location: 'path', required: true, schema: { type: 'string' } }],
+      responses: []
+    };
+
+    service.execute('https://api.example.com', op, { path: { id: '123' }, body: { status: 'Completed' } }).subscribe((result) => {
+      expect(result.isSuccess).toBe(false);
+      expect(result.status).toBe(400);
+      expect(result.error?.message).toBe('Cannot transition order from Cancelled to Completed.');
+    });
+
+    const req = httpMock.expectOne('https://api.example.com/api/Orders/123/status');
+    req.flush({
+      type: 'https://tools.ietf.org/html/rfc7231#section-6.5.1',
+      title: 'Bad Request',
+      status: 400,
+      detail: 'Cannot transition order from Cancelled to Completed.'
+    }, { status: 400, statusText: 'Bad Request' });
+  });
+
+  it('should extract and format messages from ASP.NET Core ValidationProblemDetails "errors" dictionary', () => {
+    const op: ApiOperation = {
+      id: 'patch_order_status',
+      method: 'PATCH',
+      path: '/api/Orders/{id}/status',
+      type: 'update',
+      parameters: [{ name: 'id', location: 'path', required: true, schema: { type: 'string' } }],
+      responses: []
+    };
+
+    service.execute('https://api.example.com', op, { path: { id: '123' }, body: { status: 'Invalid' } }).subscribe((result) => {
+      expect(result.isSuccess).toBe(false);
+      expect(result.status).toBe(400);
+      expect(result.error?.message).toBe('OrderStatus: The OrderStatus field is invalid.');
+    });
+
+    const req = httpMock.expectOne('https://api.example.com/api/Orders/123/status');
+    req.flush({
+      errors: {
+        OrderStatus: ['The OrderStatus field is invalid.']
+      }
+    }, { status: 400, statusText: 'Bad Request' });
+  });
+
+  it('should extract plain string response error body', () => {
+    const op: ApiOperation = {
+      id: 'patch_order_status',
+      method: 'PATCH',
+      path: '/api/Orders/{id}/status',
+      type: 'update',
+      parameters: [{ name: 'id', location: 'path', required: true, schema: { type: 'string' } }],
+      responses: []
+    };
+
+    service.execute('https://api.example.com', op, { path: { id: '123' }, body: { status: 'Completed' } }).subscribe((result) => {
+      expect(result.isSuccess).toBe(false);
+      expect(result.status).toBe(400);
+      expect(result.error?.message).toBe('Order is already in a terminal state.');
+    });
+
+    const req = httpMock.expectOne('https://api.example.com/api/Orders/123/status');
+    req.flush('Order is already in a terminal state.', { status: 400, statusText: 'Bad Request' });
+  });
 });
 

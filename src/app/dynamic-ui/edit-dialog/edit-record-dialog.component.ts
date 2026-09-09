@@ -215,12 +215,32 @@ import { JsonViewerComponent } from '../../shared/components/json-viewer/json-vi
                       HTTP {{ res.status }} {{ res.statusText }}: {{ res.error?.message || 'Server returned an error.' }}
                     </span>
                   </div>
+
                   @if (res.error?.hint) {
                     <p class="err-hint">{{ res.error?.hint }}</p>
                   }
-                  @if (res.error?.details && res.error?.details !== res.data) {
-                    <div class="err-details">
-                      <app-json-viewer [data]="res.error?.details" [showHeader]="false" maxHeight="150px" />
+
+                  @if (hasErrorPayload()) {
+                    <div class="err-expandable-section">
+                      <button
+                        type="button"
+                        class="err-toggle-btn font-mono"
+                        (click)="toggleErrorExpanded()"
+                        title="Toggle full response payload"
+                      >
+                        <mat-icon class="toggle-icon">{{ isErrorExpanded() ? 'expand_less' : 'expand_more' }}</mat-icon>
+                        <span>{{ isErrorExpanded() ? 'Hide response payload' : 'View full error response payload' }}</span>
+                      </button>
+
+                      @if (isErrorExpanded()) {
+                        <div class="err-payload-viewer">
+                          @if (isPayloadObject(getErrorPayload())) {
+                            <app-json-viewer [data]="getErrorPayload()" [showHeader]="false" maxHeight="180px" />
+                          } @else {
+                            <pre class="raw-error-text">{{ getErrorPayload() }}</pre>
+                          }
+                        </div>
+                      }
                     </div>
                   }
                 }
@@ -628,9 +648,54 @@ import { JsonViewerComponent } from '../../shared/components/json-viewer/json-vi
       line-height: 1.4;
     }
 
-    .err-details {
-      margin-top: 4px;
-      opacity: 0.85;
+    .err-hint {
+      margin: 4px 0 0;
+      color: var(--canvas-text-secondary, #8b949e);
+      font-size: 11px;
+    }
+
+    .err-expandable-section {
+      margin-top: 8px;
+    }
+
+    .err-toggle-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(218, 54, 51, 0.4);
+      color: #ff7b72;
+      border-radius: var(--radius-sm, 4px);
+      padding: 3px 8px;
+      font-size: 11px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+
+    .err-toggle-btn:hover {
+      background: rgba(218, 54, 51, 0.15);
+      color: #ffa198;
+    }
+
+    .toggle-icon {
+      font-size: 14px;
+      width: 14px;
+      height: 14px;
+    }
+
+    .err-payload-viewer {
+      margin-top: 6px;
+      background: var(--canvas-bg, #0d1117);
+      border: 1px solid rgba(218, 54, 51, 0.3);
+      border-radius: var(--radius-sm, 4px);
+      padding: 6px 8px;
+      overflow: auto;
+    }
+
+    .raw-error-text {
+      margin: 0;
+      font-size: 11px;
+      color: var(--canvas-text-primary, #e6edf3);
       white-space: pre-wrap;
       word-break: break-all;
     }
@@ -756,6 +821,7 @@ export class EditRecordDialogComponent implements OnInit, OnChanges {
   readonly isExecuting = signal<boolean>(false);
   readonly executionResult = signal<ApiExecutionResult | null>(null);
   readonly validationError = signal<string | null>(null);
+  readonly isErrorExpanded = signal<boolean>(false);
 
   readonly requestBodySchema = computed<ApiSchema | null>(() => {
     const op = this.activeOperation();
@@ -1005,5 +1071,28 @@ export class EditRecordDialogComponent implements OnInit, OnChanges {
     } catch {
       return String(details);
     }
+  }
+
+  hasErrorPayload(): boolean {
+    const res = this.executionResult();
+    if (!res) return false;
+    const payload = res.data ?? res.error?.details;
+    if (payload === null || payload === undefined) return false;
+    if (typeof payload === 'string' && payload.trim().length === 0) return false;
+    if (typeof payload === 'object' && Object.keys(payload).length === 0) return false;
+    return true;
+  }
+
+  getErrorPayload(): unknown {
+    const res = this.executionResult();
+    return res?.data ?? res?.error?.details;
+  }
+
+  isPayloadObject(payload: unknown): boolean {
+    return typeof payload === 'object' && payload !== null;
+  }
+
+  toggleErrorExpanded(): void {
+    this.isErrorExpanded.update(v => !v);
   }
 }

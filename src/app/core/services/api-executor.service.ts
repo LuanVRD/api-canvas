@@ -117,18 +117,18 @@ export class ApiExecutorService {
           const category = isCorsOrNetwork ? 'CORS_OR_NETWORK' : 'HTTP_ERROR';
           const message = isCorsOrNetwork
             ? `Falha de rede ou restrição de CORS ao conectar a ${built.url}.`
-            : (typeof error.error === 'object' && error.error?.message
-                ? error.error.message
-                : error.message || `Erro HTTP ${status} retornado pelo servidor.`);
+            : this.extractErrorMessage(error, status, statusText);
 
           const hint = isCorsOrNetwork
             ? 'Verifique se o servidor backend está online e se os cabeçalhos de CORS (Access-Control-Allow-Origin, Access-Control-Allow-Methods) permitem requisições do frontend.'
             : undefined;
 
+          const rawDetails = error.error !== undefined ? error.error : error.message;
+
           return of({
             status,
             statusText,
-            data: error.error || null,
+            data: error.error ?? null,
             duration,
             durationMs: duration,
             isSuccess: false,
@@ -138,11 +138,98 @@ export class ApiExecutorService {
               category,
               status,
               statusText,
-              details: error.error || error.message,
+              details: rawDetails,
               hint
             }
           });
         })
       );
+  }
+
+  private extractErrorMessage(error: any, status: number, statusText: string): string {
+    const errBody = error?.error;
+
+    if (typeof errBody === 'string' && errBody.trim().length > 0) {
+      try {
+        const parsed = JSON.parse(errBody);
+        const fromParsed = this.extractFromObject(parsed);
+        if (fromParsed) return fromParsed;
+      } catch {
+        return errBody.trim();
+      }
+      return errBody.trim();
+    }
+
+    if (typeof errBody === 'object' && errBody !== null) {
+      const extracted = this.extractFromObject(errBody);
+      if (extracted) {
+        return extracted;
+      }
+    }
+
+    if (error?.statusText && error.statusText !== 'Unknown Error' && error.statusText !== 'OK') {
+      return `Erro HTTP ${status} (${error.statusText}) retornado pelo servidor.`;
+    }
+
+    return `Erro HTTP ${status} retornado pelo servidor.`;
+  }
+
+  private extractFromObject(obj: Record<string, any>): string | null {
+    // RFC 7807 / RFC 9457 Problem Details 'detail'
+    if (typeof obj['detail'] === 'string' && obj['detail'].trim()) {
+      return obj['detail'].trim();
+    }
+
+    // Common error fields
+    if (typeof obj['message'] === 'string' && obj['message'].trim()) {
+      return obj['message'].trim();
+    }
+
+    if (typeof obj['error'] === 'string' && obj['error'].trim()) {
+      return obj['error'].trim();
+    }
+
+    if (typeof obj['errorMessage'] === 'string' && obj['errorMessage'].trim()) {
+      return obj['errorMessage'].trim();
+    }
+
+    if (typeof obj['msg'] === 'string' && obj['msg'].trim()) {
+      return obj['msg'].trim();
+    }
+
+    if (typeof obj['description'] === 'string' && obj['description'].trim()) {
+      return obj['description'].trim();
+    }
+
+    // ASP.NET Core ValidationProblemDetails / errors dictionary
+    if (obj['errors'] && typeof obj['errors'] === 'object' && !Array.isArray(obj['errors'])) {
+      const entries = Object.entries(obj['errors']);
+      if (entries.length > 0) {
+        const messages: string[] = [];
+        for (const [field, val] of entries) {
+          if (Array.isArray(val) && val.length > 0) {
+            messages.push(`${field}: ${val.join(', ')}`);
+          } else if (typeof val === 'string' && val.trim()) {
+            messages.push(`${field}: ${val}`);
+          }
+        }
+        if (messages.length > 0) {
+          return messages.join(' | ');
+        }
+      }
+    }
+
+    if (Array.isArray(obj['errors']) && obj['errors'].length > 0) {
+      return obj['errors']
+        .map((e: any) => (typeof e === 'string' ? e : e?.message || JSON.stringify(e)))
+        .join(' | ');
+    }
+
+    // Title fallback if not generic
+    if (typeof obj['title'] === 'string' && obj['title'].trim()) {
+      return obj['title'].trim();
+    }
+
+    return null;
   }
 }

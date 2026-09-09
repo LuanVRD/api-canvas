@@ -172,9 +172,27 @@ export interface KeyValueSummary {
               @if (executionResult()?.error?.hint) {
                 <p class="err-hint">{{ executionResult()?.error?.hint }}</p>
               }
-              @if (executionResult()?.data) {
-                <div class="err-raw-wrapper">
-                  <app-json-viewer [data]="executionResult()?.data" [showHeader]="false" maxHeight="150px" />
+              @if (hasErrorPayload()) {
+                <div class="err-expandable-section">
+                  <button
+                    type="button"
+                    class="err-toggle-btn font-mono"
+                    (click)="toggleErrorExpanded()"
+                    title="Toggle full response payload"
+                  >
+                    <mat-icon class="toggle-icon">{{ isErrorExpanded() ? 'expand_less' : 'expand_more' }}</mat-icon>
+                    <span>{{ isErrorExpanded() ? 'Hide response payload' : 'View full error response payload' }}</span>
+                  </button>
+
+                  @if (isErrorExpanded()) {
+                    <div class="err-payload-viewer">
+                      @if (isPayloadObject(getErrorPayload())) {
+                        <app-json-viewer [data]="getErrorPayload()" [showHeader]="false" maxHeight="150px" />
+                      } @else {
+                        <pre class="raw-error-text">{{ getErrorPayload() }}</pre>
+                      }
+                    </div>
+                  }
                 </div>
               }
             </div>
@@ -579,17 +597,56 @@ export interface KeyValueSummary {
         color: var(--canvas-text-primary);
       }
 
-      .err-raw {
-        margin: 4px 0 0;
-        padding: 6px 8px;
-        background: rgba(0, 0, 0, 0.3);
-        border: 1px solid rgba(248, 81, 73, 0.15);
-        border-radius: var(--radius-sm);
-        font-size: 10px;
+      .err-hint {
+        margin: 2px 0 0;
         color: var(--canvas-text-secondary);
+        font-size: 11px;
+      }
+
+      .err-expandable-section {
+        margin-top: 6px;
+      }
+
+      .err-toggle-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid rgba(248, 81, 73, 0.4);
+        color: #ff7b72;
+        border-radius: var(--radius-sm);
+        padding: 3px 8px;
+        font-size: 11px;
+        cursor: pointer;
+        transition: all 0.15s ease;
+
+        &:hover {
+          background: rgba(248, 81, 73, 0.15);
+          color: #ffa198;
+        }
+
+        .toggle-icon {
+          font-size: 14px;
+          width: 14px;
+          height: 14px;
+        }
+      }
+
+      .err-payload-viewer {
+        margin-top: 6px;
+        background: var(--canvas-bg);
+        border: 1px solid rgba(248, 81, 73, 0.3);
+        border-radius: var(--radius-sm);
+        padding: 6px 8px;
+        overflow: auto;
+      }
+
+      .raw-error-text {
+        margin: 0;
+        font-size: 11px;
+        color: var(--canvas-text-primary);
         white-space: pre-wrap;
-        max-height: 100px;
-        overflow-y: auto;
+        word-break: break-all;
       }
     }
 
@@ -681,6 +738,7 @@ export class DeleteConfirmDialogComponent implements OnInit {
   userParamValues = signal<Record<string, string>>({});
   isExecuting = signal<boolean>(false);
   executionResult = signal<ApiExecutionResult | null>(null);
+  isErrorExpanded = signal<boolean>(false);
 
   readonly hasMissingParams = computed<boolean>(() => {
     return this.missingParams.length > 0;
@@ -825,5 +883,28 @@ export class DeleteConfirmDialogComponent implements OnInit {
     } catch {
       return String(data);
     }
+  }
+
+  hasErrorPayload(): boolean {
+    const res = this.executionResult();
+    if (!res) return false;
+    const payload = res.data ?? res.error?.details;
+    if (payload === null || payload === undefined) return false;
+    if (typeof payload === 'string' && payload.trim().length === 0) return false;
+    if (typeof payload === 'object' && Object.keys(payload).length === 0) return false;
+    return true;
+  }
+
+  getErrorPayload(): unknown {
+    const res = this.executionResult();
+    return res?.data ?? res?.error?.details;
+  }
+
+  isPayloadObject(payload: unknown): boolean {
+    return typeof payload === 'object' && payload !== null;
+  }
+
+  toggleErrorExpanded(): void {
+    this.isErrorExpanded.update(v => !v);
   }
 }
