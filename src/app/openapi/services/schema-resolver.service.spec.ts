@@ -202,6 +202,46 @@ describe('SchemaResolverService', () => {
       }).toThrowError(/documento raiz inválido/);
     });
 
+    it('should resolve Swagger 2.0 #/definitions/ references correctly', () => {
+      const swaggerDoc = {
+        swagger: '2.0',
+        definitions: {
+          Account: {
+            type: 'object',
+            required: ['accountId'],
+            properties: {
+              accountId: { type: 'string' }
+            }
+          }
+        }
+      };
+
+      const resolved = service.resolveRef('#/definitions/Account', swaggerDoc);
+      expect(resolved.type).toBe('object');
+      expect(resolved.title).toBe('Account');
+      expect(resolved.properties?.['accountId'].type).toBe('string');
+      expect(resolved.properties?.['accountId'].required).toBe(true);
+    });
+
+    it('should resolve encoded JSON pointer tokens like ~1 for slashes', () => {
+      const docWithEscapedKeys = {
+        components: {
+          schemas: {
+            'application/problem+json': {
+              type: 'object',
+              properties: {
+                detail: { type: 'string' }
+              }
+            }
+          }
+        }
+      };
+
+      const resolved = service.resolveRef('#/components/schemas/application~1problem+json', docWithEscapedKeys);
+      expect(resolved.type).toBe('object');
+      expect(resolved.properties?.['detail'].type).toBe('string');
+    });
+
     it('should return unknown schema type for undefined rawSchema', () => {
       const resolved = service.resolveSchema(undefined, PRIMITIVES_AND_CONSTRAINTS_SPEC);
       expect(resolved.type).toBe('unknown');

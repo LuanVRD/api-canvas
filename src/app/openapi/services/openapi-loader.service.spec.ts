@@ -180,4 +180,44 @@ describe('OpenApiLoaderService', () => {
     expect(caughtError).toBeDefined();
     expect(caughtError?.message).toContain('não é um documento JSON válido');
   });
+
+  it('should reject null response', () => {
+    const mockUrl = 'https://api.example.com/null.json';
+    let caughtError: Error | undefined;
+
+    service.load(mockUrl).subscribe({
+      next: () => {
+        throw new Error('Expected request to reject null');
+      },
+      error: (err: Error) => {
+        caughtError = err;
+      }
+    });
+
+    const req = httpTesting.expectOne(mockUrl);
+    req.flush(null);
+
+    expect(caughtError).toBeDefined();
+    expect(caughtError?.message).toContain('não é um documento JSON válido');
+  });
+
+  it('should handle generic Error instances gracefully', () => {
+    const mockUrl = 'https://api.example.com/generic-err.json';
+    let caughtError: Error | undefined;
+
+    service.load(mockUrl).subscribe({
+      next: () => {
+        throw new Error('Expected request to fail');
+      },
+      error: (err: Error) => {
+        caughtError = err;
+      }
+    });
+
+    const req = httpTesting.expectOne(mockUrl);
+    req.error(new ErrorEvent('Network error', { message: 'Http failure during parsing for https://...' }));
+
+    expect(caughtError).toBeDefined();
+    expect(caughtError?.message).toBeDefined();
+  });
 });
