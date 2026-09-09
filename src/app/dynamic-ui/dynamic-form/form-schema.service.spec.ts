@@ -288,6 +288,9 @@ describe('FormSchemaService', () => {
             minLength: 3,
             maxLength: 8
           },
+          payload: {
+            type: 'object'
+          },
           readOnlyField: {
             type: 'string',
             readOnly: true,
@@ -297,10 +300,11 @@ describe('FormSchemaService', () => {
       };
 
       const { form, fields } = service.buildFormGroup(schema);
-      expect(fields.length).toBe(4);
+      expect(fields.length).toBe(5);
       expect(form.contains('email')).toBe(true);
       expect(form.contains('age')).toBe(true);
       expect(form.contains('nickname')).toBe(true);
+      expect(form.contains('payload')).toBe(true);
       expect(form.get('readOnlyField')).toBeTruthy();
 
       // Email validation (required + pattern)
@@ -330,6 +334,13 @@ describe('FormSchemaService', () => {
       nicknameCtrl?.setValue('valid');
       expect(nicknameCtrl?.valid).toBe(true);
 
+      // Payload validation (JSON validator)
+      const payloadCtrl = form.get('payload');
+      payloadCtrl?.setValue('{ bad json');
+      expect(payloadCtrl?.hasError('invalidJson')).toBe(true);
+      payloadCtrl?.setValue('{"key": "value"}');
+      expect(payloadCtrl?.hasError('invalidJson')).toBe(false);
+
       // Disabled state for readOnly
       const readOnlyCtrl = form.get('readOnlyField');
       expect(readOnlyCtrl?.disabled).toBe(true);
@@ -352,6 +363,39 @@ describe('FormSchemaService', () => {
       expect(fields).toBe(descriptors);
       expect(form.get('category')?.value).toBe('tech');
       expect(form.valid).toBe(true);
+    });
+  });
+
+  describe('toRequestBody', () => {
+    it('should convert form values into request body compatible json object', () => {
+      const descriptors = [
+        { key: 'name', label: 'Name', type: 'text' as const, required: true },
+        { key: 'count', label: 'Count', type: 'number' as const, required: false },
+        { key: 'active', label: 'Active', type: 'boolean' as const, required: false },
+        { key: 'config', label: 'Config', type: 'json' as const, required: false },
+        { key: 'optionalBio', label: 'Bio', type: 'text' as const, required: false, nullable: true },
+        { key: 'ignoredEmpty', label: 'Empty', type: 'text' as const, required: false }
+      ];
+
+      const rawValues = {
+        name: 'Product 1',
+        count: '42',
+        active: true,
+        config: '{"enabled": true}',
+        optionalBio: '',
+        ignoredEmpty: ''
+      };
+
+      const result = service.toRequestBody(rawValues, descriptors);
+
+      expect(result).toEqual({
+        name: 'Product 1',
+        count: 42,
+        active: true,
+        config: { enabled: true },
+        optionalBio: null
+      });
+      expect('ignoredEmpty' in result).toBe(false);
     });
   });
 

@@ -104,6 +104,19 @@ export class FormSchemaService {
         validators.push(Validators.pattern(constraints.pattern));
       }
 
+      if (field.type === 'json') {
+        validators.push((control) => {
+          if (!control.value) return null;
+          if (typeof control.value === 'object') return null;
+          try {
+            JSON.parse(control.value);
+            return null;
+          } catch {
+            return { invalidJson: true };
+          }
+        });
+      }
+
       const control = new FormControl(
         {
           value: field.defaultValue ?? (field.type === 'boolean' ? false : null),
@@ -116,6 +129,56 @@ export class FormSchemaService {
     }
 
     return { form, fields };
+  }
+
+  /**
+   * Transforms raw reactive form values into an agnostic JSON object
+   * compatible with an OpenAPI HTTP request body.
+   */
+  toRequestBody(
+    rawValues: Record<string, unknown>,
+    fields: FormFieldDescriptor[] = []
+  ): Record<string, unknown> {
+    const payload: Record<string, unknown> = {};
+    const fieldMap = new Map(fields.map((f) => [f.key, f]));
+
+    for (const [key, value] of Object.entries(rawValues)) {
+      const field = fieldMap.get(key);
+
+      if (value === undefined || value === '') {
+        if (field?.required) {
+          payload[key] = value;
+        } else if (field?.nullable) {
+          payload[key] = null;
+        }
+        continue;
+      }
+
+      if (field?.type === 'number') {
+        if (value === null) {
+          payload[key] = null;
+        } else {
+          const num = Number(value);
+          payload[key] = isNaN(num) ? value : num;
+        }
+      } else if (field?.type === 'boolean') {
+        payload[key] = Boolean(value);
+      } else if (field?.type === 'json') {
+        if (typeof value === 'string' && value.trim()) {
+          try {
+            payload[key] = JSON.parse(value);
+          } catch {
+            payload[key] = value;
+          }
+        } else {
+          payload[key] = value;
+        }
+      } else {
+        payload[key] = value;
+      }
+    }
+
+    return payload;
   }
 
   /**

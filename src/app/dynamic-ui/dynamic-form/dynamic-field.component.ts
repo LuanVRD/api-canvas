@@ -1,6 +1,6 @@
 import { Component, Input } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { FormGroup, ReactiveFormsModule } from '@angular/forms';
+import { FormGroup, ReactiveFormsModule, AbstractControl } from '@angular/forms';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatSelectModule } from '@angular/material/select';
@@ -19,10 +19,10 @@ import { FormFieldDescriptor } from './form-field.model';
     MatSlideToggleModule
   ],
   template: `
-    <div [formGroup]="form" class="dynamic-field-container">
+    <div [formGroup]="form" class="dynamic-field-wrapper">
       @switch (field.type) {
         @case ('select') {
-          <mat-form-field appearance="outline" class="w-full">
+          <mat-form-field appearance="outline" class="w-full form-field-compact">
             <mat-label>{{ field.label }}</mat-label>
             <mat-select [formControlName]="field.key">
               @for (opt of normalizedOptions; track getOptionValue(opt)) {
@@ -32,28 +32,40 @@ import { FormFieldDescriptor } from './form-field.model';
             @if (field.description) {
               <mat-hint>{{ field.description }}</mat-hint>
             }
+            <mat-error *ngIf="control?.invalid && (control?.touched || control?.dirty)">
+              {{ getErrorMessage() }}
+            </mat-error>
           </mat-form-field>
         }
+
         @case ('date') {
-          <mat-form-field appearance="outline" class="w-full">
+          <mat-form-field appearance="outline" class="w-full form-field-compact">
             <mat-label>{{ field.label }}</mat-label>
             <input matInput type="date" [formControlName]="field.key">
             @if (field.description) {
               <mat-hint>{{ field.description }}</mat-hint>
             }
+            <mat-error *ngIf="control?.invalid && (control?.touched || control?.dirty)">
+              {{ getErrorMessage() }}
+            </mat-error>
           </mat-form-field>
         }
+
         @case ('datetime') {
-          <mat-form-field appearance="outline" class="w-full">
+          <mat-form-field appearance="outline" class="w-full form-field-compact">
             <mat-label>{{ field.label }}</mat-label>
             <input matInput type="datetime-local" [formControlName]="field.key">
             @if (field.description) {
               <mat-hint>{{ field.description }}</mat-hint>
             }
+            <mat-error *ngIf="control?.invalid && (control?.touched || control?.dirty)">
+              {{ getErrorMessage() }}
+            </mat-error>
           </mat-form-field>
         }
+
         @case ('number') {
-          <mat-form-field appearance="outline" class="w-full">
+          <mat-form-field appearance="outline" class="w-full form-field-compact">
             <mat-label>{{ field.label }}</mat-label>
             <input
               matInput
@@ -65,62 +77,104 @@ import { FormFieldDescriptor } from './form-field.model';
             @if (field.description) {
               <mat-hint>{{ field.description }}</mat-hint>
             }
+            <mat-error *ngIf="control?.invalid && (control?.touched || control?.dirty)">
+              {{ getErrorMessage() }}
+            </mat-error>
           </mat-form-field>
         }
+
         @case ('boolean') {
-          <div class="toggle-field">
-            <mat-slide-toggle [formControlName]="field.key">
-              {{ field.label }}
+          <div class="toggle-field-box">
+            <mat-slide-toggle [formControlName]="field.key" class="compact-toggle">
+              <span class="toggle-label">{{ field.label }}</span>
             </mat-slide-toggle>
             @if (field.description) {
-              <div class="toggle-description">{{ field.description }}</div>
+              <div class="toggle-hint">{{ field.description }}</div>
             }
           </div>
         }
+
         @case ('json') {
-          <mat-form-field appearance="outline" class="w-full">
+          <mat-form-field appearance="outline" class="w-full form-field-compact">
             <mat-label>{{ field.label }}</mat-label>
-            <textarea matInput [formControlName]="field.key" rows="3"></textarea>
+            <textarea
+              matInput
+              [formControlName]="field.key"
+              rows="4"
+              class="font-mono text-xs"
+              placeholder="{ &quot;key&quot;: &quot;value&quot; }"
+            ></textarea>
             @if (field.description) {
               <mat-hint>{{ field.description }}</mat-hint>
             }
+            <mat-error *ngIf="control?.invalid && (control?.touched || control?.dirty)">
+              {{ getErrorMessage() }}
+            </mat-error>
           </mat-form-field>
         }
+
         @default {
-          <mat-form-field appearance="outline" class="w-full">
+          <mat-form-field appearance="outline" class="w-full form-field-compact">
             <mat-label>{{ field.label }}</mat-label>
             <input matInput [formControlName]="field.key">
             @if (field.description) {
               <mat-hint>{{ field.description }}</mat-hint>
             }
+            <mat-error *ngIf="control?.invalid && (control?.touched || control?.dirty)">
+              {{ getErrorMessage() }}
+            </mat-error>
           </mat-form-field>
         }
       }
     </div>
   `,
   styles: [`
-    .dynamic-field-container {
-      margin-bottom: 12px;
+    .dynamic-field-wrapper {
+      display: flex;
+      flex-direction: column;
+      width: 100%;
     }
     .w-full {
       width: 100%;
     }
-    .toggle-field {
-      padding: 8px 0;
+    .form-field-compact {
+      font-size: 13px;
+    }
+    .toggle-field-box {
+      padding: 6px 0 10px 0;
       display: flex;
       flex-direction: column;
-      gap: 4px;
+      gap: 3px;
     }
-    .toggle-description {
-      font-size: 0.75rem;
-      color: var(--mat-sys-on-surface-variant, #6b7280);
-      margin-left: 8px;
+    .toggle-label {
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--canvas-text-primary, #e6edf3);
+    }
+    .toggle-hint {
+      font-size: 11px;
+      color: var(--canvas-text-muted, #6e7681);
+      margin-left: 2px;
+    }
+    .text-xs {
+      font-size: 12px;
+    }
+    mat-hint {
+      font-size: 11px;
+      color: var(--canvas-text-muted, #6e7681);
+    }
+    mat-error {
+      font-size: 11px;
     }
   `]
 })
 export class DynamicFieldComponent {
   @Input({ required: true }) form!: FormGroup;
   @Input({ required: true }) field!: FormFieldDescriptor;
+
+  get control(): AbstractControl | null {
+    return this.form?.get(this.field.key) ?? null;
+  }
 
   get normalizedOptions(): unknown[] {
     return this.field.options || [];
@@ -138,5 +192,38 @@ export class DynamicFieldComponent {
       return (opt as { label: string }).label;
     }
     return String(opt);
+  }
+
+  getErrorMessage(): string {
+    const ctrl = this.control;
+    if (!ctrl || !ctrl.errors) return '';
+
+    if (ctrl.hasError('required')) {
+      return `${this.field.label || this.field.key} is required.`;
+    }
+    if (ctrl.hasError('minlength')) {
+      const requiredLength = ctrl.errors['minlength']?.requiredLength ?? this.field.constraints?.minLength;
+      return `Minimum length is ${requiredLength} characters.`;
+    }
+    if (ctrl.hasError('maxlength')) {
+      const requiredLength = ctrl.errors['maxlength']?.requiredLength ?? this.field.constraints?.maxLength;
+      return `Maximum length is ${requiredLength} characters.`;
+    }
+    if (ctrl.hasError('min')) {
+      const min = ctrl.errors['min']?.min ?? this.field.constraints?.minimum;
+      return `Minimum value is ${min}.`;
+    }
+    if (ctrl.hasError('max')) {
+      const max = ctrl.errors['max']?.max ?? this.field.constraints?.maximum;
+      return `Maximum value is ${max}.`;
+    }
+    if (ctrl.hasError('pattern')) {
+      return 'Invalid format or pattern.';
+    }
+    if (ctrl.hasError('invalidJson')) {
+      return 'Invalid JSON syntax.';
+    }
+
+    return 'Invalid field value.';
   }
 }
