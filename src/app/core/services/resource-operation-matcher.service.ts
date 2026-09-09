@@ -97,6 +97,73 @@ export class ResourceOperationMatcherService {
   }
 
   /**
+   * Finds the best matching 'delete' operation for a given resource and optional source operation (e.g. list GET).
+   */
+  findCompatibleDeleteOperation(
+    resource: ApiResource,
+    sourceOperation?: ApiOperation | null
+  ): ApiOperation | null {
+    if (!resource || !resource.operations || resource.operations.length === 0) {
+      return null;
+    }
+
+    const candidateDeletes = resource.operations.filter(
+      (op) => op.method === 'DELETE'
+    );
+
+    if (candidateDeletes.length === 0) {
+      return null;
+    }
+
+    // If source operation is provided, score candidate deletes by path affinity
+    if (sourceOperation) {
+      const sourceBasePath = sourceOperation.path.split('?')[0].trim().replace(/\/+$/, '');
+
+      // Best: delete operation that extends the source list path with exactly one path parameter (e.g. /products -> /products/{id})
+      const exactChild = candidateDeletes.find((op) => {
+        const candidateBasePath = op.path.split('?')[0].trim().replace(/\/+$/, '');
+        const sourceSegments = sourceBasePath.split('/').filter(Boolean);
+        const candidateSegments = candidateBasePath.split('/').filter(Boolean);
+
+        if (candidateSegments.length === sourceSegments.length + 1) {
+          const prefixMatches = sourceSegments.every(
+            (seg, idx) => seg.toLowerCase() === candidateSegments[idx].toLowerCase()
+          );
+          return prefixMatches && this.isPathParam(candidateSegments[candidateSegments.length - 1]);
+        }
+        return false;
+      });
+
+      if (exactChild) {
+        return exactChild;
+      }
+
+      // Next best: delete operation that shares the longest common path prefix with the source
+      let bestMatch: ApiOperation | null = null;
+      let maxPrefixLength = -1;
+
+      for (const op of candidateDeletes) {
+        const prefixLen = this.calculateCommonPathLength(sourceBasePath, op.path);
+        if (prefixLen > maxPrefixLength) {
+          maxPrefixLength = prefixLen;
+          bestMatch = op;
+        }
+      }
+
+      if (bestMatch && maxPrefixLength > 0) {
+        return bestMatch;
+      }
+    }
+
+    // Prefer candidate with classified type 'delete' or that contains path parameters
+    const preferredDelete = candidateDeletes.find(
+      (op) => op.type === 'delete' || op.parameters.some((p) => p.location === 'path')
+    );
+
+    return preferredDelete ?? candidateDeletes[0] ?? null;
+  }
+
+  /**
    * Resolves required and optional parameters for a target operation based on a record row object
    * and any active parent path parameters already known in the source execution context.
    */

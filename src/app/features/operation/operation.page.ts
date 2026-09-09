@@ -26,6 +26,7 @@ import { SchemaViewerComponent } from '../../shared/components/schema-viewer/sch
 import { ResponseDataViewerComponent } from '../../dynamic-ui/response-data-viewer/response-data-viewer.component';
 import { DynamicFormComponent } from '../../dynamic-ui/dynamic-form/dynamic-form.component';
 import { RecordDetailsDrawerComponent } from '../../dynamic-ui/object-details/record-details-drawer.component';
+import { DeleteConfirmDialogComponent } from '../../dynamic-ui/delete-dialog/delete-confirm-dialog.component';
 
 export interface CustomHeaderItem {
   id: string;
@@ -47,7 +48,8 @@ export interface CustomHeaderItem {
     SchemaViewerComponent,
     ResponseDataViewerComponent,
     DynamicFormComponent,
-    RecordDetailsDrawerComponent
+    RecordDetailsDrawerComponent,
+    DeleteConfirmDialogComponent
   ],
   template: `
     <div class="operation-page-layout">
@@ -689,6 +691,7 @@ export interface CustomHeaderItem {
                             [sourceOperation]="currentOperation()"
                             [activePathParams]="pathParamValues()"
                             (inspectRecord)="onInspectRecord($event)"
+                            (deleteRecord)="onDeleteRecord($event)"
                           />
                         </div>
                       }
@@ -807,6 +810,18 @@ export interface CustomHeaderItem {
           [initialParams]="inspection.params"
           [missingParams]="inspection.missingParams || []"
           (close)="onCloseDetailsInspection()"
+        />
+      }
+
+      <!-- Record Delete Confirmation Modal -->
+      @if (activeDeleteConfirmation(); as delConfirm) {
+        <app-delete-confirm-dialog
+          [operation]="delConfirm.deleteOp"
+          [record]="delConfirm.record"
+          [initialParams]="delConfirm.params"
+          [missingParams]="delConfirm.missingParams || []"
+          (deleted)="onRecordDeleted($event)"
+          (close)="onCloseDeleteConfirmation()"
         />
       }
     </div>
@@ -1031,6 +1046,12 @@ export class OperationPage implements OnInit {
   readonly activeResponseTab = signal<'body' | 'headers' | 'docs'>('body');
   readonly activeDetailsInspection = signal<{
     detailsOp: ApiOperation;
+    params: Record<string, string>;
+    missingParams?: ApiParameter[];
+  } | null>(null);
+  readonly activeDeleteConfirmation = signal<{
+    deleteOp: ApiOperation;
+    record: unknown;
     params: Record<string, string>;
     missingParams?: ApiParameter[];
   } | null>(null);
@@ -1478,6 +1499,37 @@ export class OperationPage implements OnInit {
 
   onCloseDetailsInspection(): void {
     this.activeDetailsInspection.set(null);
+  }
+
+  onDeleteRecord(event: {
+    record: unknown;
+    deleteOp: ApiOperation;
+    params: Record<string, string>;
+    missingParams?: ApiParameter[];
+  }): void {
+    this.activeDeleteConfirmation.set(event);
+  }
+
+  onCloseDeleteConfirmation(): void {
+    this.activeDeleteConfirmation.set(null);
+  }
+
+  onRecordDeleted(result: ApiExecutionResult): void {
+    const activeConfirm = this.activeDeleteConfirmation();
+    const parent = this.parentResource();
+    if (parent && activeConfirm) {
+      this.sessionService.notifyResourceMutation(
+        parent.id,
+        activeConfirm.deleteOp.operationId || activeConfirm.deleteOp.id,
+        result
+      );
+    }
+
+    // Auto-refresh the current list collection view if the current page is a GET operation
+    const currentOp = this.currentOperation();
+    if (currentOp && currentOp.method === 'GET') {
+      this.onExecute();
+    }
   }
 
   onCopyPath(path: string): void {

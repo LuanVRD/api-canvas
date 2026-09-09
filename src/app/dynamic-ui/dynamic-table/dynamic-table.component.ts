@@ -65,8 +65,8 @@ import { ValueRendererComponent } from '../value-renderer/value-renderer.compone
                   @if (showEditAction) {
                     <button
                       type="button"
-                      class="action-icon-btn"
-                      (click)="rowEdit.emit(element)"
+                      class="action-icon-btn edit-btn"
+                      (click)="onEditClicked($event, element)"
                       title="Edit"
                     >
                       <mat-icon class="action-icon">edit</mat-icon>
@@ -75,9 +75,9 @@ import { ValueRendererComponent } from '../value-renderer/value-renderer.compone
                   @if (showDeleteAction) {
                     <button
                       type="button"
-                      class="action-icon-btn delete"
-                      (click)="rowDelete.emit(element)"
-                      title="Delete"
+                      class="action-icon-btn delete delete-btn"
+                      (click)="onDeleteClicked($event, element)"
+                      [title]="deleteTooltip"
                     >
                       <mat-icon class="action-icon">delete</mat-icon>
                     </button>
@@ -276,6 +276,7 @@ export class DynamicTableComponent {
   @Input() showEditAction = true;
   @Input() showDeleteAction = true;
   @Input() viewTooltip = 'View Details';
+  @Input() deleteTooltip = 'Delete Record';
 
   @Output() rowView = new EventEmitter<unknown>();
   @Output() rowEdit = new EventEmitter<unknown>();
@@ -290,6 +291,16 @@ export class DynamicTableComponent {
   onViewClicked(event: MouseEvent, element: unknown): void {
     event.stopPropagation();
     this.rowView.emit(element);
+  }
+
+  onEditClicked(event: MouseEvent, element: unknown): void {
+    event.stopPropagation();
+    this.rowEdit.emit(element);
+  }
+
+  onDeleteClicked(event: MouseEvent, element: unknown): void {
+    event.stopPropagation();
+    this.rowDelete.emit(element);
   }
 
   getCellValue(element: unknown, key: string): unknown {

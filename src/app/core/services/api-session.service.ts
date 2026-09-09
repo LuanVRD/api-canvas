@@ -223,6 +223,22 @@ export class ApiSessionService {
   }
 
   /**
+   * Finds a compatible delete operation for the specified resource and optional source operation.
+   */
+  getCompatibleDeleteOperation(
+    resourceId: string,
+    sourceOperation?: ApiOperation | null
+  ): ApiOperation | null {
+    const def = this._apiDefinition();
+    if (!def || !resourceId) return null;
+
+    const resource = def.resources.find((r) => r.id === resourceId);
+    if (!resource) return null;
+
+    return this.matcher.findCompatibleDeleteOperation(resource, sourceOperation);
+  }
+
+  /**
    * Broadcasts a resource mutation event (such as record creation or update).
    */
   notifyResourceMutation(resourceId: string, operationId: string, result?: ApiExecutionResult): void {

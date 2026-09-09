@@ -88,12 +88,14 @@ export type ViewMode = 'visual' | 'raw';
               <app-dynamic-table
                 [data]="$any(parsedData())"
                 [columns]="inferredColumns()"
-                [showActions]="hasDetailsOp()"
-                [showViewAction]="true"
+                [showActions]="hasDetailsOp() || hasDeleteOp()"
+                [showViewAction]="hasDetailsOp()"
                 [showEditAction]="false"
-                [showDeleteAction]="false"
+                [showDeleteAction]="hasDeleteOp()"
                 viewTooltip="Inspect record details"
+                deleteTooltip="Delete record"
                 (rowView)="onRowInspect($event)"
+                (rowDelete)="onRowDelete($event)"
               />
             </div>
           }
@@ -356,6 +358,13 @@ export class ResponseDataViewerComponent {
     missingParams?: ApiParameter[];
   }>();
 
+  @Output() deleteRecord = new EventEmitter<{
+    record: unknown;
+    deleteOp: ApiOperation;
+    params: Record<string, string>;
+    missingParams?: ApiParameter[];
+  }>();
+
   @Input()
   set result(val: ApiExecutionResult | null) {
     this._result.set(val);
@@ -404,6 +413,27 @@ export class ResponseDataViewerComponent {
     return this.detailsOperation() !== null;
   });
 
+  /**
+   * Discovered compatible delete operation for the current resource/collection context.
+   */
+  readonly deleteOperation = computed<ApiOperation | null>(() => {
+    const srcOp = this._sourceOperation();
+    if (!srcOp) {
+      const currentRes = this.session.selectedResource();
+      if (!currentRes) return null;
+      return this.matcher.findCompatibleDeleteOperation(currentRes);
+    }
+
+    const parentRes = this.session.getResourceForOperation(srcOp.id || srcOp.operationId || '');
+    if (!parentRes) return null;
+
+    return this.matcher.findCompatibleDeleteOperation(parentRes, srcOp);
+  });
+
+  readonly hasDeleteOp = computed<boolean>(() => {
+    return this.deleteOperation() !== null;
+  });
+
   onRowInspect(record: unknown): void {
     const detailsOp = this.detailsOperation();
     if (!detailsOp) return;
@@ -417,6 +447,24 @@ export class ResponseDataViewerComponent {
     this.inspectRecord.emit({
       record,
       detailsOp,
+      params: resolution.resolvedParams,
+      missingParams: resolution.missingParams
+    });
+  }
+
+  onRowDelete(record: unknown): void {
+    const deleteOp = this.deleteOperation();
+    if (!deleteOp) return;
+
+    const resolution = this.matcher.resolveParameters(
+      deleteOp,
+      record,
+      this._activePathParams()
+    );
+
+    this.deleteRecord.emit({
+      record,
+      deleteOp,
       params: resolution.resolvedParams,
       missingParams: resolution.missingParams
     });

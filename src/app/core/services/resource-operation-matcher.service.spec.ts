@@ -94,6 +94,95 @@ describe('ResourceOperationMatcherService', () => {
     });
   });
 
+  describe('findCompatibleDeleteOperation', () => {
+    it('should find the exact child delete operation matching a list path', () => {
+      const listOp: ApiOperation = {
+        id: 'get_products',
+        method: 'GET',
+        path: '/api/v1/products',
+        type: 'list',
+        parameters: [],
+        responses: []
+      };
+
+      const deleteOp: ApiOperation = {
+        id: 'delete_product_by_id',
+        method: 'DELETE',
+        path: '/api/v1/products/{id}',
+        type: 'delete',
+        parameters: [
+          {
+            name: 'id',
+            location: 'path',
+            required: true,
+            schema: { type: 'string' }
+          }
+        ],
+        responses: []
+      };
+
+      const otherDeleteOp: ApiOperation = {
+        id: 'delete_category_by_id',
+        method: 'DELETE',
+        path: '/api/v1/categories/{categoryId}',
+        type: 'delete',
+        parameters: [],
+        responses: []
+      };
+
+      const resource: ApiResource = {
+        id: 'products',
+        name: 'products',
+        label: 'Products',
+        operations: [listOp, otherDeleteOp, deleteOp]
+      };
+
+      const result = service.findCompatibleDeleteOperation(resource, listOp);
+      expect(result).toBe(deleteOp);
+    });
+
+    it('should fallback to first delete operation if source operation is not provided', () => {
+      const deleteOp: ApiOperation = {
+        id: 'delete_pet_by_id',
+        method: 'DELETE',
+        path: '/pets/{petId}',
+        type: 'delete',
+        parameters: [],
+        responses: []
+      };
+
+      const resource: ApiResource = {
+        id: 'pets',
+        name: 'pets',
+        label: 'Pets',
+        operations: [deleteOp]
+      };
+
+      const result = service.findCompatibleDeleteOperation(resource);
+      expect(result).toBe(deleteOp);
+    });
+
+    it('should return null when resource has no DELETE operations', () => {
+      const listOp: ApiOperation = {
+        id: 'get_items',
+        method: 'GET',
+        path: '/items',
+        type: 'list',
+        parameters: [],
+        responses: []
+      };
+
+      const resource: ApiResource = {
+        id: 'items',
+        name: 'items',
+        label: 'Items',
+        operations: [listOp]
+      };
+
+      expect(service.findCompatibleDeleteOperation(resource)).toBeNull();
+    });
+  });
+
   describe('resolveParameters', () => {
     const detailsOpWithPetId: ApiOperation = {
       id: 'get_pet_by_id',

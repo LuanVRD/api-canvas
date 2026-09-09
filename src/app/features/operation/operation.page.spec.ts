@@ -243,6 +243,31 @@ describe('OperationPage', () => {
     ]
   };
 
+  const mockDeleteOperation: ApiOperation = {
+    id: 'delete_api_products_id',
+    operationId: 'deleteProductById',
+    method: 'DELETE',
+    path: '/api/products/{id}',
+    summary: 'Delete Product by ID',
+    description: 'Deletes product record by identifier',
+    type: 'delete',
+    parameters: [
+      {
+        name: 'id',
+        location: 'path',
+        required: true,
+        schema: { type: 'string' },
+        description: 'Product unique identifier'
+      }
+    ],
+    responses: [
+      {
+        statusCode: '204',
+        description: 'Product deleted successfully'
+      }
+    ]
+  };
+
   const mockApiDefinition: ApiDefinition = {
     title: 'Acme Platform API',
     version: '1.4.0',
@@ -259,7 +284,7 @@ describe('OperationPage', () => {
         id: 'products',
         name: 'products',
         label: 'Products',
-        operations: [mockListOperation, mockDetailsOperation, mockCreateOperation]
+        operations: [mockListOperation, mockDetailsOperation, mockCreateOperation, mockDeleteOperation]
       },
       {
         id: 'system',
@@ -877,6 +902,69 @@ describe('OperationPage', () => {
 
     expect(component.activeDetailsInspection()).toBeNull();
     expect(fixture.nativeElement.querySelector('app-record-details-drawer')).toBeNull();
+  });
+
+  it('should open and close delete confirmation modal and notify mutation with auto-refresh on success', () => {
+    const listResult: ApiExecutionResult = {
+      status: 200,
+      statusText: 'OK',
+      isSuccess: true,
+      data: [
+        { id: 10, name: 'Vintage Drums', price: 600 }
+      ],
+      durationMs: 20
+    };
+    (executorService.execute as any).mockReturnValue(of(listResult));
+
+    fixture.componentRef.setInput('operationId', 'listProducts');
+    fixture.detectChanges();
+
+    // Initial list execution
+    component.onExecute();
+    fixture.detectChanges();
+
+    expect(component.activeDeleteConfirmation()).toBeNull();
+
+    // Trigger delete action from row
+    component.onDeleteRecord({
+      record: { id: 10, name: 'Vintage Drums', price: 600 },
+      deleteOp: mockDeleteOperation,
+      params: { id: '10' },
+      missingParams: []
+    });
+    fixture.detectChanges();
+
+    expect(component.activeDeleteConfirmation()).toBeTruthy();
+    expect(component.activeDeleteConfirmation()?.params).toEqual({ id: '10' });
+
+    const dialog = fixture.nativeElement.querySelector('app-delete-confirm-dialog');
+    expect(dialog).toBeTruthy();
+
+    const notifySpy = vi.spyOn(sessionService, 'notifyResourceMutation');
+    const executeSpy = vi.spyOn(component, 'onExecute');
+
+    // Simulate successful deletion response from dialog
+    const deleteSuccessResult: ApiExecutionResult = {
+      status: 204,
+      statusText: 'No Content',
+      isSuccess: true,
+      data: null,
+      durationMs: 30
+    };
+
+    component.onRecordDeleted(deleteSuccessResult);
+    fixture.detectChanges();
+
+    expect(notifySpy).toHaveBeenCalledWith('products', 'deleteProductById', deleteSuccessResult);
+    // Verified that onExecute was called to refresh the GET list collection
+    expect(executeSpy).toHaveBeenCalled();
+
+    // Close dialog
+    component.onCloseDeleteConfirmation();
+    fixture.detectChanges();
+
+    expect(component.activeDeleteConfirmation()).toBeNull();
+    expect(fixture.nativeElement.querySelector('app-delete-confirm-dialog')).toBeNull();
   });
 });
 

@@ -249,4 +249,69 @@ describe('ResponseDataViewerComponent', () => {
       missingParams: []
     });
   });
+
+  it('should detect deleteOperation and emit deleteRecord event when row delete is triggered', () => {
+    const listOp: ApiOperation = {
+      id: 'get_products',
+      method: 'GET',
+      path: '/products',
+      type: 'list',
+      parameters: [],
+      responses: []
+    };
+
+    const deleteOp: ApiOperation = {
+      id: 'delete_product_by_id',
+      method: 'DELETE',
+      path: '/products/{id}',
+      type: 'delete',
+      parameters: [
+        {
+          name: 'id',
+          location: 'path',
+          required: true,
+          schema: { type: 'integer' }
+        }
+      ],
+      responses: []
+    };
+
+    const sessionService = TestBed.inject(ApiSessionService);
+    sessionService.setSession({
+      title: 'Test Store',
+      version: '1.0.0',
+      baseUrl: 'https://store.test',
+      resources: [
+        {
+          id: 'products',
+          name: 'products',
+          label: 'Products',
+          operations: [listOp, deleteOp]
+        }
+      ]
+    });
+
+    component.sourceOperation = listOp;
+    component.result = {
+      status: 200,
+      statusText: 'OK',
+      isSuccess: true,
+      data: [{ id: 789, name: 'Product to delete' }]
+    };
+
+    fixture.detectChanges();
+
+    expect(component.hasDeleteOp()).toBe(true);
+    expect(component.deleteOperation()).toBe(deleteOp);
+
+    const deleteSpy = vi.spyOn(component.deleteRecord, 'emit');
+    component.onRowDelete({ id: 789, name: 'Product to delete' });
+
+    expect(deleteSpy).toHaveBeenCalledWith({
+      record: { id: 789, name: 'Product to delete' },
+      deleteOp,
+      params: { id: '789' },
+      missingParams: []
+    });
+  });
 });
