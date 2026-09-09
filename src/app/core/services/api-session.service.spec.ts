@@ -185,5 +185,38 @@ describe('ApiSessionService', () => {
     expect(service.openApiUrl()).toBeNull();
     expect(service.rawSpec()).toBeNull();
     expect(service.resources()).toEqual([]);
+    expect(service.lastResourceMutation()).toBeNull();
+  });
+
+  it('should broadcast and track resource mutation events', () => {
+    service.setSession(mockApiDefinition);
+
+    expect(service.lastResourceMutation()).toBeNull();
+
+    service.notifyResourceMutation('products', 'create_product', {
+      status: 201,
+      statusText: 'Created',
+      isSuccess: true,
+      data: { id: 101, name: 'New Item' },
+      duration: 20,
+      durationMs: 20
+    });
+
+    const mutation = service.lastResourceMutation();
+    expect(mutation).toBeTruthy();
+    expect(mutation?.resourceId).toBe('products');
+    expect(mutation?.operationId).toBe('create_product');
+    expect(mutation?.result?.status).toBe(201);
+  });
+
+  it('should find compatible list operation for a resource', () => {
+    service.setSession(mockApiDefinition);
+
+    const listOp = service.getCompatibleListOperation('products');
+    expect(listOp).toBeTruthy();
+    expect(listOp?.id).toBe('get_products');
+    expect(listOp?.type).toBe('list');
+
+    expect(service.getCompatibleListOperation('non_existing')).toBeNull();
   });
 });

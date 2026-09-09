@@ -182,6 +182,67 @@ describe('OperationPage', () => {
     ]
   };
 
+  const mockCreateOperation: ApiOperation = {
+    id: 'post_api_products',
+    operationId: 'createProduct',
+    method: 'POST',
+    path: '/api/products',
+    summary: 'Create a new product',
+    description: 'Registers a new product in the store catalog',
+    type: 'create',
+    parameters: [
+      {
+        name: 'storeId',
+        location: 'query',
+        required: false,
+        schema: { type: 'string' },
+        description: 'Target store branch'
+      }
+    ],
+    requestBody: {
+      contentType: 'application/json',
+      required: true,
+      description: 'Product creation payload',
+      schema: {
+        type: 'object',
+        properties: {
+          name: { type: 'string', required: true, title: 'Product Name' },
+          price: { type: 'number', required: true, minimum: 1, title: 'Price (USD)' },
+          category: { type: 'string', enum: ['Guitars', 'Keyboards', 'Drums'], title: 'Category' },
+          inStock: { type: 'boolean', title: 'In Stock' }
+        },
+        requiredProperties: ['name', 'price']
+      }
+    },
+    responses: [
+      {
+        statusCode: '201',
+        description: 'Product created successfully',
+        contentType: 'application/json',
+        schema: {
+          type: 'object',
+          properties: {
+            id: { type: 'string' },
+            name: { type: 'string' },
+            price: { type: 'number' },
+            category: { type: 'string' }
+          }
+        }
+      },
+      {
+        statusCode: '400',
+        description: 'Invalid input data',
+        contentType: 'application/json',
+        schema: {
+          type: 'object',
+          properties: {
+            message: { type: 'string' }
+          }
+        }
+      }
+    ]
+  };
+
   const mockApiDefinition: ApiDefinition = {
     title: 'Acme Platform API',
     version: '1.4.0',
@@ -198,7 +259,7 @@ describe('OperationPage', () => {
         id: 'products',
         name: 'products',
         label: 'Products',
-        operations: [mockListOperation, mockDetailsOperation]
+        operations: [mockListOperation, mockDetailsOperation, mockCreateOperation]
       },
       {
         id: 'system',
@@ -317,6 +378,7 @@ describe('OperationPage', () => {
   it('should validate JSON syntax before executing request and display error', () => {
     fixture.detectChanges();
 
+    component.onSwitchBodyTab('editor');
     // Provide path parameter so path validation passes
     component.onPathParamChange('orderId', 'ord-12345');
     // Set invalid JSON
@@ -353,6 +415,7 @@ describe('OperationPage', () => {
     (executorService.execute as any).mockReturnValue(of(mockResult));
 
     fixture.detectChanges();
+    component.onSwitchBodyTab('editor');
     component.onPathParamChange('orderId', 'ord-12345');
     component.onHeaderParamChange('X-Idempotency-Key', 'idemp-key-777');
     component.onQueryParamChange('dryRun', 'false');
@@ -598,6 +661,182 @@ describe('OperationPage', () => {
 
     const compiled = fixture.nativeElement as HTMLElement;
     expect(compiled.textContent).toContain('204 No Content');
+  });
+
+  it('should prioritize dynamic form tab for POST create operations and render dynamic fields', () => {
+    fixture.componentRef.setInput('operationId', 'createProduct');
+    fixture.detectChanges();
+
+    expect(component.currentOperation()?.type).toBe('create');
+    expect(component.hasStructuredBody()).toBe(true);
+    expect(component.isCreateOperation()).toBe(true);
+    expect(component.activeBodyTab()).toBe('form');
+
+    const compiled = fixture.nativeElement as HTMLElement;
+    expect(compiled.textContent).toContain('Product Name');
+    expect(compiled.textContent).toContain('Price (USD)');
+    expect(compiled.textContent).toContain('Category');
+    expect(compiled.textContent).toContain('In Stock');
+
+    // Should render DynamicFormComponent
+    const dynFormElem = compiled.querySelector('app-dynamic-form');
+    expect(dynFormElem).toBeTruthy();
+  });
+
+  it('should validate required form fields and block execution when form is invalid', () => {
+    fixture.componentRef.setInput('operationId', 'createProduct');
+    fixture.detectChanges();
+
+    // The dynamic form has required fields: name and price
+    // Make sure form is invalid by clearing values
+    component.dynamicFormRef?.form?.get('name')?.setValue('');
+    component.dynamicFormRef?.form?.get('price')?.setValue(null);
+    fixture.detectChanges();
+
+    component.onExecute();
+    fixture.detectChanges();
+
+    expect(component.validationError()).toContain('Please fill in all required form fields correctly');
+    expect(executorService.execute).not.toHaveBeenCalled();
+  });
+
+  it('should execute create POST operation with form payload, display 201 Created and notify session mutation', () => {
+    const createResult: ApiExecutionResult = {
+      status: 201,
+      statusText: 'Created',
+      isSuccess: true,
+      data: { id: 'prod_100', name: 'Bass Guitar', price: 950, category: 'Guitars' },
+      duration: 35,
+      durationMs: 35
+    };
+    (executorService.execute as any).mockReturnValue(of(createResult));
+
+    const notifyMutationSpy = vi.spyOn(sessionService, 'notifyResourceMutation');
+
+    fixture.componentRef.setInput('operationId', 'createProduct');
+    fixture.detectChanges();
+
+    // Fill valid form values
+    component.dynamicFormRef?.form?.get('name')?.setValue('Bass Guitar');
+    component.dynamicFormRef?.form?.get('price')?.setValue(950);
+    component.dynamicFormRef?.form?.get('category')?.setValue('Guitars');
+    component.dynamicFormRef?.form?.get('inStock')?.setValue(true);
+    component.onQueryParamChange('storeId', 'store_ny');
+    fixture.detectChanges();
+
+    component.onExecute();
+    fixture.detectChanges();
+
+    expect(executorService.execute).toHaveBeenCalledWith(
+      'https://api.acme.com',
+      mockCreateOperation,
+      {
+        path: {},
+        query: { storeId: 'store_ny' },
+        headers: {},
+        body: {
+          name: 'Bass Guitar',
+          price: 950,
+          category: 'Guitars',
+          inStock: true
+        }
+      }
+    );
+
+    expect(component.executionResult()).toEqual(createResult);
+    expect(notifyMutationSpy).toHaveBeenCalledWith('products', 'createProduct', createResult);
+
+    const compiled = fixture.nativeElement as HTMLElement;
+    expect(compiled.textContent).toContain('201 Created');
+    expect(compiled.textContent).toContain('Resource record created successfully');
+    expect(compiled.textContent).toContain('View in Resource List');
+  });
+
+  it('should navigate to compatible list operation when View in Resource List is clicked', () => {
+    const createResult: ApiExecutionResult = {
+      status: 201,
+      statusText: 'Created',
+      isSuccess: true,
+      data: { id: 'prod_100' },
+      duration: 20,
+      durationMs: 20
+    };
+    (executorService.execute as any).mockReturnValue(of(createResult));
+
+    fixture.componentRef.setInput('operationId', 'createProduct');
+    fixture.detectChanges();
+
+    component.dynamicFormRef?.form?.get('name')?.setValue('Guitar Amp');
+    component.dynamicFormRef?.form?.get('price')?.setValue(400);
+
+    component.onExecute();
+    fixture.detectChanges();
+
+    const listOp = component.compatibleListOp();
+    expect(listOp).toBeTruthy();
+    expect(listOp?.id).toBe('get_api_products');
+
+    component.onNavigateToList(listOp!);
+    expect(routerNavigateSpy).toHaveBeenCalledWith(['/operation', 'listProducts']);
+  });
+
+  it('should synchronize values when switching between Form and JSON Editor tabs', () => {
+    fixture.componentRef.setInput('operationId', 'createProduct');
+    fixture.detectChanges();
+
+    // Set values in dynamic form
+    component.dynamicFormRef?.form?.get('name')?.setValue('Custom Drumkit');
+    component.dynamicFormRef?.form?.get('price')?.setValue(3200);
+
+    // Switch to JSON Editor
+    component.onSwitchBodyTab('editor');
+    fixture.detectChanges();
+
+    expect(component.activeBodyTab()).toBe('editor');
+    expect(component.requestBodyText()).toContain('Custom Drumkit');
+    expect(component.requestBodyText()).toContain('3200');
+
+    // Edit JSON in editor
+    component.onRequestBodyChange(JSON.stringify({ name: 'Edited Drumkit', price: 3500 }));
+
+    // Switch back to Form
+    component.onSwitchBodyTab('form');
+    fixture.detectChanges();
+
+    expect(component.activeBodyTab()).toBe('form');
+    expect(component.dynamicFormValue()['name']).toBe('Edited Drumkit');
+    expect(component.dynamicFormValue()['price']).toBe(3500);
+  });
+
+  it('should handle API error for POST create operation and render error details', () => {
+    const errorResult: ApiExecutionResult = {
+      status: 400,
+      statusText: 'Bad Request',
+      isSuccess: false,
+      data: { message: 'Product name already exists' },
+      duration: 25,
+      durationMs: 25,
+      error: {
+        message: 'Request failed with status code 400',
+        status: 400,
+        details: { message: 'Product name already exists' }
+      }
+    };
+    (executorService.execute as any).mockReturnValue(of(errorResult));
+
+    fixture.componentRef.setInput('operationId', 'createProduct');
+    fixture.detectChanges();
+
+    component.dynamicFormRef?.form?.get('name')?.setValue('Existing Product');
+    component.dynamicFormRef?.form?.get('price')?.setValue(100);
+
+    component.onExecute();
+    fixture.detectChanges();
+
+    expect(component.executionResult()).toEqual(errorResult);
+    const compiled = fixture.nativeElement as HTMLElement;
+    expect(compiled.textContent).toContain('400 Bad Request');
+    expect(compiled.textContent).toContain('Product name already exists');
   });
 });
 

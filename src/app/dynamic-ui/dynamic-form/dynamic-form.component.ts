@@ -171,7 +171,7 @@ export class DynamicFormComponent implements OnChanges {
     }
 
     if (changes['initialValue'] && this.initialValue && this.form) {
-      this.form.patchValue(this.initialValue);
+      this.form.patchValue(this.initialValue, { emitEvent: false });
     }
 
     if (changes['disabled'] && this.form) {
@@ -189,7 +189,7 @@ export class DynamicFormComponent implements OnChanges {
     this.fields = fields;
 
     if (this.initialValue) {
-      this.form.patchValue(this.initialValue);
+      this.form.patchValue(this.initialValue, { emitEvent: false });
     }
 
     this.form.valueChanges.subscribe((val) => {

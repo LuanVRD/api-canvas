@@ -2,11 +2,19 @@ import { computed, Injectable, signal } from '@angular/core';
 import { ApiDefinition } from '../models/api-definition.model';
 import { ApiOperation } from '../models/api-operation.model';
 import { ApiResource } from '../models/api-resource.model';
+import { ApiExecutionResult } from '../models/api-execution-result.model';
 
 export interface ApiSessionMetadata {
   openApiUrl?: string;
   rawSpec?: unknown;
   defaultResourceId?: string;
+}
+
+export interface ApiResourceMutationEvent {
+  resourceId: string;
+  operationId: string;
+  timestamp: number;
+  result?: ApiExecutionResult;
 }
 
 @Injectable({
@@ -17,11 +25,17 @@ export class ApiSessionService {
   private readonly _selectedResourceId = signal<string | null>(null);
   private readonly _openApiUrl = signal<string | null>(null);
   private readonly _rawSpec = signal<unknown | null>(null);
+  private readonly _lastResourceMutation = signal<ApiResourceMutationEvent | null>(null);
 
   /**
    * Current normalized API definition.
    */
   readonly apiDefinition = this._apiDefinition.asReadonly();
+
+  /**
+   * Last resource mutation event (e.g. create/update/delete operation execution).
+   */
+  readonly lastResourceMutation = this._lastResourceMutation.asReadonly();
 
   /**
    * Identifier of the currently selected resource.
@@ -167,6 +181,42 @@ export class ApiSessionService {
   }
 
   /**
+   * Finds a compatible list operation for the specified resource if one exists.
+   */
+  getCompatibleListOperation(resourceId: string): ApiOperation | null {
+    const def = this._apiDefinition();
+    if (!def || !resourceId) return null;
+
+    const resource = def.resources.find((r) => r.id === resourceId);
+    if (!resource) return null;
+
+    // 1. First priority: explicit 'list' type operation
+    const listOp = resource.operations.find((op) => op.type === 'list');
+    if (listOp) return listOp;
+
+    // 2. Second priority: GET operation without path parameters
+    const getCollectionOp = resource.operations.find(
+      (op) => op.method === 'GET' && !op.parameters.some((p) => p.location === 'path')
+    );
+    if (getCollectionOp) return getCollectionOp;
+
+    // 3. Fallback: Any GET operation in resource
+    return resource.operations.find((op) => op.method === 'GET') ?? null;
+  }
+
+  /**
+   * Broadcasts a resource mutation event (such as record creation or update).
+   */
+  notifyResourceMutation(resourceId: string, operationId: string, result?: ApiExecutionResult): void {
+    this._lastResourceMutation.set({
+      resourceId,
+      operationId,
+      timestamp: Date.now(),
+      result
+    });
+  }
+
+  /**
    * Clears the current active session state.
    */
   clearSession(): void {
@@ -174,6 +224,7 @@ export class ApiSessionService {
     this._selectedResourceId.set(null);
     this._openApiUrl.set(null);
     this._rawSpec.set(null);
+    this._lastResourceMutation.set(null);
   }
 }
 

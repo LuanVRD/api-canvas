@@ -6,7 +6,8 @@ import {
   inject,
   input,
   OnInit,
-  signal
+  signal,
+  ViewChild
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -23,6 +24,7 @@ import { ApiRequestInput } from '../../core/models/api-request-input.model';
 import { HttpBadgeComponent } from '../../shared/components/http-badge/http-badge.component';
 import { SchemaViewerComponent } from '../../shared/components/schema-viewer/schema-viewer.component';
 import { ResponseDataViewerComponent } from '../../dynamic-ui/response-data-viewer/response-data-viewer.component';
+import { DynamicFormComponent } from '../../dynamic-ui/dynamic-form/dynamic-form.component';
 
 export interface CustomHeaderItem {
   id: string;
@@ -42,7 +44,8 @@ export interface CustomHeaderItem {
     MatButtonModule,
     HttpBadgeComponent,
     SchemaViewerComponent,
-    ResponseDataViewerComponent
+    ResponseDataViewerComponent,
+    DynamicFormComponent
   ],
   template: `
     <div class="operation-page-layout">
@@ -432,21 +435,34 @@ export interface CustomHeaderItem {
                         }
 
                         <div class="body-view-toggle">
+                          @if (hasStructuredBody()) {
+                            <button
+                              type="button"
+                              class="toggle-btn"
+                              [class.active]="activeBodyTab() === 'form'"
+                              (click)="onSwitchBodyTab('form')"
+                            >
+                              <mat-icon class="tab-icon-sm">dynamic_form</mat-icon>
+                              <span>Form</span>
+                            </button>
+                          }
                           <button
                             type="button"
                             class="toggle-btn"
                             [class.active]="activeBodyTab() === 'editor'"
-                            (click)="activeBodyTab.set('editor')"
+                            (click)="onSwitchBodyTab('editor')"
                           >
-                            JSON Editor
+                            <mat-icon class="tab-icon-sm">code</mat-icon>
+                            <span>JSON Editor</span>
                           </button>
                           <button
                             type="button"
                             class="toggle-btn"
                             [class.active]="activeBodyTab() === 'schema'"
-                            (click)="activeBodyTab.set('schema')"
+                            (click)="onSwitchBodyTab('schema')"
                           >
-                            Schema
+                            <mat-icon class="tab-icon-sm">schema</mat-icon>
+                            <span>Schema</span>
                           </button>
                         </div>
                       </div>
@@ -456,7 +472,19 @@ export interface CustomHeaderItem {
                       <p class="section-description">{{ rb.description }}</p>
                     }
 
-                    @if (activeBodyTab() === 'editor') {
+                    @if (activeBodyTab() === 'form' && hasStructuredBody()) {
+                      <div class="form-container">
+                        <app-dynamic-form
+                          #dynForm
+                          [schema]="rb.schema"
+                          [initialValue]="dynamicFormInitialValue()"
+                          [showActions]="false"
+                          [disabled]="isExecuting()"
+                          (formChange)="onDynamicFormChange($event)"
+                          (formSubmit)="onExecute()"
+                        />
+                      </div>
+                    } @else if (activeBodyTab() === 'editor') {
                       <div class="json-editor-container">
                         <div class="editor-toolbar">
                           <span class="editor-lang-tag font-mono">JSON</span>
@@ -620,6 +648,25 @@ export interface CustomHeaderItem {
 
                       <!-- Console Body View -->
                       @if (activeResponseTab() === 'body') {
+                        @if (res.isSuccess && (op.type === 'create' || op.method === 'POST')) {
+                          <div class="response-success-alert font-mono">
+                            <mat-icon class="succ-alert-icon">check_circle</mat-icon>
+                            <div class="succ-alert-body">
+                              <span class="succ-msg">
+                                {{ op.type === 'create' ? 'Resource record created successfully' : 'Request executed successfully' }} (HTTP {{ res.status }} {{ res.statusText }}).
+                              </span>
+                              @if (compatibleListOp(); as listOp) {
+                                <div class="succ-actions">
+                                  <button type="button" class="list-nav-btn" (click)="onNavigateToList(listOp)">
+                                    <mat-icon class="icon-sm">list_alt</mat-icon>
+                                    <span>View in Resource List</span>
+                                  </button>
+                                </div>
+                              }
+                            </div>
+                          </div>
+                        }
+
                         @if (!res.isSuccess && res.error) {
                           <div class="response-error-alert font-mono">
                             <mat-icon class="err-alert-icon">error</mat-icon>
@@ -844,8 +891,10 @@ export interface CustomHeaderItem {
     .json-editor-textarea { width: 100%; background: transparent; border: none; outline: none; color: var(--canvas-text-primary); font-family: var(--font-mono); font-size: 12px; line-height: 1.6; padding: 10px; resize: vertical; min-height: 140px; }
     .json-error-banner { padding: 6px 10px; background: rgba(218, 54, 51, 0.15); border-top: 1px solid rgba(218, 54, 51, 0.3); color: #f85149; font-size: 11px; display: flex; align-items: center; gap: 6px; }
     .json-error-banner .err-icon { font-size: 14px; width: 14px; height: 14px; }
+    .form-container { padding: 4px 0; }
+    .tab-icon-sm { font-size: 13px; width: 13px; height: 13px; }
     .body-view-toggle { display: flex; background: var(--canvas-surface-elevated); border: 1px solid var(--canvas-border-subtle); border-radius: var(--radius-sm); padding: 1px; }
-    .toggle-btn { background: transparent; border: none; font-size: 11px; color: var(--canvas-text-muted); padding: 2px 8px; border-radius: 2px; cursor: pointer; }
+    .toggle-btn { background: transparent; border: none; font-size: 11px; color: var(--canvas-text-muted); padding: 2px 8px; border-radius: 2px; cursor: pointer; display: flex; align-items: center; gap: 4px; }
     .toggle-btn.active { background: var(--canvas-surface); color: var(--canvas-text-primary); font-weight: 500; }
     .execution-action-bar { display: flex; align-items: center; gap: 10px; padding: 12px 14px; background: var(--canvas-surface); border: 1px solid var(--canvas-border); border-radius: var(--radius-md); }
     .btn-primary.execute-btn { height: 32px; padding: 0 16px; background: #238636; border: 1px solid rgba(240, 246, 252, 0.1); border-radius: var(--radius-sm); color: #ffffff; font-size: 13px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 6px; transition: background 0.12s ease; }
@@ -882,6 +931,13 @@ export interface CustomHeaderItem {
     .tab-count { font-size: 10px; background: var(--canvas-bg); padding: 1px 4px; border-radius: 2px; }
     .copy-resp-btn { height: 22px; padding: 0 6px; font-size: 11px; background: var(--canvas-surface-elevated); border: 1px solid var(--canvas-border); border-radius: var(--radius-sm); color: var(--canvas-text-secondary); cursor: pointer; display: flex; align-items: center; gap: 4px; }
     .copy-resp-btn:hover { color: var(--canvas-text-primary); border-color: var(--canvas-text-muted); }
+    .response-success-alert { padding: 8px 10px; background: rgba(46, 160, 67, 0.12); border: 1px solid rgba(46, 160, 67, 0.3); border-radius: var(--radius-sm); display: flex; align-items: flex-start; gap: 8px; font-size: 12px; color: var(--color-success); }
+    .succ-alert-icon { font-size: 16px; width: 16px; height: 16px; margin-top: 1px; flex-shrink: 0; }
+    .succ-alert-body { flex: 1; display: flex; flex-direction: column; gap: 6px; }
+    .succ-msg { font-weight: 600; line-height: 1.4; }
+    .succ-actions { display: flex; align-items: center; gap: 8px; }
+    .list-nav-btn { height: 24px; padding: 0 8px; font-size: 11px; font-weight: 500; color: var(--canvas-text-primary); background: var(--canvas-surface-elevated); border: 1px solid var(--canvas-border); border-radius: var(--radius-sm); cursor: pointer; display: inline-flex; align-items: center; gap: 4px; transition: all 0.12s ease; }
+    .list-nav-btn:hover { border-color: var(--color-success); color: var(--color-success); background: #282e37; }
     .response-error-alert { padding: 8px 10px; background: rgba(218, 54, 51, 0.12); border: 1px solid rgba(218, 54, 51, 0.3); border-radius: var(--radius-sm); display: flex; align-items: flex-start; gap: 6px; font-size: 12px; color: #f85149; }
     .err-alert-icon { font-size: 15px; width: 15px; height: 15px; margin-top: 1px; }
     .err-alert-body { flex: 1; }
@@ -934,6 +990,8 @@ export class OperationPage implements OnInit {
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
 
+  @ViewChild('dynForm') dynamicFormRef?: DynamicFormComponent;
+
   readonly operationId = input<string | undefined>(undefined);
   readonly routeOperationId = signal<string | null>(null);
 
@@ -945,6 +1003,8 @@ export class OperationPage implements OnInit {
   readonly queryParamValues = signal<Record<string, string>>({});
   readonly headerParamValues = signal<Record<string, string>>({});
   readonly customHeaders = signal<CustomHeaderItem[]>([]);
+  readonly dynamicFormInitialValue = signal<Record<string, unknown> | null>(null);
+  readonly dynamicFormValue = signal<Record<string, unknown>>({});
   readonly requestBodyText = signal<string>('');
   readonly requestBodyFormatError = signal<string | null>(null);
   readonly validationError = signal<string | null>(null);
@@ -952,7 +1012,7 @@ export class OperationPage implements OnInit {
   // Execution & UI state
   readonly isExecuting = signal<boolean>(false);
   readonly executionResult = signal<ApiExecutionResult | null>(null);
-  readonly activeBodyTab = signal<'editor' | 'schema'>('editor');
+  readonly activeBodyTab = signal<'form' | 'editor' | 'schema'>('form');
   readonly activeResponseTab = signal<'body' | 'headers' | 'docs'>('body');
 
   readonly apiTitle = this.sessionService.apiTitle;
@@ -967,6 +1027,27 @@ export class OperationPage implements OnInit {
     const id = this.targetOpId();
     if (!id) return null;
     return this.sessionService.getOperation(id);
+  });
+
+  readonly hasStructuredBody = computed<boolean>(() => {
+    const rb = this.requestBody();
+    if (!rb || !rb.schema) return false;
+    const schema = rb.schema;
+    if (schema.properties && Object.keys(schema.properties).length > 0) return true;
+    if (schema.type === 'object') return true;
+    return false;
+  });
+
+  readonly isCreateOperation = computed<boolean>(() => {
+    const op = this.currentOperation();
+    if (!op) return false;
+    return op.type === 'create' || (op.method === 'POST' && this.hasStructuredBody());
+  });
+
+  readonly compatibleListOp = computed<ApiOperation | null>(() => {
+    const parent = this.parentResource();
+    if (!parent) return null;
+    return this.sessionService.getCompatibleListOperation(parent.id);
   });
 
   readonly currentResponseSchema = computed<ApiSchema | null>(() => {
@@ -1089,9 +1170,26 @@ export class OperationPage implements OnInit {
     if (rb) {
       const schema = 'schema' in rb ? (rb as ApiRequestBody).schema : (rb as ApiSchema);
       const sample = this.generateSampleFromSchema(schema);
+      if (sample && typeof sample === 'object' && !Array.isArray(sample)) {
+        this.dynamicFormInitialValue.set(sample as Record<string, unknown>);
+        this.dynamicFormValue.set(sample as Record<string, unknown>);
+      } else {
+        this.dynamicFormInitialValue.set(null);
+        this.dynamicFormValue.set({});
+      }
       this.requestBodyText.set(JSON.stringify(sample, null, 2));
+
+      // Prioritize form experience for create operations or structured schemas
+      if (this.hasStructuredBody() || op.type === 'create') {
+        this.activeBodyTab.set('form');
+      } else {
+        this.activeBodyTab.set('editor');
+      }
     } else {
+      this.dynamicFormInitialValue.set(null);
+      this.dynamicFormValue.set({});
       this.requestBodyText.set('');
+      this.activeBodyTab.set('editor');
     }
   }
 
@@ -1123,17 +1221,49 @@ export class OperationPage implements OnInit {
     );
   }
 
+  onDynamicFormChange(val: Record<string, unknown>): void {
+    this.dynamicFormValue.set(val);
+    this.validationError.set(null);
+  }
+
+  onSwitchBodyTab(tab: 'form' | 'editor' | 'schema'): void {
+    if (tab === 'editor' && this.activeBodyTab() === 'form') {
+      const formPayload = this.dynamicFormRef?.getPayload() ?? this.dynamicFormValue();
+      if (formPayload && Object.keys(formPayload).length > 0) {
+        this.requestBodyText.set(JSON.stringify(formPayload, null, 2));
+      }
+    } else if (tab === 'form' && this.activeBodyTab() === 'editor') {
+      const text = this.requestBodyText().trim();
+      if (text) {
+        try {
+          const parsed = JSON.parse(text);
+          if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+            this.dynamicFormInitialValue.set(parsed as Record<string, unknown>);
+            this.dynamicFormValue.set(parsed as Record<string, unknown>);
+          }
+        } catch {
+          // Keep previous dynamic form value
+        }
+      }
+    }
+    this.activeBodyTab.set(tab);
+  }
+
   onRequestBodyChange(text: string): void {
     this.requestBodyText.set(text);
-    if (this.requestBodyFormatError()) {
-      try {
-        if (text.trim() !== '') {
-          JSON.parse(text);
-        }
-        this.requestBodyFormatError.set(null);
-      } catch {
-        // Keep error until valid
+    if (!text.trim()) {
+      this.requestBodyFormatError.set(null);
+      return;
+    }
+    try {
+      const parsed = JSON.parse(text);
+      this.requestBodyFormatError.set(null);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        this.dynamicFormInitialValue.set(parsed as Record<string, unknown>);
+        this.dynamicFormValue.set(parsed as Record<string, unknown>);
       }
+    } catch (err: any) {
+      this.requestBodyFormatError.set(`JSON Format Error: ${err.message}`);
     }
   }
 
@@ -1158,11 +1288,17 @@ export class OperationPage implements OnInit {
     const schema = 'schema' in rb ? (rb as ApiRequestBody).schema : (rb as ApiSchema);
     const sample = this.generateSampleFromSchema(schema);
     this.requestBodyText.set(JSON.stringify(sample, null, 2));
+    if (sample && typeof sample === 'object' && !Array.isArray(sample)) {
+      this.dynamicFormInitialValue.set(sample as Record<string, unknown>);
+      this.dynamicFormValue.set(sample as Record<string, unknown>);
+    }
     this.requestBodyFormatError.set(null);
   }
 
   onClearBody(): void {
     this.requestBodyText.set('');
+    this.dynamicFormInitialValue.set({});
+    this.dynamicFormValue.set({});
     this.requestBodyFormatError.set(null);
   }
 
@@ -1189,20 +1325,36 @@ export class OperationPage implements OnInit {
       }
     }
 
-    // 2. Validate Request Body JSON if present
+    // 2. Validate and extract Request Body
     let parsedBody: unknown = undefined;
-    const bodyStr = this.requestBodyText().trim();
-    if (bodyStr !== '') {
-      try {
-        parsedBody = JSON.parse(bodyStr);
-      } catch (err: any) {
-        this.requestBodyFormatError.set(`Invalid JSON: ${err.message}`);
-        this.validationError.set('Please fix the JSON syntax error in the Request Body before executing.');
-        return;
+
+    if (op.method !== 'GET') {
+      if (this.activeBodyTab() === 'form' && this.hasStructuredBody()) {
+        if (this.dynamicFormRef) {
+          if (this.dynamicFormRef.form && this.dynamicFormRef.form.invalid) {
+            this.dynamicFormRef.form.markAllAsTouched();
+            this.validationError.set('Please fill in all required form fields correctly before executing.');
+            return;
+          }
+          parsedBody = this.dynamicFormRef.getPayload();
+        } else {
+          parsedBody = this.dynamicFormValue();
+        }
+      } else {
+        const bodyStr = this.requestBodyText().trim();
+        if (bodyStr !== '') {
+          try {
+            parsedBody = JSON.parse(bodyStr);
+          } catch (err: any) {
+            this.requestBodyFormatError.set(`Invalid JSON: ${err.message}`);
+            this.validationError.set('Please fix the JSON syntax error in the Request Body before executing.');
+            return;
+          }
+        } else if (op.requestBody && 'required' in op.requestBody && (op.requestBody as ApiRequestBody).required) {
+          this.validationError.set('Request Body is required for this operation.');
+          return;
+        }
       }
-    } else if (op.requestBody && 'required' in op.requestBody && (op.requestBody as ApiRequestBody).required) {
-      this.validationError.set('Request Body is required for this operation.');
-      return;
     }
 
     // 3. Assemble Headers
@@ -1241,6 +1393,13 @@ export class OperationPage implements OnInit {
         this.executionResult.set(result);
         this.isExecuting.set(false);
         this.activeResponseTab.set('body');
+
+        if (result.isSuccess) {
+          const parent = this.parentResource();
+          if (parent) {
+            this.sessionService.notifyResourceMutation(parent.id, op.operationId || op.id, result);
+          }
+        }
       },
       error: (err: any) => {
         this.executionResult.set({
@@ -1259,6 +1418,20 @@ export class OperationPage implements OnInit {
         this.isExecuting.set(false);
       }
     });
+  }
+
+  onNavigateToList(listOp?: ApiOperation): void {
+    if (listOp) {
+      const targetId = listOp.operationId || listOp.id;
+      this.router.navigate(['/operation', targetId]);
+    } else {
+      const parent = this.parentResource();
+      if (parent) {
+        this.router.navigate(['/workspace', parent.id]);
+      } else {
+        this.router.navigate(['/workspace']);
+      }
+    }
   }
 
   onNavigateBack(): void {
