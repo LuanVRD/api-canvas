@@ -1,14 +1,18 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ActivatedRoute, Router } from '@angular/router';
+import { of, throwError } from 'rxjs';
 import { OperationPage } from './operation.page';
 import { ApiSessionService } from '../../core/services/api-session.service';
+import { ApiExecutorService } from '../../core/services/api-executor.service';
 import { ApiDefinition } from '../../core/models/api-definition.model';
 import { ApiOperation } from '../../core/models/api-operation.model';
+import { ApiExecutionResult } from '../../core/models/api-execution-result.model';
 
 describe('OperationPage', () => {
   let component: OperationPage;
   let fixture: ComponentFixture<OperationPage>;
   let sessionService: ApiSessionService;
+  let executorService: ApiExecutorService;
   let routerNavigateSpy: any;
 
   const mockActionOperation: ApiOperation = {
@@ -102,7 +106,15 @@ describe('OperationPage', () => {
     summary: 'System health probe',
     description: 'Returns the health status of internal nodes',
     type: 'unknown',
-    parameters: [],
+    parameters: [
+      {
+        name: 'verbose',
+        location: 'query',
+        required: false,
+        schema: { type: 'boolean' },
+        description: 'Include detailed subsystem stats'
+      }
+    ],
     responses: [
       {
         statusCode: '200',
@@ -145,16 +157,22 @@ describe('OperationPage', () => {
       }
     };
 
+    const executorMock = {
+      execute: vi.fn()
+    };
+
     await TestBed.configureTestingModule({
       imports: [OperationPage],
       providers: [
         ApiSessionService,
+        { provide: ApiExecutorService, useValue: executorMock },
         { provide: Router, useValue: routerMock },
         { provide: ActivatedRoute, useValue: routeMock }
       ]
     }).compileComponents();
 
     sessionService = TestBed.inject(ApiSessionService);
+    executorService = TestBed.inject(ApiExecutorService);
     routerNavigateSpy = TestBed.inject(Router).navigate;
     sessionService.setSession(mockApiDefinition);
 
@@ -175,79 +193,203 @@ describe('OperationPage', () => {
     expect(compiled.textContent).toContain('action');
   });
 
-  it('should render path, query, header, and cookie parameters', () => {
+  it('should generate inputs for path, query, and header parameters with default values', () => {
     fixture.detectChanges();
     const compiled = fixture.nativeElement as HTMLElement;
 
-    // Path param
+    // Path parameter input
     expect(compiled.textContent).toContain('orderId');
-    expect(compiled.textContent).toContain('Path Parameters');
+    const pathInput = compiled.querySelector('input[aria-label="Path parameter orderId"]') as HTMLInputElement;
+    expect(pathInput).toBeTruthy();
 
-    // Query param
+    // Query parameter input
     expect(compiled.textContent).toContain('dryRun');
-    expect(compiled.textContent).toContain('Query Parameters');
+    const queryInput = compiled.querySelector('input[aria-label="Query parameter dryRun"]') as HTMLInputElement;
+    expect(queryInput).toBeTruthy();
 
-    // Header param
+    // Header parameter input
     expect(compiled.textContent).toContain('X-Idempotency-Key');
-    expect(compiled.textContent).toContain('Header Parameters');
-
-    // Cookie param
-    expect(compiled.textContent).toContain('session_auth');
-    expect(compiled.textContent).toContain('Cookie Parameters');
+    const headerInput = compiled.querySelector('input[aria-label="Header parameter X-Idempotency-Key"]') as HTMLInputElement;
+    expect(headerInput).toBeTruthy();
   });
 
-  it('should render request body section and its schema', () => {
+  it('should allow adding, editing and removing custom request headers', () => {
     fixture.detectChanges();
-    const compiled = fixture.nativeElement as HTMLElement;
+    expect(component.customHeaders().length).toBe(0);
 
-    expect(compiled.textContent).toContain('Request Body');
-    expect(compiled.textContent).toContain('application/json');
-    expect(compiled.textContent).toContain('paymentToken');
-    expect(compiled.textContent).toContain('customerNote');
+    component.onAddCustomHeader();
+    expect(component.customHeaders().length).toBe(1);
+
+    const item = component.customHeaders()[0];
+    component.onCustomHeaderChange(item.id, 'key', 'Authorization');
+    component.onCustomHeaderChange(item.id, 'value', 'Bearer token123');
+    expect(component.customHeaders()[0].key).toBe('Authorization');
+    expect(component.customHeaders()[0].value).toBe('Bearer token123');
+
+    component.onRemoveCustomHeader(item.id);
+    expect(component.customHeaders().length).toBe(0);
   });
 
-  it('should render responses section with status code badges, headers and schemas', () => {
+  it('should populate sample JSON for request body and allow formatting and clearing', () => {
     fixture.detectChanges();
-    const compiled = fixture.nativeElement as HTMLElement;
+    expect(component.requestBodyText()).toBeTruthy();
+    expect(component.requestBodyText()).toContain('paymentToken');
 
-    expect(compiled.textContent).toContain('Responses');
-    expect(compiled.textContent).toContain('200');
-    expect(compiled.textContent).toContain('400');
-    expect(compiled.textContent).toContain('X-Transaction-ID');
-    expect(compiled.textContent).toContain('transactionId');
+    // Test format with unformatted JSON
+    component.onRequestBodyChange('{"paymentToken":"tok_abc","customerNote":"Urgent"}');
+    component.onFormatJson();
+    expect(component.requestBodyText()).toContain('{\n  "paymentToken": "tok_abc"');
+
+    // Test clear
+    component.onClearBody();
+    expect(component.requestBodyText()).toBe('');
+
+    // Test regenerate sample
+    component.onGenerateSampleBody();
+    expect(component.requestBodyText()).toContain('paymentToken');
   });
 
-  it('should render unknown and non-CRUD operations correctly', () => {
+  it('should validate JSON syntax before executing request and display error', () => {
+    fixture.detectChanges();
+
+    // Provide path parameter so path validation passes
+    component.onPathParamChange('orderId', 'ord-12345');
+    // Set invalid JSON
+    component.onRequestBodyChange('{ invalid json structure: true ');
+
+    component.onExecute();
+
+    expect(component.requestBodyFormatError()).toBeTruthy();
+    expect(component.validationError()).toContain('JSON syntax error');
+    expect(executorService.execute).not.toHaveBeenCalled();
+  });
+
+  it('should validate missing required path parameters before executing', () => {
+    fixture.detectChanges();
+    // Path parameter 'orderId' is empty
+    component.onPathParamChange('orderId', '');
+
+    component.onExecute();
+
+    expect(component.validationError()).toContain('Missing required path parameter: "orderId"');
+    expect(executorService.execute).not.toHaveBeenCalled();
+  });
+
+  it('should execute request successfully and display response status, duration and body', () => {
+    const mockResult: ApiExecutionResult = {
+      status: 200,
+      statusText: 'OK',
+      headers: { 'content-type': 'application/json', 'x-transaction-id': 'tx_999' },
+      data: { success: true, transactionId: 'tx_999' },
+      duration: 45,
+      durationMs: 45,
+      isSuccess: true
+    };
+    (executorService.execute as any).mockReturnValue(of(mockResult));
+
+    fixture.detectChanges();
+    component.onPathParamChange('orderId', 'ord-12345');
+    component.onHeaderParamChange('X-Idempotency-Key', 'idemp-key-777');
+    component.onQueryParamChange('dryRun', 'false');
+    component.onRequestBodyChange(JSON.stringify({ paymentToken: 'tok_live_123' }));
+
+    component.onExecute();
+    fixture.detectChanges();
+
+    expect(executorService.execute).toHaveBeenCalledWith(
+      'https://api.acme.com',
+      mockActionOperation,
+      {
+        path: { orderId: 'ord-12345' },
+        query: { dryRun: 'false' },
+        headers: { 'X-Idempotency-Key': 'idemp-key-777' },
+        body: { paymentToken: 'tok_live_123' }
+      }
+    );
+
+    expect(component.executionResult()).toEqual(mockResult);
+    expect(component.isExecuting()).toBe(false);
+
+    const compiled = fixture.nativeElement as HTMLElement;
+    expect(compiled.textContent).toContain('200 OK');
+    expect(compiled.textContent).toContain('45ms');
+    expect(compiled.textContent).toContain('tx_999');
+  });
+
+  it('should handle HTTP error responses (e.g. 400 Bad Request) without crashing and render error message', () => {
+    const mockErrorResult: ApiExecutionResult = {
+      status: 400,
+      statusText: 'Bad Request',
+      headers: { 'content-type': 'application/json' },
+      data: { error: 'Card expired' },
+      duration: 30,
+      durationMs: 30,
+      isSuccess: false,
+      error: {
+        message: 'Request failed with status code 400',
+        status: 400,
+        details: { error: 'Card expired' }
+      }
+    };
+    (executorService.execute as any).mockReturnValue(of(mockErrorResult));
+
+    fixture.detectChanges();
+    component.onPathParamChange('orderId', 'ord-999');
+    component.onExecute();
+    fixture.detectChanges();
+
+    expect(component.executionResult()).toEqual(mockErrorResult);
+    const compiled = fixture.nativeElement as HTMLElement;
+    expect(compiled.textContent).toContain('400 Bad Request');
+    expect(compiled.textContent).toContain('Request failed with status code 400');
+    expect(compiled.textContent).toContain('Card expired');
+  });
+
+  it('should execute unknown and action operations seamlessly', () => {
+    const mockResult: ApiExecutionResult = {
+      status: 200,
+      statusText: 'OK',
+      data: { status: 'healthy', uptime: 3600 },
+      duration: 12,
+      durationMs: 12,
+      isSuccess: true
+    };
+    (executorService.execute as any).mockReturnValue(of(mockResult));
+
     fixture.componentRef.setInput('operationId', 'getHealthCheck');
     fixture.detectChanges();
 
     expect(component.currentOperation()).toEqual(mockUnknownOperation);
-    const compiled = fixture.nativeElement as HTMLElement;
 
-    expect(compiled.textContent).toContain('GET');
-    expect(compiled.textContent).toContain('/api/system/health');
-    expect(compiled.textContent).toContain('unknown');
-    expect(compiled.textContent).toContain('System health probe');
-  });
-
-  it('should display not-found message when operationId does not match any operation', () => {
-    fixture.componentRef.setInput('operationId', 'non_existent_op');
+    component.onQueryParamChange('verbose', 'true');
+    component.onExecute();
     fixture.detectChanges();
 
-    expect(component.currentOperation()).toBeNull();
+    expect(executorService.execute).toHaveBeenCalledWith(
+      'https://api.acme.com',
+      mockUnknownOperation,
+      {
+        path: {},
+        query: { verbose: 'true' },
+        headers: {},
+        body: undefined
+      }
+    );
+
+    expect(component.executionResult()).toEqual(mockResult);
     const compiled = fixture.nativeElement as HTMLElement;
-    expect(compiled.textContent).toContain('Operation Not Found');
-    expect(compiled.textContent).toContain('non_existent_op');
+    expect(compiled.textContent).toContain('200 OK');
+    expect(compiled.textContent).toContain('healthy');
   });
 
-  it('should navigate back to parent resource when back button is clicked', () => {
-    fixture.detectChanges();
-    component.onNavigateBack();
-
-    expect(routerNavigateSpy).toHaveBeenCalledWith(['/workspace', 'orders']);
+  it('should trigger execution on Ctrl+Enter keyboard shortcut', () => {
+    const executeSpy = vi.spyOn(component, 'onExecute');
+    const event = new KeyboardEvent('keydown', { key: 'Enter', ctrlKey: true });
+    component.onKeyDown(event);
+    expect(executeSpy).toHaveBeenCalled();
   });
 
-  it('should copy path to clipboard when onCopyPath is called', async () => {
+  it('should copy response body to clipboard when onCopyResponse is called', async () => {
     const writeTextSpy = vi.fn().mockResolvedValue(undefined);
     Object.assign(navigator, {
       clipboard: {
@@ -255,7 +397,23 @@ describe('OperationPage', () => {
       }
     });
 
-    component.onCopyPath('/api/test');
-    expect(writeTextSpy).toHaveBeenCalledWith('/api/test');
+    const res: ApiExecutionResult = {
+      status: 200,
+      statusText: 'OK',
+      data: { result: 'ok' },
+      duration: 10,
+      durationMs: 10,
+      isSuccess: true
+    };
+
+    component.onCopyResponse(res);
+    expect(writeTextSpy).toHaveBeenCalledWith(JSON.stringify({ result: 'ok' }, null, 2));
+  });
+
+  it('should navigate back to parent resource when back button is clicked', () => {
+    fixture.detectChanges();
+    component.onNavigateBack();
+
+    expect(routerNavigateSpy).toHaveBeenCalledWith(['/workspace', 'orders']);
   });
 });
