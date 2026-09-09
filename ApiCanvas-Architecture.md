@@ -1546,3 +1546,27 @@ Ao final, a experiência ideal será:
 O OpenAPI é a **fonte de verdade técnica**.
 
 O frontend é responsável por transformar essa descrição técnica em uma experiência visual utilizável.
+
+---
+
+## 31. Consolidação Arquitetural do Núcleo Funcional
+
+Após a conclusão e revisão técnica do núcleo funcional, foram consolidadas as seguintes decisões de arquitetura:
+
+### 31.1. Separação Estrita de Camadas
+- **OpenAPI Layer (`src/app/openapi`)**: Responsável exclusiva por carregar, parsear, resolver `$ref` (com proteção contra ciclos e profundidade máxima) e mapear o documento OpenAPI bruto para o modelo interno. Componentes de UI nunca acessam a especificação bruta nem tipos de bibliotecas de parsing.
+- **Core Domain Layer (`src/app/core`)**: Define o modelo de domínio canônico (`ApiDefinition`, `ApiOperation`, `ApiResource`, `ApiSchema`, `ApiParameter`, `ApiResponse`), serviços centrais de sessão reativa (`ApiSessionService`), construtor canônico de requisições (`ApiRequestBuilderService`), executor HTTP desacoplado (`ApiExecutorService`) e matcher heurístico de operações (`ResourceOperationMatcherService`).
+- **Dynamic UI Layer (`src/app/dynamic-ui`)**: Motores de geração dinâmica de formulários (`FormSchemaService`), tabelas (`TableSchemaService`), visualização polimórfica de respostas (`ResponseDataViewerComponent`), gaveta de detalhes (`RecordDetailsDrawerComponent`) e diálogos de edição e exclusão.
+- **Features Layer (`src/app/features`)**: Páginas de entrada (`ApiConnectPage`), visão geral do workspace (`WorkspacePage`) e bancada de teste/inspeção de operações (`OperationPage`).
+
+### 31.2. Segurança e Autenticação em Sessão
+- Suporte a múltiplos esquemas de autenticação OpenAPI (`http` Bearer e `apiKey` em `header`, `query` ou `cookie`).
+- Credenciais mantidas em memória na sessão ativa através de Signals no `ApiSessionService`.
+- Injeção automática e transparente pelo `ApiRequestBuilderService` / `ApiExecutorService` quando a operação declarar `requiresAuth`.
+
+### 31.3. Eliminação de Suposições Rígidas
+- **Identificadores**: Resolução baseada em estratégia flexível (`id`, `_id`, `uuid`, `guid`, `code`, `slug`, `key`, `pk`, `identifier`) com comparação insensível a separadores e caixa.
+- **Roteamento**: Extração de recursos por remoção heurística de prefixos técnicos (`api`, `v1`, `rest`, etc.), suportando qualquer convenção de URL sem exigir formato fixo `/api/{resource}`.
+- **Status HTTP**: Avaliação baseada na faixa de sucesso `2xx` (`status >= 200 && status < 300`) com suporte contextual a respostas sem corpo (`204 No Content`, `304 Not Modified`).
+- **Polimorfismo de Resposta**: Detecção e renderização automática de coleções (tabela), objetos estruturados (detalhes), primitivas, payloads vazios e visualização bruta JSON.
+

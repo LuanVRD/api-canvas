@@ -768,19 +768,24 @@ export class DeleteConfirmDialogComponent implements OnInit {
           this.close.emit();
         }
       },
-      error: (err: any) => {
+      error: (err: unknown) => {
         this.isExecuting.set(false);
+        const errorObj = err && typeof err === 'object' ? (err as Record<string, unknown>) : null;
+        const status = typeof errorObj?.['status'] === 'number' ? errorObj['status'] : 0;
+        const statusText = typeof errorObj?.['statusText'] === 'string' ? errorObj['statusText'] : 'Execution Error';
+        const errorMsg = err instanceof Error ? err.message : typeof errorObj?.['message'] === 'string' ? errorObj['message'] : 'Failed to execute DELETE request';
+
         this.executionResult.set({
-          status: err?.status || 0,
-          statusText: err?.statusText || 'Execution Error',
-          data: err?.error || null,
+          status,
+          statusText,
+          data: errorObj?.['error'] ?? null,
           duration: 0,
           durationMs: 0,
           isSuccess: false,
           error: {
-            message: err?.message || 'Failed to execute DELETE request',
-            status: err?.status || 0,
-            details: err?.error
+            message: errorMsg,
+            status,
+            details: errorObj?.['error']
           }
         });
       }

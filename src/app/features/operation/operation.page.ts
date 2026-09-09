@@ -760,10 +760,10 @@ export interface CustomHeaderItem {
                         <div class="response-headers-viewer">
                           @if (res.headers && hasHeaders(res.headers)) {
                             <div class="resp-headers-table font-mono" role="table">
-                              @for (headerEntry of getHeaderEntries(res.headers); track headerEntry.name) {
+                              @for (headerEntry of getResponseHeaderEntries(res.headers); track headerEntry.name) {
                                 <div class="resp-header-row" role="row">
                                   <span class="rh-key" role="cell">{{ headerEntry.name }}:</span>
-                                  <span class="rh-val" role="cell">{{ headerEntry.schema }}</span>
+                                  <span class="rh-val" role="cell">{{ headerEntry.value }}</span>
                                 </div>
                               }
                             </div>
@@ -1393,7 +1393,7 @@ export class OperationPage implements OnInit {
     this.customHeaders.update((list) => list.filter((h) => h.id !== id));
   }
 
-  onCustomHeaderChange(id: string, field: 'key' | 'value' | 'enabled', val: any): void {
+  onCustomHeaderChange(id: string, field: 'key' | 'value' | 'enabled', val: string | boolean): void {
     this.customHeaders.update((list) =>
       list.map((h) => (h.id === id ? { ...h, [field]: val } : h))
     );
@@ -1440,8 +1440,9 @@ export class OperationPage implements OnInit {
         this.dynamicFormInitialValue.set(parsed as Record<string, unknown>);
         this.dynamicFormValue.set(parsed as Record<string, unknown>);
       }
-    } catch (err: any) {
-      this.requestBodyFormatError.set(`JSON Format Error: ${err.message}`);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.requestBodyFormatError.set(`JSON Format Error: ${msg}`);
     }
   }
 
@@ -1453,8 +1454,9 @@ export class OperationPage implements OnInit {
       const parsed = JSON.parse(raw);
       this.requestBodyText.set(JSON.stringify(parsed, null, 2));
       this.requestBodyFormatError.set(null);
-    } catch (err: any) {
-      this.requestBodyFormatError.set(`JSON Format Error: ${err.message}`);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.requestBodyFormatError.set(`JSON Format Error: ${msg}`);
     }
   }
 
@@ -1523,8 +1525,9 @@ export class OperationPage implements OnInit {
         if (bodyStr !== '') {
           try {
             parsedBody = JSON.parse(bodyStr);
-          } catch (err: any) {
-            this.requestBodyFormatError.set(`Invalid JSON: ${err.message}`);
+          } catch (err: unknown) {
+            const msg = err instanceof Error ? err.message : String(err);
+            this.requestBodyFormatError.set(`Invalid JSON: ${msg}`);
             this.validationError.set('Please fix the JSON syntax error in the Request Body before executing.');
             return;
           }
@@ -1579,18 +1582,23 @@ export class OperationPage implements OnInit {
           }
         }
       },
-      error: (err: any) => {
+      error: (err: unknown) => {
+        const errorObj = err && typeof err === 'object' ? (err as Record<string, unknown>) : null;
+        const status = typeof errorObj?.['status'] === 'number' ? errorObj['status'] : 0;
+        const statusText = typeof errorObj?.['statusText'] === 'string' ? errorObj['statusText'] : 'Execution Error';
+        const errorMsg = err instanceof Error ? err.message : typeof errorObj?.['message'] === 'string' ? errorObj['message'] : 'Execution error occurred';
+
         this.executionResult.set({
-          status: err?.status || 0,
-          statusText: err?.statusText || 'Execution Error',
-          data: err?.error || err?.message || 'Unknown network error',
+          status,
+          statusText,
+          data: errorObj?.['error'] ?? errorMsg,
           duration: 0,
           durationMs: 0,
           isSuccess: false,
           error: {
-            message: err?.message || 'Execution error occurred',
-            status: err?.status || 0,
-            details: err?.error
+            message: errorMsg,
+            status,
+            details: errorObj?.['error']
           }
         });
         this.isExecuting.set(false);
@@ -1805,15 +1813,19 @@ export class OperationPage implements OnInit {
     return map[statusCode] || 'Response';
   }
 
-  hasHeaders(headers: Record<string, any>): boolean {
+  hasHeaders(headers: Record<string, unknown>): boolean {
     return headers ? Object.keys(headers).length > 0 : false;
   }
 
-  getObjectKeysCount(obj: Record<string, any>): number {
+  getObjectKeysCount(obj: Record<string, unknown>): number {
     return obj ? Object.keys(obj).length : 0;
   }
 
-  getHeaderEntries(headers: Record<string, any>): Array<{ name: string; schema: any }> {
+  getResponseHeaderEntries(headers: Record<string, string>): Array<{ name: string; value: string }> {
+    return Object.entries(headers).map(([name, value]) => ({ name, value }));
+  }
+
+  getHeaderEntries(headers: Record<string, ApiSchema>): Array<{ name: string; schema: ApiSchema }> {
     return Object.entries(headers).map(([name, schema]) => ({ name, schema }));
   }
 

@@ -930,8 +930,9 @@ export class EditRecordDialogComponent implements OnInit, OnChanges {
       if (rawText) {
         try {
           payload = JSON.parse(rawText);
-        } catch (err: any) {
-          this.validationError.set(`Invalid JSON: ${err.message}`);
+        } catch (err: unknown) {
+          const msg = err instanceof Error ? err.message : String(err);
+          this.validationError.set(`Invalid JSON: ${msg}`);
           return;
         }
       } else {
@@ -959,19 +960,24 @@ export class EditRecordDialogComponent implements OnInit, OnChanges {
           this.close.emit();
         }
       },
-      error: (err: any) => {
+      error: (err: unknown) => {
         this.isExecuting.set(false);
+        const errorObj = err && typeof err === 'object' ? (err as Record<string, unknown>) : null;
+        const status = typeof errorObj?.['status'] === 'number' ? errorObj['status'] : 0;
+        const statusText = typeof errorObj?.['statusText'] === 'string' ? errorObj['statusText'] : 'Execution Error';
+        const errorMsg = err instanceof Error ? err.message : typeof errorObj?.['message'] === 'string' ? errorObj['message'] : 'Error executing update operation';
+
         this.executionResult.set({
-          status: err?.status || 0,
-          statusText: err?.statusText || 'Execution Error',
-          data: err?.error || err?.message || 'Update failed',
+          status,
+          statusText,
+          data: errorObj?.['error'] ?? errorMsg,
           duration: 0,
           durationMs: 0,
           isSuccess: false,
           error: {
-            message: err?.message || 'Error executing update operation',
-            status: err?.status || 0,
-            details: err?.error
+            message: errorMsg,
+            status,
+            details: errorObj?.['error']
           }
         });
       }
