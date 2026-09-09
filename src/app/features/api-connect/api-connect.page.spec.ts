@@ -6,6 +6,8 @@ import { FormControl } from '@angular/forms';
 import { OpenApiLoaderService } from '../../openapi/services/openapi-loader.service';
 import { OpenApiParserService } from '../../openapi/services/openapi-parser.service';
 import { ApiSessionService } from '../../core/services/api-session.service';
+import { StorageService } from '../../core/services/storage.service';
+import { RecentApiEntry } from '../../core/models/storage.model';
 import { ApiDefinition } from '../../core/models/api-definition.model';
 import { of, throwError, Subject } from 'rxjs';
 
@@ -15,6 +17,12 @@ describe('ApiConnectPage', () => {
   let openApiLoaderMock: { load: ReturnType<typeof vi.fn> };
   let openApiParserMock: { parse: ReturnType<typeof vi.fn> };
   let sessionServiceMock: { setSession: ReturnType<typeof vi.fn> };
+  let storageServiceMock: {
+    getRecentApis: ReturnType<typeof vi.fn>;
+    addRecentApi: ReturnType<typeof vi.fn>;
+    removeRecentApi: ReturnType<typeof vi.fn>;
+    clearRecentApis: ReturnType<typeof vi.fn>;
+  };
   let routerMock: { navigate: ReturnType<typeof vi.fn> };
 
   const mockParsedDefinition: ApiDefinition = {
@@ -31,6 +39,22 @@ describe('ApiConnectPage', () => {
     ]
   };
 
+  const initialRecentApis: RecentApiEntry[] = [
+    {
+      id: 'api_1',
+      openApiUrl: 'https://petstore.swagger.io/v2/swagger.json',
+      baseUrl: 'https://petstore.swagger.io/v2',
+      title: 'Petstore API',
+      lastConnectedAt: 1600000000000
+    },
+    {
+      id: 'api_2',
+      openApiUrl: 'https://api.example.com/openapi.json',
+      title: 'Example API',
+      lastConnectedAt: 1590000000000
+    }
+  ];
+
   beforeEach(async () => {
     openApiLoaderMock = {
       load: vi.fn()
@@ -44,6 +68,13 @@ describe('ApiConnectPage', () => {
       setSession: vi.fn()
     };
 
+    storageServiceMock = {
+      getRecentApis: vi.fn().mockReturnValue([...initialRecentApis]),
+      addRecentApi: vi.fn().mockReturnValue([...initialRecentApis]),
+      removeRecentApi: vi.fn().mockReturnValue([initialRecentApis[1]]),
+      clearRecentApis: vi.fn()
+    };
+
     routerMock = {
       navigate: vi.fn()
     };
@@ -55,6 +86,7 @@ describe('ApiConnectPage', () => {
         { provide: OpenApiLoaderService, useValue: openApiLoaderMock },
         { provide: OpenApiParserService, useValue: openApiParserMock },
         { provide: ApiSessionService, useValue: sessionServiceMock },
+        { provide: StorageService, useValue: storageServiceMock },
         { provide: Router, useValue: routerMock }
       ]
     }).compileComponents();
@@ -187,6 +219,59 @@ describe('ApiConnectPage', () => {
     });
   });
 
+  describe('Recent APIs Section', () => {
+    it('should render recent APIs when list is not empty', () => {
+      const element: HTMLElement = fixture.nativeElement;
+      const recentSection = element.querySelector('.recent-section');
+      expect(recentSection).toBeTruthy();
+
+      const items = element.querySelectorAll('.recent-item');
+      expect(items.length).toBe(2);
+      expect(items[0].textContent).toContain('Petstore API');
+      expect(items[0].textContent).toContain('Base: https://petstore.swagger.io/v2');
+      expect(items[1].textContent).toContain('Example API');
+    });
+
+    it('should not render recent section when recentApis is empty', () => {
+      component.recentApis.set([]);
+      fixture.detectChanges();
+
+      const element: HTMLElement = fixture.nativeElement;
+      const recentSection = element.querySelector('.recent-section');
+      expect(recentSection).toBeNull();
+    });
+
+    it('should select recent API and populate openApiUrl and baseUrl', () => {
+      const recentEntry: RecentApiEntry = {
+        id: 'test_id',
+        openApiUrl: 'https://staging.test.com/openapi.json',
+        baseUrl: 'https://staging.test.com/api',
+        title: 'Staging API',
+        lastConnectedAt: Date.now()
+      };
+
+      component.selectRecentApi(recentEntry);
+
+      expect(component.form.controls.openApiUrl.value).toBe('https://staging.test.com/openapi.json');
+      expect(component.form.controls.baseUrl.value).toBe('https://staging.test.com/api');
+      expect(component.form.valid).toBe(true);
+    });
+
+    it('should remove a recent API entry on button click', () => {
+      const removeButtons = fixture.nativeElement.querySelectorAll('.recent-remove-btn');
+      expect(removeButtons.length).toBe(2);
+
+      const fakeEvent = new MouseEvent('click');
+      const stopPropSpy = vi.spyOn(fakeEvent, 'stopPropagation');
+
+      component.removeRecentApi(fakeEvent, 'api_1');
+
+      expect(stopPropSpy).toHaveBeenCalled();
+      expect(storageServiceMock.removeRecentApi).toHaveBeenCalledWith('api_1');
+      expect(component.recentApis().length).toBe(1);
+    });
+  });
+
   describe('States: Loading & Error', () => {
     it('should show error banner when errorMessage signal is set', () => {
       component.setError('Failed to fetch OpenAPI document: 404 Not Found');
@@ -241,7 +326,7 @@ describe('ApiConnectPage', () => {
       expect(routerMock.navigate).not.toHaveBeenCalled();
     });
 
-    it('should trigger loader, parse spec, set session, override baseUrl, and navigate to /workspace', () => {
+    it('should trigger loader, parse spec, set session, override baseUrl, persist recent API, and navigate to /workspace', () => {
       const mockRawSpec = { openapi: '3.0.0', info: { title: 'Petstore' } };
       openApiLoaderMock.load.mockReturnValue(of(mockRawSpec));
       openApiParserMock.parse.mockReturnValue({ ...mockParsedDefinition });
@@ -268,6 +353,11 @@ describe('ApiConnectPage', () => {
           rawSpec: mockRawSpec
         }
       );
+      expect(storageServiceMock.addRecentApi).toHaveBeenCalledWith({
+        openApiUrl: 'https://petstore.swagger.io/v2/swagger.json',
+        baseUrl: 'https://api.custom.com',
+        title: 'Petstore API'
+      });
       expect(component.loading()).toBe(false);
       expect(emitted).toEqual({
         openApiUrl: 'https://petstore.swagger.io/v2/swagger.json',
@@ -298,6 +388,11 @@ describe('ApiConnectPage', () => {
         }),
         expect.any(Object)
       );
+      expect(storageServiceMock.addRecentApi).toHaveBeenCalledWith({
+        openApiUrl: 'https://petstore.swagger.io/v2/swagger.json',
+        baseUrl: undefined,
+        title: 'Petstore API'
+      });
       expect(emitted).toEqual({
         openApiUrl: 'https://petstore.swagger.io/v2/swagger.json',
         baseUrl: undefined,
@@ -400,4 +495,3 @@ describe('ApiConnectPage', () => {
     });
   });
 });
-
