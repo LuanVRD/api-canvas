@@ -275,5 +275,80 @@ describe('ApiExecutorService', () => {
     req.flush({ status: 'pong' });
   });
 
+  it('should attach API Key from session to protected operation requiring header apiKey', () => {
+    sessionService.setSession({
+      title: 'ApiKey API',
+      baseUrl: 'https://api.example.com',
+      resources: [],
+      securitySchemes: [
+        {
+          id: 'apiKeyHeaderScheme',
+          type: 'apiKey',
+          name: 'X-MY-API-KEY',
+          in: 'header',
+          isBearer: false,
+          isApiKey: true
+        }
+      ]
+    });
+    sessionService.setApiKey('apiKeyHeaderScheme', 'super-secret-key-123');
+
+    const protectedOp: ApiOperation = {
+      id: 'get_api_key_data',
+      method: 'GET',
+      path: '/data',
+      type: 'list',
+      requiresAuth: true,
+      applicableSecuritySchemes: ['apiKeyHeaderScheme'],
+      parameters: [],
+      responses: []
+    };
+
+    service.execute('https://api.example.com', protectedOp, {}).subscribe((result) => {
+      expect(result.isSuccess).toBe(true);
+    });
+
+    const req = httpMock.expectOne('https://api.example.com/data');
+    expect(req.request.headers.get('X-MY-API-KEY')).toBe('super-secret-key-123');
+    req.flush([{ item: 1 }]);
+  });
+
+  it('should attach API Key from session to protected operation requiring query apiKey', () => {
+    sessionService.setSession({
+      title: 'ApiKey Query API',
+      baseUrl: 'https://api.example.com',
+      resources: [],
+      securitySchemes: [
+        {
+          id: 'apiKeyQueryScheme',
+          type: 'apiKey',
+          name: 'api_token',
+          in: 'query',
+          isBearer: false,
+          isApiKey: true
+        }
+      ]
+    });
+    sessionService.setApiKey('apiKeyQueryScheme', 'query-token-777');
+
+    const protectedOp: ApiOperation = {
+      id: 'get_api_key_query_data',
+      method: 'GET',
+      path: '/query-data',
+      type: 'list',
+      requiresAuth: true,
+      applicableSecuritySchemes: ['apiKeyQueryScheme'],
+      parameters: [],
+      responses: []
+    };
+
+    service.execute('https://api.example.com', protectedOp, {}).subscribe((result) => {
+      expect(result.isSuccess).toBe(true);
+    });
+
+    const req = httpMock.expectOne((r) => r.url === 'https://api.example.com/query-data');
+    expect(req.request.params.get('api_token')).toBe('query-token-777');
+    req.flush([{ item: 2 }]);
+  });
 });
 

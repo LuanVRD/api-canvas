@@ -1,5 +1,6 @@
 import { Injectable } from '@angular/core';
 import { ApiOperation, ApiRequestBody } from '../models/api-operation.model';
+import { ApiSecurityScheme } from '../models/api-definition.model';
 import { ApiRequestInput } from '../models/api-request-input.model';
 import {
   BuiltApiRequest,
@@ -157,6 +158,23 @@ export class ApiRequestBuilderService {
       }
     }
 
+    // Injeção de API Key via Query Parameter se a operação exigir autenticação
+    if (operation.requiresAuth && options.apiKeys) {
+      const applicableSchemes = this.resolveApplicableSchemes(operation, options.securitySchemes);
+      for (const scheme of applicableSchemes) {
+        if (scheme.in === 'query' && scheme.name) {
+          const keyVal = options.apiKeys[scheme.id] ?? options.apiKeys[scheme.name];
+          if (keyVal && keyVal.trim().length > 0 && queryParams[scheme.name] === undefined) {
+            const cleanKeyVal = keyVal.trim();
+            queryParams[scheme.name] = cleanKeyVal;
+            queryStringParts.push(
+              `${encodeURIComponent(scheme.name)}=${encodeURIComponent(cleanKeyVal)}`
+            );
+          }
+        }
+      }
+    }
+
     const queryString =
       queryStringParts.length > 0 ? `?${queryStringParts.join('&')}` : '';
     const fullUrl = `${url}${queryString}`;
@@ -171,6 +189,19 @@ export class ApiRequestBuilderService {
         ? rawToken
         : `Bearer ${rawToken}`;
       headers['Authorization'] = tokenValue;
+    }
+
+    // Injeção de API Key via Header se a operação exigir autenticação
+    if (operation.requiresAuth && options.apiKeys) {
+      const applicableSchemes = this.resolveApplicableSchemes(operation, options.securitySchemes);
+      for (const scheme of applicableSchemes) {
+        if ((scheme.in === 'header' || !scheme.in) && scheme.name) {
+          const keyVal = options.apiKeys[scheme.id] ?? options.apiKeys[scheme.name];
+          if (keyVal && keyVal.trim().length > 0 && !headers[scheme.name]) {
+            headers[scheme.name] = keyVal.trim();
+          }
+        }
+      }
     }
 
     // Headers informados explicitamente no input (têm precedência)
@@ -263,6 +294,41 @@ export class ApiRequestBuilderService {
       return true;
     }
     return false;
+  }
+
+  /**
+   * Resolve os esquemas de segurança aplicáveis para a operação.
+   */
+  private resolveApplicableSchemes(
+    operation: ApiOperation,
+    availableSchemes?: ApiSecurityScheme[]
+  ): ApiSecurityScheme[] {
+    const applicableIds = operation.applicableSecuritySchemes ?? [];
+    if (applicableIds.length === 0 && (!operation.security || operation.security.length === 0)) {
+      return availableSchemes ?? [];
+    }
+
+    if (!availableSchemes || availableSchemes.length === 0) {
+      // Fallback: se nenhum scheme detalhado foi fornecido, monta esquemas sintéticos
+      return applicableIds.map((id) => ({
+        id,
+        type: 'apiKey',
+        name: id,
+        in: 'header',
+        isBearer: false,
+        isApiKey: true
+      }));
+    }
+
+    const matched: ApiSecurityScheme[] = [];
+    for (const id of applicableIds) {
+      const found = availableSchemes.find((s) => s.id === id);
+      if (found) {
+        matched.push(found);
+      }
+    }
+
+    return matched.length > 0 ? matched : availableSchemes;
   }
 
   /**

@@ -53,52 +53,68 @@ describe('AuthConfigDialogComponent', () => {
     expect(compiled.textContent).toContain('bearerAuth');
     expect(compiled.textContent).toContain('BEARER');
     expect(compiled.textContent).toContain('apiKeyAuth');
+    expect(compiled.textContent).toContain('X-API-KEY');
   });
 
-  it('should initialize inputToken with current session token if present', () => {
+  it('should initialize inputToken and inputApiKeys with current session credentials if present', () => {
     session.setBearerToken('existing-session-token');
+    session.setApiKey('apiKeyAuth', 'existing-key-value');
 
     const newFixture = TestBed.createComponent(AuthConfigDialogComponent);
     const newComponent = newFixture.componentInstance;
     newFixture.detectChanges();
 
     expect(newComponent.inputToken).toBe('existing-session-token');
+    expect(newComponent.inputApiKeys['apiKeyAuth']).toBe('existing-key-value');
     expect(newComponent.hasBearerToken()).toBe(true);
+    expect(newComponent.hasAnyApiKey()).toBe(true);
   });
 
-  it('should save entered token to session on onSave and emit close', () => {
+  it('should save entered token and api keys to session on onSave and emit close', () => {
     const closeSpy = vi.fn();
     component.close.subscribe(closeSpy);
 
     component.inputToken = 'new-secret-jwt';
+    component.inputApiKeys['apiKeyAuth'] = 'my-api-key-value';
     component.onSave();
 
     expect(session.bearerToken()).toBe('new-secret-jwt');
+    expect(session.getApiKey('apiKeyAuth')).toBe('my-api-key-value');
     expect(session.hasBearerToken()).toBe(true);
+    expect(session.hasAnyApiKey()).toBe(true);
     expect(closeSpy).toHaveBeenCalled();
   });
 
-  it('should clear token from session on onClearSessionToken and emit close', () => {
+  it('should clear all credentials from session on onClearAllCredentials and emit close', () => {
     session.setBearerToken('some-token');
-    expect(session.hasBearerToken()).toBe(true);
+    session.setApiKey('apiKeyAuth', 'some-key');
+    expect(session.hasAnyAuthCredential()).toBe(true);
 
     const closeSpy = vi.fn();
     component.close.subscribe(closeSpy);
 
-    component.onClearSessionToken();
+    component.onClearAllCredentials();
 
     expect(session.bearerToken()).toBeNull();
-    expect(session.hasBearerToken()).toBe(false);
+    expect(session.getApiKey('apiKeyAuth')).toBeNull();
+    expect(session.hasAnyAuthCredential()).toBe(false);
     expect(component.inputToken).toBe('');
+    expect(component.inputApiKeys).toEqual({});
     expect(closeSpy).toHaveBeenCalled();
   });
 
-  it('should toggle password visibility flag', () => {
+  it('should toggle password visibility flag for bearer token and api keys', () => {
     expect(component.showPassword()).toBe(false);
     component.toggleShowPassword();
     expect(component.showPassword()).toBe(true);
     component.toggleShowPassword();
     expect(component.showPassword()).toBe(false);
+
+    expect(component.showKeyPassword['apiKeyAuth']).toBeFalsy();
+    component.toggleShowKeyPassword('apiKeyAuth');
+    expect(component.showKeyPassword['apiKeyAuth']).toBe(true);
+    component.toggleShowKeyPassword('apiKeyAuth');
+    expect(component.showKeyPassword['apiKeyAuth']).toBe(false);
   });
 
   it('should emit close on onEscape and onBackdropClick', () => {

@@ -57,12 +57,12 @@ import { MatIconModule } from '@angular/material/icon';
           <button
             type="button"
             class="action-btn auth-btn"
-            [class.active]="hasBearerToken()"
+            [class.active]="hasAnyAuthCredential()"
             (click)="isAuthDialogOpen.set(true)"
-            title="Configure API Authentication (Bearer Token)"
+            title="Configure API Authentication (Bearer Token & API Keys)"
           >
-            <mat-icon class="btn-icon">{{ hasBearerToken() ? 'lock' : 'lock_outline' }}</mat-icon>
-            <span>{{ hasBearerToken() ? 'Auth: Active' : 'Auth' }}</span>
+            <mat-icon class="btn-icon">{{ hasAnyAuthCredential() ? 'lock' : 'lock_outline' }}</mat-icon>
+            <span>{{ hasAnyAuthCredential() ? 'Auth: Active' : 'Auth' }}</span>
           </button>
 
           <button
@@ -610,6 +610,7 @@ export class WorkspacePage implements OnInit, OnDestroy {
 
   readonly isAuthDialogOpen = signal<boolean>(false);
   readonly hasBearerToken = this.sessionService.hasBearerToken;
+  readonly hasAnyAuthCredential = this.sessionService.hasAnyAuthCredential;
   readonly hasActiveApi = this.sessionService.hasActiveApi;
   readonly apiTitle = this.sessionService.apiTitle;
   readonly apiVersion = this.sessionService.apiVersion;

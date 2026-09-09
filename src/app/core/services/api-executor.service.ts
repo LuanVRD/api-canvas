@@ -20,16 +20,23 @@ export class ApiExecutorService {
     baseUrl: string,
     operation: ApiOperation,
     input: ApiRequestInput = {},
-    options?: { bearerToken?: string | null; skipValidation?: boolean }
+    options?: {
+      bearerToken?: string | null;
+      apiKeys?: Record<string, string>;
+      skipValidation?: boolean;
+    }
   ): Observable<ApiExecutionResult> {
     const startTime = performance.now();
     const token = options?.bearerToken !== undefined ? options.bearerToken : this.session.bearerToken();
+    const keys = options?.apiKeys !== undefined ? options.apiKeys : this.session.apiKeys();
 
     let built;
     try {
       built = this.requestBuilder.build(baseUrl, operation, input, {
         skipValidation: options?.skipValidation,
-        bearerToken: token
+        bearerToken: token,
+        apiKeys: keys,
+        securitySchemes: this.session.securitySchemes()
       });
     } catch (err: unknown) {
 

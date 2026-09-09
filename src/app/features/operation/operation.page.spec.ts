@@ -1067,5 +1067,62 @@ describe('OperationPage', () => {
     expect(component.activeEditRecord()).toBeNull();
     expect(fixture.nativeElement.querySelector('app-edit-record-dialog')).toBeNull();
   });
+
+  it('should render authentication warning banner when operation requiresAuth and credentials are missing', () => {
+    const authOperation: ApiOperation = {
+      id: 'secure_op',
+      operationId: 'getSecureProfile',
+      method: 'GET',
+      path: '/api/secure-profile',
+      type: 'details',
+      requiresAuth: true,
+      applicableSecuritySchemes: ['apiKeyScheme'],
+      parameters: [],
+      responses: []
+    };
+
+    const authApiDef: ApiDefinition = {
+      title: 'Auth Spec',
+      baseUrl: 'https://api.test.com',
+      securitySchemes: [
+        {
+          id: 'apiKeyScheme',
+          type: 'apiKey',
+          name: 'X-SECRET-API-KEY',
+          in: 'header',
+          isBearer: false,
+          isApiKey: true
+        }
+      ],
+      resources: [
+        {
+          id: 'profile',
+          name: 'profile',
+          label: 'Profile',
+          operations: [authOperation]
+        }
+      ]
+    };
+
+    sessionService.setSession(authApiDef);
+    sessionService.selectResource('profile');
+
+    const authFixture = TestBed.createComponent(OperationPage);
+    authFixture.componentRef.setInput('operationId', 'secure_op');
+    authFixture.detectChanges();
+
+    const compiled = authFixture.nativeElement as HTMLElement;
+    const warningBanner = compiled.querySelector('.auth-banner-alert');
+    expect(warningBanner).toBeTruthy();
+    expect(warningBanner?.textContent).toContain('AUTHENTICATION REQUIRED');
+    expect(warningBanner?.textContent).toContain('X-SECRET-API-KEY');
+
+    // Configure key in session
+    sessionService.setApiKey('apiKeyScheme', 'my-key-value');
+    authFixture.detectChanges();
+
+    expect(compiled.querySelector('.auth-banner-alert')).toBeNull();
+    expect(compiled.querySelector('.auth-indicator-btn')?.textContent).toContain('AUTH ACTIVE');
+  });
 });
 

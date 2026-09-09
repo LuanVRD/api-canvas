@@ -383,6 +383,97 @@ describe('OpenApiParserService', () => {
       expect(userOp.requiresAuth).toBe(true);
       expect(userOp.applicableSecuritySchemes).toEqual(['Bearer']);
     });
+
+    it('should parse OpenAPI 3.x apiKey security schemes in header, query, and cookie with name and in', () => {
+      const specWithApiKeys = {
+        openapi: '3.0.0',
+        info: { title: 'ApiKey API', version: '1.0.0' },
+        components: {
+          securitySchemes: {
+            headerApiKey: {
+              type: 'apiKey',
+              name: 'X-API-Key',
+              in: 'header',
+              description: 'API key via custom header'
+            },
+            queryApiKey: {
+              type: 'apiKey',
+              name: 'api_key',
+              in: 'query',
+              description: 'API key via URL parameter'
+            },
+            cookieApiKey: {
+              type: 'apiKey',
+              name: 'session_cookie',
+              in: 'cookie',
+              description: 'Session cookie'
+            }
+          }
+        },
+        paths: {
+          '/header-secure': {
+            get: {
+              summary: 'Header auth endpoint',
+              security: [{ headerApiKey: [] }],
+              responses: { '200': { description: 'Success' } }
+            }
+          },
+          '/query-secure': {
+            get: {
+              summary: 'Query auth endpoint',
+              security: [{ queryApiKey: [] }],
+              responses: { '200': { description: 'Success' } }
+            }
+          },
+          '/cookie-secure': {
+            get: {
+              summary: 'Cookie auth endpoint',
+              security: [{ cookieApiKey: [] }],
+              responses: { '200': { description: 'Success' } }
+            }
+          }
+        }
+      };
+
+      const def = service.parse(specWithApiKeys);
+
+      expect(def.securitySchemes).toBeDefined();
+      expect(def.securitySchemes!.length).toBe(3);
+
+      const headerScheme = def.securitySchemes!.find((s) => s.id === 'headerApiKey')!;
+      expect(headerScheme).toBeDefined();
+      expect(headerScheme.type).toBe('apiKey');
+      expect(headerScheme.name).toBe('X-API-Key');
+      expect(headerScheme.in).toBe('header');
+      expect(headerScheme.isApiKey).toBe(true);
+
+      const queryScheme = def.securitySchemes!.find((s) => s.id === 'queryApiKey')!;
+      expect(queryScheme).toBeDefined();
+      expect(queryScheme.type).toBe('apiKey');
+      expect(queryScheme.name).toBe('api_key');
+      expect(queryScheme.in).toBe('query');
+      expect(queryScheme.isApiKey).toBe(true);
+
+      const cookieScheme = def.securitySchemes!.find((s) => s.id === 'cookieApiKey')!;
+      expect(cookieScheme).toBeDefined();
+      expect(cookieScheme.type).toBe('apiKey');
+      expect(cookieScheme.name).toBe('session_cookie');
+      expect(cookieScheme.in).toBe('cookie');
+      expect(cookieScheme.isApiKey).toBe(true);
+
+      const ops = def.resources.flatMap((r) => r.operations);
+      const headerOp = ops.find((o) => o.path === '/header-secure')!;
+      expect(headerOp.requiresAuth).toBe(true);
+      expect(headerOp.applicableSecuritySchemes).toEqual(['headerApiKey']);
+
+      const queryOp = ops.find((o) => o.path === '/query-secure')!;
+      expect(queryOp.requiresAuth).toBe(true);
+      expect(queryOp.applicableSecuritySchemes).toEqual(['queryApiKey']);
+
+      const cookieOp = ops.find((o) => o.path === '/cookie-secure')!;
+      expect(cookieOp.requiresAuth).toBe(true);
+      expect(cookieOp.applicableSecuritySchemes).toEqual(['cookieApiKey']);
+    });
   });
 
   describe('Error handling', () => {

@@ -268,5 +268,86 @@ describe('ApiSessionService', () => {
     expect(service.hasBearerToken()).toBe(false);
     expect(service.bearerToken()).toBeNull();
   });
+
+  it('should manage in-memory API keys and check operation auth satisfaction', () => {
+    const authDef: ApiDefinition = {
+      ...mockApiDefinition,
+      securitySchemes: [
+        {
+          id: 'apiKeyHeader',
+          type: 'apiKey',
+          name: 'X-API-KEY',
+          in: 'header',
+          isBearer: false,
+          isApiKey: true
+        },
+        {
+          id: 'apiKeyQuery',
+          type: 'apiKey',
+          name: 'api_key',
+          in: 'query',
+          isBearer: false,
+          isApiKey: true
+        }
+      ]
+    };
+
+    service.setSession(authDef);
+
+    expect(service.hasApiKeyScheme()).toBe(true);
+    expect(service.apiKeySchemes().length).toBe(2);
+    expect(service.hasAnyApiKey()).toBe(false);
+    expect(service.configuredApiKeyCount()).toBe(0);
+
+    // Set single API key
+    service.setApiKey('apiKeyHeader', 'secret-key-123');
+    expect(service.getApiKey('apiKeyHeader')).toBe('secret-key-123');
+    expect(service.hasAnyApiKey()).toBe(true);
+    expect(service.hasAnyAuthCredential()).toBe(true);
+    expect(service.configuredApiKeyCount()).toBe(1);
+
+    // Set batch API keys
+    service.setApiKeys({
+      apiKeyHeader: 'updated-key',
+      apiKeyQuery: 'query-token-456'
+    });
+    expect(service.getApiKey('apiKeyHeader')).toBe('updated-key');
+    expect(service.getApiKey('apiKeyQuery')).toBe('query-token-456');
+    expect(service.configuredApiKeyCount()).toBe(2);
+
+    // Check operation satisfaction
+    const headerOp = {
+      id: 'secure_op',
+      method: 'GET' as const,
+      path: '/secure',
+      parameters: [],
+      responses: [],
+      type: 'list' as const,
+      requiresAuth: true,
+      applicableSecuritySchemes: ['apiKeyHeader']
+    };
+
+    expect(service.isOperationAuthSatisfied(headerOp)).toBe(true);
+    expect(service.getMissingAuthRequirements(headerOp)).toEqual([]);
+
+    // Clear one key
+    service.clearApiKey('apiKeyHeader');
+    expect(service.getApiKey('apiKeyHeader')).toBeNull();
+    expect(service.isOperationAuthSatisfied(headerOp)).toBe(false);
+    expect(service.getMissingAuthRequirements(headerOp).length).toBe(1);
+    expect(service.getMissingAuthRequirements(headerOp)[0].id).toBe('apiKeyHeader');
+
+    // Clear all keys
+    service.clearApiKeys();
+    expect(service.configuredApiKeyCount()).toBe(0);
+    expect(service.hasAnyApiKey()).toBe(false);
+
+    // Test clearSession resets all keys
+    service.setApiKey('apiKeyQuery', 'some-val');
+    expect(service.hasAnyApiKey()).toBe(true);
+    service.clearSession();
+    expect(service.hasAnyApiKey()).toBe(false);
+    expect(service.getApiKey('apiKeyQuery')).toBeNull();
+  });
 });
 

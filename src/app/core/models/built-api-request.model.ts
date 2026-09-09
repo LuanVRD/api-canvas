@@ -1,6 +1,8 @@
 import { HttpMethod } from './api-operation.model';
 import { ParameterLocation } from './api-parameter.model';
 
+import { ApiSecurityScheme } from './api-definition.model';
+
 export type RequestValidationLocation = ParameterLocation | 'body';
 
 export interface RequestValidationErrorItem {
@@ -38,5 +40,7 @@ export interface BuiltApiRequest {
 export interface BuildRequestOptions {
   skipValidation?: boolean;
   bearerToken?: string | null;
+  apiKeys?: Record<string, string>;
+  securitySchemes?: ApiSecurityScheme[];
 }
 

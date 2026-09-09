@@ -147,6 +147,19 @@ export class OpenApiParserService {
       const description = typeof s['description'] === 'string' ? s['description'] : undefined;
 
       const typeLower = rawType.toLowerCase();
+      let normalizedType: import('../../core/models/api-definition.model').ApiSecuritySchemeType = 'http';
+      if (typeLower === 'apikey') {
+        normalizedType = 'apiKey';
+      } else if (typeLower === 'oauth2') {
+        normalizedType = 'oauth2';
+      } else if (typeLower === 'openidconnect') {
+        normalizedType = 'openIdConnect';
+      } else if (typeLower === 'mutualtls') {
+        normalizedType = 'mutualTLS';
+      } else {
+        normalizedType = 'http';
+      }
+
       const isHttpBearer = typeLower === 'http' && scheme?.toLowerCase() === 'bearer';
       const isApiKeyAuthHeader =
         typeLower === 'apikey' &&
@@ -161,15 +174,18 @@ export class OpenApiParserService {
         isOAuth ||
         (Boolean(bearerFormat) && typeLower === 'http');
 
+      const isApiKey = typeLower === 'apikey';
+
       schemes.push({
         id,
-        type: rawType as import('../../core/models/api-definition.model').ApiSecuritySchemeType,
+        type: normalizedType,
         scheme,
         bearerFormat,
         name,
         in: inLocation,
         description,
-        isBearer
+        isBearer,
+        isApiKey
       });
     }
 

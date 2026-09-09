@@ -21,6 +21,7 @@ export interface ApiSecurityScheme {
   in?: 'header' | 'query' | 'cookie';
   description?: string;
   isBearer: boolean;
+  isApiKey?: boolean;
 }
 
 export type ApiSecurityRequirement = Record<string, string[]>;

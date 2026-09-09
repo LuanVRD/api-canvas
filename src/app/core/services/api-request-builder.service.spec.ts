@@ -529,6 +529,174 @@ describe('ApiRequestBuilderService', () => {
 
       expect(built.headers['Authorization']).toBe('CustomScheme custom-token');
     });
+
+    it('should inject API Key into HTTP header for protected operations requiring apiKey header scheme', () => {
+      const apiKeyHeaderOp: ApiOperation = {
+        id: 'secure_with_header_key',
+        method: 'GET',
+        path: '/secure/api-key-header',
+        type: 'list',
+        requiresAuth: true,
+        applicableSecuritySchemes: ['headerKeyScheme'],
+        parameters: [],
+        responses: []
+      };
+
+      const securitySchemes = [
+        {
+          id: 'headerKeyScheme',
+          type: 'apiKey' as const,
+          name: 'X-API-KEY',
+          in: 'header' as const,
+          isBearer: false,
+          isApiKey: true
+        }
+      ];
+
+      const built = service.build(
+        'https://api.example.com',
+        apiKeyHeaderOp,
+        {},
+        {
+          apiKeys: { headerKeyScheme: 'secret-token-header-999' },
+          securitySchemes
+        }
+      );
+
+      expect(built.headers['X-API-KEY']).toBe('secret-token-header-999');
+      expect(built.queryParams['X-API-KEY']).toBeUndefined();
+    });
+
+    it('should inject API Key into Query parameter and queryString for protected operations requiring apiKey query scheme', () => {
+      const apiKeyQueryOp: ApiOperation = {
+        id: 'secure_with_query_key',
+        method: 'GET',
+        path: '/secure/api-key-query',
+        type: 'list',
+        requiresAuth: true,
+        applicableSecuritySchemes: ['queryKeyScheme'],
+        parameters: [],
+        responses: []
+      };
+
+      const securitySchemes = [
+        {
+          id: 'queryKeyScheme',
+          type: 'apiKey' as const,
+          name: 'api_key',
+          in: 'query' as const,
+          isBearer: false,
+          isApiKey: true
+        }
+      ];
+
+      const built = service.build(
+        'https://api.example.com',
+        apiKeyQueryOp,
+        {
+          query: { filter: 'active' }
+        },
+        {
+          apiKeys: { queryKeyScheme: 'query-token-abc' },
+          securitySchemes
+        }
+      );
+
+      expect(built.queryParams['api_key']).toBe('query-token-abc');
+      expect(built.queryParams['filter']).toBe('active');
+      expect(built.fullUrl).toContain('filter=active');
+      expect(built.fullUrl).toContain('api_key=query-token-abc');
+      expect(built.headers['api_key']).toBeUndefined();
+    });
+
+    it('should NOT inject API Key into headers or query if operation does NOT require authentication', () => {
+      const publicOp: ApiOperation = {
+        id: 'public_op',
+        method: 'GET',
+        path: '/public/data',
+        type: 'list',
+        requiresAuth: false,
+        applicableSecuritySchemes: [],
+        parameters: [],
+        responses: []
+      };
+
+      const securitySchemes = [
+        {
+          id: 'headerKeyScheme',
+          type: 'apiKey' as const,
+          name: 'X-API-KEY',
+          in: 'header' as const,
+          isBearer: false,
+          isApiKey: true
+        },
+        {
+          id: 'queryKeyScheme',
+          type: 'apiKey' as const,
+          name: 'api_key',
+          in: 'query' as const,
+          isBearer: false,
+          isApiKey: true
+        }
+      ];
+
+      const built = service.build(
+        'https://api.example.com',
+        publicOp,
+        {},
+        {
+          apiKeys: {
+            headerKeyScheme: 'secret-header',
+            queryKeyScheme: 'secret-query'
+          },
+          securitySchemes
+        }
+      );
+
+      expect(built.headers['X-API-KEY']).toBeUndefined();
+      expect(built.queryParams['api_key']).toBeUndefined();
+      expect(built.queryString).toBe('');
+    });
+
+    it('should let explicitly provided input query/header override configured API keys', () => {
+      const apiKeyOp: ApiOperation = {
+        id: 'secure_op_override',
+        method: 'GET',
+        path: '/secure/custom',
+        type: 'list',
+        requiresAuth: true,
+        applicableSecuritySchemes: ['keyScheme'],
+        parameters: [],
+        responses: []
+      };
+
+      const securitySchemes = [
+        {
+          id: 'keyScheme',
+          type: 'apiKey' as const,
+          name: 'X-CUSTOM-KEY',
+          in: 'header' as const,
+          isBearer: false,
+          isApiKey: true
+        }
+      ];
+
+      const built = service.build(
+        'https://api.example.com',
+        apiKeyOp,
+        {
+          headers: {
+            'X-CUSTOM-KEY': 'override-by-manual-input'
+          }
+        },
+        {
+          apiKeys: { keyScheme: 'configured-session-key' },
+          securitySchemes
+        }
+      );
+
+      expect(built.headers['X-CUSTOM-KEY']).toBe('override-by-manual-input');
+    });
   });
 });
 

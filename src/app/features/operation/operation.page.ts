@@ -33,6 +33,7 @@ import { EmptyStateComponent } from '../../shared/components/empty-state/empty-s
 import { JsonViewerComponent } from '../../shared/components/json-viewer/json-viewer.component';
 
 import { AuthConfigDialogComponent } from '../workspace/auth-config-dialog.component';
+import { ApiSecurityScheme } from '../../core/models/api-definition.model';
 
 export interface CustomHeaderItem {
   id: string;
@@ -116,12 +117,12 @@ export interface CustomHeaderItem {
                     <button
                       type="button"
                       class="auth-indicator-btn font-mono"
-                      [class.active]="hasBearerToken()"
+                      [class.active]="isAuthSatisfied()"
                       (click)="isAuthDialogOpen.set(true)"
-                      title="Click to configure API Bearer Token"
+                      title="Click to configure API Authentication (Bearer Token & API Keys)"
                     >
-                      <mat-icon class="auth-btn-icon">{{ hasBearerToken() ? 'lock' : 'lock_outline' }}</mat-icon>
-                      <span>{{ hasBearerToken() ? 'BEARER AUTH' : 'AUTH REQUIRED' }}</span>
+                      <mat-icon class="auth-btn-icon">{{ isAuthSatisfied() ? 'lock' : 'lock_outline' }}</mat-icon>
+                      <span>{{ isAuthSatisfied() ? 'AUTH ACTIVE' : 'AUTH REQUIRED' }}</span>
                     </button>
                   }
                   @if (op.method === 'GET') {
@@ -204,18 +205,20 @@ export interface CustomHeaderItem {
             </section>
 
             <!-- Authentication Warning Banner when auth required but missing -->
-            @if (op.requiresAuth && !hasBearerToken()) {
+            @if (op.requiresAuth && !isAuthSatisfied()) {
               <div class="auth-banner-alert font-mono">
                 <div class="alert-content">
                   <mat-icon class="alert-icon">vpn_key</mat-icon>
                   <div class="alert-text">
-                    <span class="alert-title">BEARER AUTHENTICATION REQUIRED</span>
-                    <span class="alert-desc font-sans">This endpoint requires authentication per OpenAPI security requirements. No Bearer token is currently active in this session.</span>
+                    <span class="alert-title">AUTHENTICATION REQUIRED</span>
+                    <span class="alert-desc font-sans">
+                      This endpoint requires authentication ({{ getMissingAuthDescription() }}). No matching credentials are active in this session.
+                    </span>
                   </div>
                 </div>
                 <button type="button" class="btn-configure-auth" (click)="isAuthDialogOpen.set(true)">
                   <mat-icon class="btn-icon">lock</mat-icon>
-                  <span>Configure Token</span>
+                  <span>Configure Credentials</span>
                 </button>
               </div>
             }
@@ -1139,6 +1142,21 @@ export class OperationPage implements OnInit {
   readonly activeResponseTab = signal<'body' | 'headers' | 'docs'>('body');
   readonly isAuthDialogOpen = signal<boolean>(false);
   readonly hasBearerToken = this.sessionService.hasBearerToken;
+  readonly hasAnyApiKey = this.sessionService.hasAnyApiKey;
+  readonly hasAnyAuthCredential = this.sessionService.hasAnyAuthCredential;
+
+  readonly isAuthSatisfied = computed<boolean>(() => {
+    const op = this.currentOperation();
+    if (!op) return true;
+    return this.sessionService.isOperationAuthSatisfied(op);
+  });
+
+  readonly missingAuthSchemes = computed<ApiSecurityScheme[]>(() => {
+    const op = this.currentOperation();
+    if (!op) return [];
+    return this.sessionService.getMissingAuthRequirements(op);
+  });
+
   readonly activeDetailsInspection = signal<{
     detailsOp: ApiOperation;
     params: Record<string, string>;
@@ -1787,5 +1805,19 @@ export class OperationPage implements OnInit {
   formatEnumValues(values?: unknown[]): string {
     if (!values || !Array.isArray(values)) return '';
     return values.map((v) => JSON.stringify(v)).join(', ');
+  }
+
+  getMissingAuthDescription(): string {
+    const missing = this.missingAuthSchemes();
+    if (missing.length === 0) return 'Bearer token or API key';
+    return missing
+      .map((s) => {
+        if (s.isBearer) return 'Bearer Token';
+        if (s.in === 'header') return `API Key Header "${s.name || s.id}"`;
+        if (s.in === 'query') return `API Key Query "?${s.name || s.id}="`;
+        if (s.in === 'cookie') return `Cookie "${s.name || s.id}"`;
+        return `Security Scheme "${s.id}"`;
+      })
+      .join(', ');
   }
 }
