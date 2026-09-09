@@ -1,32 +1,33 @@
 <div class="app-layout">
   <!-- Top Global Navigation Bar (Developer Tooling Header) -->
-  <header class="app-header">
+  <header class="app-header" role="banner">
     <div class="brand-section">
-      <a routerLink="/connect" class="brand-link">
-        <mat-icon class="brand-icon">auto_stories</mat-icon>
-        <span class="brand-name">{{ title() }}</span>
+      <a routerLink="/connect" class="brand-link" title="ApiCanvas — Your API, rendered.">
+        <mat-icon class="brand-icon">terminal</mat-icon>
+        <span class="brand-name">ApiCanvas</span>
       </a>
-      <span class="version-tag font-mono">v0.1.0-alpha</span>
+      <span class="brand-tagline-short">Your API, rendered.</span>
+      <span class="version-tag font-mono">v0.1.0</span>
     </div>
 
-    <nav class="nav-links">
-      <a routerLink="/connect" routerLinkActive="active" class="nav-item">
+    <nav class="nav-links" aria-label="Main Navigation">
+      <a routerLink="/connect" routerLinkActive="active" class="nav-item" aria-label="Connect OpenAPI Specification">
         <mat-icon class="nav-icon">link</mat-icon>
         <span>Connect</span>
       </a>
-      <a routerLink="/workspace" routerLinkActive="active" class="nav-item">
+      <a routerLink="/workspace" routerLinkActive="active" class="nav-item" aria-label="Workspace & Operations">
         <mat-icon class="nav-icon">dashboard</mat-icon>
         <span>Workspace</span>
       </a>
     </nav>
 
     <div class="header-right">
-      <span class="env-badge font-mono">DEV MODE</span>
+      <span class="env-badge font-mono">OPENAPI 3.X</span>
     </div>
   </header>
 
   <!-- Router Outlet for Features -->
-  <main class="app-main">
+  <main class="app-main" role="main">
     <router-outlet></router-outlet>
   </main>
 </div>

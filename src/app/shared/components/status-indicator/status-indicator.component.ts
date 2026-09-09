@@ -31,7 +31,6 @@ import { CommonModule } from '@angular/common';
         color: var(--color-success);
         .dot {
           background-color: var(--color-success);
-          box-shadow: 0 0 6px rgba(46, 160, 67, 0.4);
         }
       }
 

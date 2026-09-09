@@ -114,9 +114,143 @@ code, pre, .font-mono {
   --mdc-elevated-card-container-color: var(--canvas-surface) !important;
   border: 1px solid var(--canvas-border) !important;
   box-shadow: none !important;
-  border-radius: var(--radius-md) !important;
+  border-radius: var(--radius-sm) !important;
 }
 
 .mat-mdc-form-field {
   font-size: 13px;
+
+  .mat-mdc-text-field-wrapper {
+    background-color: var(--canvas-surface) !important;
+    border-radius: var(--radius-sm) !important;
+  }
+
+  .mat-mdc-form-field-subscript-wrapper {
+    font-size: 11px;
+  }
+}
+
+// Global Accessible Focus Indicator for Developer Tools
+*:focus-visible {
+  outline: 2px solid var(--canvas-text-link) !important;
+  outline-offset: 1px !important;
+}
+
+// Technical Button Utility Classes
+.btn-tech-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 12px;
+  background-color: #238636;
+  color: #ffffff;
+  border: 1px solid rgba(240, 246, 252, 0.1);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.12s ease;
+  user-select: none;
+  text-decoration: none;
+
+  &:hover:not(:disabled) {
+    background-color: #2ea043;
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}
+
+.btn-tech-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 12px;
+  background-color: var(--canvas-surface-elevated);
+  color: var(--canvas-text-primary);
+  border: 1px solid var(--canvas-border);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.12s ease, border-color 0.12s ease;
+  user-select: none;
+  text-decoration: none;
+
+  &:hover:not(:disabled) {
+    background-color: #30363d;
+    border-color: #8b949e;
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}
+
+.btn-tech-danger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 12px;
+  background-color: var(--http-delete-bg);
+  color: var(--http-delete);
+  border: 1px solid var(--http-delete-border);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.12s ease;
+  user-select: none;
+
+  &:hover:not(:disabled) {
+    background-color: rgba(248, 81, 73, 0.2);
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}
+
+.btn-tech-ghost {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  height: 28px;
+  padding: 0 8px;
+  background: transparent;
+  color: var(--canvas-text-secondary);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.12s ease;
+  user-select: none;
+
+  &:hover:not(:disabled) {
+    color: var(--canvas-text-primary);
+    background-color: var(--canvas-surface-elevated);
+    border-color: var(--canvas-border-subtle);
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}
+
+// Modal Backdrop Overlay standard
+.cdk-overlay-backdrop {
+  background-color: rgba(0, 0, 0, 0.65) !important;
 }

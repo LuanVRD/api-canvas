@@ -262,8 +262,7 @@ import { ApiSecurityScheme } from '../../core/models/api-definition.model';
     .dialog-backdrop {
       position: fixed;
       inset: 0;
-      background-color: rgba(0, 0, 0, 0.75);
-      backdrop-filter: blur(2px);
+      background-color: rgba(0, 0, 0, 0.65);
       z-index: 1000;
       display: flex;
       align-items: center;
@@ -272,15 +271,15 @@ import { ApiSecurityScheme } from '../../core/models/api-definition.model';
     }
 
     .dialog-panel {
-      background-color: #12151c;
-      border: 1px solid #232a3b;
+      background-color: var(--canvas-surface);
+      border: 1px solid var(--canvas-border);
       width: 100%;
       max-width: 660px;
       max-height: 90vh;
       display: flex;
       flex-direction: column;
       box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
-      border-radius: 4px;
+      border-radius: var(--radius-sm);
       overflow: hidden;
     }
 
