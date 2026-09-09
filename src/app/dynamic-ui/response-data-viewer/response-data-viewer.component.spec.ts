@@ -314,4 +314,71 @@ describe('ResponseDataViewerComponent', () => {
       missingParams: []
     });
   });
+
+  it('should detect updateOperation and emit editRecord event when row edit is triggered', () => {
+    const listOp: ApiOperation = {
+      id: 'get_products',
+      method: 'GET',
+      path: '/products',
+      type: 'list',
+      parameters: [],
+      responses: []
+    };
+
+    const updateOp: ApiOperation = {
+      id: 'update_product_by_id',
+      method: 'PUT',
+      path: '/products/{id}',
+      type: 'update',
+      parameters: [
+        {
+          name: 'id',
+          location: 'path',
+          required: true,
+          schema: { type: 'integer' }
+        }
+      ],
+      responses: []
+    };
+
+    const sessionService = TestBed.inject(ApiSessionService);
+    sessionService.setSession({
+      title: 'Test Store',
+      version: '1.0.0',
+      baseUrl: 'https://store.test',
+      resources: [
+        {
+          id: 'products',
+          name: 'products',
+          label: 'Products',
+          operations: [listOp, updateOp]
+        }
+      ]
+    });
+
+    component.sourceOperation = listOp;
+    component.result = {
+      status: 200,
+      statusText: 'OK',
+      isSuccess: true,
+      data: [{ id: 321, name: 'Product to edit' }]
+    };
+
+    fixture.detectChanges();
+
+    expect(component.hasUpdateOp()).toBe(true);
+    expect(component.updateOperation()).toBe(updateOp);
+
+    const editSpy = vi.spyOn(component.editRecord, 'emit');
+    component.onRowEdit({ id: 321, name: 'Product to edit' });
+
+    expect(editSpy).toHaveBeenCalledWith({
+      record: { id: 321, name: 'Product to edit' },
+      updateOp,
+      availableOps: [updateOp],
+      params: { id: '321' },
+      missingParams: [],
+      detailsOp: null
+    });
+  });
 });

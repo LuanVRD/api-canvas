@@ -11,7 +11,7 @@ describe('RecordDetailsDrawerComponent', () => {
   let component: RecordDetailsDrawerComponent;
   let fixture: ComponentFixture<RecordDetailsDrawerComponent>;
   let mockExecutor: { execute: ReturnType<typeof vi.fn> };
-  let mockSession: { baseUrl: ReturnType<typeof vi.fn> };
+  let mockSession: { baseUrl: ReturnType<typeof vi.fn>; getResourceForOperation: ReturnType<typeof vi.fn> };
   let mockRouter: { navigate: ReturnType<typeof vi.fn> };
 
   const sampleOp: ApiOperation = {
@@ -45,7 +45,8 @@ describe('RecordDetailsDrawerComponent', () => {
     };
 
     mockSession = {
-      baseUrl: vi.fn().mockReturnValue('https://api.example.com')
+      baseUrl: vi.fn().mockReturnValue('https://api.example.com'),
+      getResourceForOperation: vi.fn().mockReturnValue(null)
     };
 
     mockRouter = {
@@ -146,5 +147,47 @@ describe('RecordDetailsDrawerComponent', () => {
     closeBtn.click();
 
     expect(closeSpy).toHaveBeenCalled();
+  });
+
+  it('should detect update operation and emit editRecord when onEditRecord is invoked', () => {
+    const updateOp: ApiOperation = {
+      id: 'update_pet',
+      method: 'PUT',
+      path: '/pets/{petId}',
+      type: 'update',
+      parameters: [
+        {
+          name: 'petId',
+          location: 'path',
+          required: true,
+          schema: { type: 'integer' }
+        }
+      ],
+      responses: []
+    };
+
+    mockSession.getResourceForOperation.mockReturnValue({
+      id: 'pets',
+      name: 'pets',
+      label: 'Pets',
+      operations: [sampleOp, updateOp]
+    });
+
+    fixture.detectChanges();
+
+    expect(component.hasUpdateOp()).toBe(true);
+    expect(component.updateOperation()).toBe(updateOp);
+
+    const editSpy = vi.spyOn(component.editRecord, 'emit');
+    component.onEditRecord();
+
+    expect(editSpy).toHaveBeenCalledWith({
+      record: { id: 10, name: 'Doggie', status: 'available' },
+      updateOp,
+      availableOps: [updateOp],
+      params: { petId: '10' },
+      missingParams: [],
+      detailsOp: sampleOp
+    });
   });
 });

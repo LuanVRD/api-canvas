@@ -164,6 +164,115 @@ export class ResourceOperationMatcherService {
   }
 
   /**
+   * Finds all matching 'update' operations (PUT or PATCH) for a given resource and optional source operation (e.g. list GET or details GET).
+   */
+  findCompatibleUpdateOperations(
+    resource: ApiResource,
+    sourceOperation?: ApiOperation | null
+  ): ApiOperation[] {
+    if (!resource || !resource.operations || resource.operations.length === 0) {
+      return [];
+    }
+
+    const candidateUpdates = resource.operations.filter(
+      (op) => op.method === 'PUT' || op.method === 'PATCH'
+    );
+
+    if (candidateUpdates.length === 0) {
+      return [];
+    }
+
+    if (!sourceOperation) {
+      return candidateUpdates;
+    }
+
+    const sourceBasePath = sourceOperation.path.split('?')[0].trim().replace(/\/+$/, '');
+    const sourceSegments = sourceBasePath.split('/').filter(Boolean);
+
+    // 1. Exact path match (e.g. if source is details GET /products/{id}, update PUT /products/{id} matches directly)
+    const exactMatches = candidateUpdates.filter((op) => {
+      const candidateBasePath = op.path.split('?')[0].trim().replace(/\/+$/, '');
+      return candidateBasePath.toLowerCase() === sourceBasePath.toLowerCase();
+    });
+
+    if (exactMatches.length > 0) {
+      return exactMatches;
+    }
+
+    // 2. Child path match (e.g. if source is list GET /products, update PUT /products/{id} extends by 1 path parameter)
+    const childMatches = candidateUpdates.filter((op) => {
+      const candidateBasePath = op.path.split('?')[0].trim().replace(/\/+$/, '');
+      const candidateSegments = candidateBasePath.split('/').filter(Boolean);
+
+      if (candidateSegments.length === sourceSegments.length + 1) {
+        const prefixMatches = sourceSegments.every(
+          (seg, idx) => seg.toLowerCase() === candidateSegments[idx].toLowerCase()
+        );
+        return prefixMatches && this.isPathParam(candidateSegments[candidateSegments.length - 1]);
+      }
+      return false;
+    });
+
+    if (childMatches.length > 0) {
+      return childMatches;
+    }
+
+    // 3. Longest common prefix match
+    let maxPrefixLength = 0;
+    const scoredCandidates: Array<{ op: ApiOperation; score: number }> = [];
+
+    for (const op of candidateUpdates) {
+      const prefixLen = this.calculateCommonPathLength(sourceBasePath, op.path);
+      if (prefixLen > maxPrefixLength) {
+        maxPrefixLength = prefixLen;
+      }
+      scoredCandidates.push({ op, score: prefixLen });
+    }
+
+    if (maxPrefixLength > 0) {
+      return scoredCandidates
+        .filter((c) => c.score === maxPrefixLength)
+        .map((c) => c.op);
+    }
+
+    return candidateUpdates;
+  }
+
+  /**
+   * Finds the best matching 'update' operation (PUT or PATCH) for a given resource and optional source operation.
+   */
+  findCompatibleUpdateOperation(
+    resource: ApiResource,
+    sourceOperation?: ApiOperation | null,
+    preferMethod?: 'PUT' | 'PATCH'
+  ): ApiOperation | null {
+    const candidates = this.findCompatibleUpdateOperations(resource, sourceOperation);
+    if (candidates.length === 0) {
+      return null;
+    }
+
+    if (preferMethod) {
+      const preferred = candidates.find((op) => op.method === preferMethod);
+      if (preferred) {
+        return preferred;
+      }
+    }
+
+    // Default preference: prioritized classified type 'update' or PUT first, then PATCH
+    const classifiedUpdate = candidates.find((op) => op.type === 'update');
+    if (classifiedUpdate) {
+      return classifiedUpdate;
+    }
+
+    const putOp = candidates.find((op) => op.method === 'PUT');
+    if (putOp) {
+      return putOp;
+    }
+
+    return candidates[0] ?? null;
+  }
+
+  /**
    * Resolves required and optional parameters for a target operation based on a record row object
    * and any active parent path parameters already known in the source execution context.
    */

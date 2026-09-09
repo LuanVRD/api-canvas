@@ -27,6 +27,7 @@ import { ResponseDataViewerComponent } from '../../dynamic-ui/response-data-view
 import { DynamicFormComponent } from '../../dynamic-ui/dynamic-form/dynamic-form.component';
 import { RecordDetailsDrawerComponent } from '../../dynamic-ui/object-details/record-details-drawer.component';
 import { DeleteConfirmDialogComponent } from '../../dynamic-ui/delete-dialog/delete-confirm-dialog.component';
+import { EditRecordDialogComponent } from '../../dynamic-ui/edit-dialog/edit-record-dialog.component';
 
 export interface CustomHeaderItem {
   id: string;
@@ -49,7 +50,8 @@ export interface CustomHeaderItem {
     ResponseDataViewerComponent,
     DynamicFormComponent,
     RecordDetailsDrawerComponent,
-    DeleteConfirmDialogComponent
+    DeleteConfirmDialogComponent,
+    EditRecordDialogComponent
   ],
   template: `
     <div class="operation-page-layout">
@@ -691,6 +693,7 @@ export interface CustomHeaderItem {
                             [sourceOperation]="currentOperation()"
                             [activePathParams]="pathParamValues()"
                             (inspectRecord)="onInspectRecord($event)"
+                            (editRecord)="onEditRecord($event)"
                             (deleteRecord)="onDeleteRecord($event)"
                           />
                         </div>
@@ -806,10 +809,26 @@ export interface CustomHeaderItem {
       <!-- Record Details Drawer / Modal -->
       @if (activeDetailsInspection(); as inspection) {
         <app-record-details-drawer
+          #detailsDrawer
           [operation]="inspection.detailsOp"
           [initialParams]="inspection.params"
           [missingParams]="inspection.missingParams || []"
+          (editRecord)="onEditRecord($event)"
           (close)="onCloseDetailsInspection()"
+        />
+      }
+
+      <!-- Record Edit Modal -->
+      @if (activeEditRecord(); as editRec) {
+        <app-edit-record-dialog
+          [operation]="editRec.updateOp"
+          [availableOperations]="editRec.availableOps || [editRec.updateOp]"
+          [record]="editRec.record"
+          [initialParams]="editRec.params"
+          [missingParams]="editRec.missingParams || []"
+          [detailsOperation]="editRec.detailsOp"
+          (updated)="onRecordUpdated($event)"
+          (close)="onCloseEditRecord()"
         />
       }
 
@@ -1048,6 +1067,14 @@ export class OperationPage implements OnInit {
     detailsOp: ApiOperation;
     params: Record<string, string>;
     missingParams?: ApiParameter[];
+  } | null>(null);
+  readonly activeEditRecord = signal<{
+    record: unknown;
+    updateOp: ApiOperation;
+    availableOps?: ApiOperation[];
+    params: Record<string, string>;
+    missingParams?: ApiParameter[];
+    detailsOp?: ApiOperation | null;
   } | null>(null);
   readonly activeDeleteConfirmation = signal<{
     deleteOp: ApiOperation;
@@ -1499,6 +1526,39 @@ export class OperationPage implements OnInit {
 
   onCloseDetailsInspection(): void {
     this.activeDetailsInspection.set(null);
+  }
+
+  onEditRecord(event: {
+    record: unknown;
+    updateOp: ApiOperation;
+    availableOps?: ApiOperation[];
+    params: Record<string, string>;
+    missingParams?: ApiParameter[];
+    detailsOp?: ApiOperation | null;
+  }): void {
+    this.activeEditRecord.set(event);
+  }
+
+  onCloseEditRecord(): void {
+    this.activeEditRecord.set(null);
+  }
+
+  onRecordUpdated(result: ApiExecutionResult): void {
+    const activeEdit = this.activeEditRecord();
+    const parent = this.parentResource();
+    if (parent && activeEdit) {
+      this.sessionService.notifyResourceMutation(
+        parent.id,
+        activeEdit.updateOp.operationId || activeEdit.updateOp.id,
+        result
+      );
+    }
+
+    // Auto-refresh the current list collection view if the current page is a GET operation
+    const currentOp = this.currentOperation();
+    if (currentOp && currentOp.method === 'GET') {
+      this.onExecute();
+    }
   }
 
   onDeleteRecord(event: {

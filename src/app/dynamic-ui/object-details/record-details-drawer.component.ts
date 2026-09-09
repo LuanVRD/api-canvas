@@ -18,6 +18,7 @@ import { ApiExecutionResult } from '../../core/models/api-execution-result.model
 import { ApiRequestInput } from '../../core/models/api-request-input.model';
 import { ApiSessionService } from '../../core/services/api-session.service';
 import { ApiExecutorService } from '../../core/services/api-executor.service';
+import { ResourceOperationMatcherService } from '../../core/services/resource-operation-matcher.service';
 import { HttpBadgeComponent } from '../../shared/components/http-badge/http-badge.component';
 import { ObjectDetailsComponent } from './object-details.component';
 
@@ -48,6 +49,18 @@ import { ObjectDetailsComponent } from './object-details.component';
           </div>
 
           <div class="header-actions">
+            @if (hasUpdateOp() && executionResult()?.isSuccess) {
+              <button
+                type="button"
+                class="icon-action-btn edit-action-btn"
+                (click)="onEditRecord()"
+                title="Edit this record"
+              >
+                <mat-icon class="icon-sm">edit</mat-icon>
+                <span>Edit</span>
+              </button>
+            }
+
             <button
               type="button"
               class="icon-action-btn"
@@ -713,6 +726,7 @@ import { ObjectDetailsComponent } from './object-details.component';
 export class RecordDetailsDrawerComponent implements OnInit {
   private readonly session = inject(ApiSessionService);
   private readonly executor = inject(ApiExecutorService);
+  private readonly matcher = inject(ResourceOperationMatcherService);
   private readonly router = inject(Router);
 
   @Input({ required: true }) operation!: ApiOperation;
@@ -720,6 +734,14 @@ export class RecordDetailsDrawerComponent implements OnInit {
   @Input() missingParams: ApiParameter[] = [];
 
   @Output() close = new EventEmitter<void>();
+  @Output() editRecord = new EventEmitter<{
+    record: unknown;
+    updateOp: ApiOperation;
+    availableOps?: ApiOperation[];
+    params: Record<string, string>;
+    missingParams?: ApiParameter[];
+    detailsOp?: ApiOperation | null;
+  }>();
 
   userParamValues = signal<Record<string, string>>({});
   isExecuting = signal<boolean>(false);
@@ -729,6 +751,25 @@ export class RecordDetailsDrawerComponent implements OnInit {
 
   readonly hasMissingParams = computed<boolean>(() => {
     return this.missingParams.length > 0;
+  });
+
+  /**
+   * Discovered compatible update operation for this item.
+   */
+  readonly updateOperation = computed<ApiOperation | null>(() => {
+    const parentRes = this.session.getResourceForOperation?.(this.operation.id || this.operation.operationId || '');
+    if (!parentRes) return null;
+    return this.matcher.findCompatibleUpdateOperation(parentRes, this.operation);
+  });
+
+  readonly updateOperations = computed<ApiOperation[]>(() => {
+    const parentRes = this.session.getResourceForOperation?.(this.operation.id || this.operation.operationId || '');
+    if (!parentRes) return [];
+    return this.matcher.findCompatibleUpdateOperations(parentRes, this.operation);
+  });
+
+  readonly hasUpdateOp = computed<boolean>(() => {
+    return this.updateOperation() !== null;
   });
 
   ngOnInit(): void {
@@ -836,5 +877,30 @@ export class RecordDetailsDrawerComponent implements OnInit {
     } catch {
       return String(data);
     }
+  }
+
+  onEditRecord(): void {
+    const updateOp = this.updateOperation();
+    if (!updateOp) return;
+
+    const resData = this.executionResult()?.data;
+    const resolution = this.matcher.resolveParameters(
+      updateOp,
+      resData,
+      this.userParamValues()
+    );
+
+    this.editRecord.emit({
+      record: resData,
+      updateOp,
+      availableOps: this.updateOperations(),
+      params: resolution.resolvedParams,
+      missingParams: resolution.missingParams,
+      detailsOp: this.operation
+    });
+  }
+
+  reload(): void {
+    this.fetchDetails();
   }
 }

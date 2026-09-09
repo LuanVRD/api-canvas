@@ -88,13 +88,14 @@ export type ViewMode = 'visual' | 'raw';
               <app-dynamic-table
                 [data]="$any(parsedData())"
                 [columns]="inferredColumns()"
-                [showActions]="hasDetailsOp() || hasDeleteOp()"
+                [showActions]="hasDetailsOp() || hasUpdateOp() || hasDeleteOp()"
                 [showViewAction]="hasDetailsOp()"
-                [showEditAction]="false"
+                [showEditAction]="hasUpdateOp()"
                 [showDeleteAction]="hasDeleteOp()"
                 viewTooltip="Inspect record details"
                 deleteTooltip="Delete record"
                 (rowView)="onRowInspect($event)"
+                (rowEdit)="onRowEdit($event)"
                 (rowDelete)="onRowDelete($event)"
               />
             </div>
@@ -358,6 +359,15 @@ export class ResponseDataViewerComponent {
     missingParams?: ApiParameter[];
   }>();
 
+  @Output() editRecord = new EventEmitter<{
+    record: unknown;
+    updateOp: ApiOperation;
+    availableOps?: ApiOperation[];
+    params: Record<string, string>;
+    missingParams?: ApiParameter[];
+    detailsOp?: ApiOperation | null;
+  }>();
+
   @Output() deleteRecord = new EventEmitter<{
     record: unknown;
     deleteOp: ApiOperation;
@@ -414,6 +424,41 @@ export class ResponseDataViewerComponent {
   });
 
   /**
+   * Discovered compatible update operation for the current resource/collection context.
+   */
+  readonly updateOperation = computed<ApiOperation | null>(() => {
+    const srcOp = this._sourceOperation();
+    if (!srcOp) {
+      const currentRes = this.session.selectedResource();
+      if (!currentRes) return null;
+      return this.matcher.findCompatibleUpdateOperation(currentRes);
+    }
+
+    const parentRes = this.session.getResourceForOperation(srcOp.id || srcOp.operationId || '');
+    if (!parentRes) return null;
+
+    return this.matcher.findCompatibleUpdateOperation(parentRes, srcOp);
+  });
+
+  readonly updateOperations = computed<ApiOperation[]>(() => {
+    const srcOp = this._sourceOperation();
+    if (!srcOp) {
+      const currentRes = this.session.selectedResource();
+      if (!currentRes) return [];
+      return this.matcher.findCompatibleUpdateOperations(currentRes);
+    }
+
+    const parentRes = this.session.getResourceForOperation(srcOp.id || srcOp.operationId || '');
+    if (!parentRes) return [];
+
+    return this.matcher.findCompatibleUpdateOperations(parentRes, srcOp);
+  });
+
+  readonly hasUpdateOp = computed<boolean>(() => {
+    return this.updateOperation() !== null;
+  });
+
+  /**
    * Discovered compatible delete operation for the current resource/collection context.
    */
   readonly deleteOperation = computed<ApiOperation | null>(() => {
@@ -449,6 +494,26 @@ export class ResponseDataViewerComponent {
       detailsOp,
       params: resolution.resolvedParams,
       missingParams: resolution.missingParams
+    });
+  }
+
+  onRowEdit(record: unknown): void {
+    const updateOp = this.updateOperation();
+    if (!updateOp) return;
+
+    const resolution = this.matcher.resolveParameters(
+      updateOp,
+      record,
+      this._activePathParams()
+    );
+
+    this.editRecord.emit({
+      record,
+      updateOp,
+      availableOps: this.updateOperations(),
+      params: resolution.resolvedParams,
+      missingParams: resolution.missingParams,
+      detailsOp: this.detailsOperation()
     });
   }
 

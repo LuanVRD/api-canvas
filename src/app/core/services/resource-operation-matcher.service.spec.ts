@@ -183,6 +183,95 @@ describe('ResourceOperationMatcherService', () => {
     });
   });
 
+  describe('findCompatibleUpdateOperations and findCompatibleUpdateOperation', () => {
+    const listOp: ApiOperation = {
+      id: 'get_products',
+      method: 'GET',
+      path: '/api/v1/products',
+      type: 'list',
+      parameters: [],
+      responses: []
+    };
+
+    const detailsOp: ApiOperation = {
+      id: 'get_product_by_id',
+      method: 'GET',
+      path: '/api/v1/products/{id}',
+      type: 'details',
+      parameters: [{ name: 'id', location: 'path', required: true, schema: { type: 'string' } }],
+      responses: []
+    };
+
+    const putOp: ApiOperation = {
+      id: 'update_product_put',
+      method: 'PUT',
+      path: '/api/v1/products/{id}',
+      type: 'update',
+      parameters: [{ name: 'id', location: 'path', required: true, schema: { type: 'string' } }],
+      responses: []
+    };
+
+    const patchOp: ApiOperation = {
+      id: 'patch_product',
+      method: 'PATCH',
+      path: '/api/v1/products/{id}',
+      type: 'update',
+      parameters: [{ name: 'id', location: 'path', required: true, schema: { type: 'string' } }],
+      responses: []
+    };
+
+    const otherPutOp: ApiOperation = {
+      id: 'update_category',
+      method: 'PUT',
+      path: '/api/v1/categories/{catId}',
+      type: 'update',
+      parameters: [],
+      responses: []
+    };
+
+    const resource: ApiResource = {
+      id: 'products',
+      name: 'products',
+      label: 'Products',
+      operations: [listOp, detailsOp, otherPutOp, putOp, patchOp]
+    };
+
+    it('should find all matching update operations for list source operation', () => {
+      const results = service.findCompatibleUpdateOperations(resource, listOp);
+      expect(results).toContain(putOp);
+      expect(results).toContain(patchOp);
+      expect(results).not.toContain(otherPutOp);
+    });
+
+    it('should find all matching update operations for details source operation', () => {
+      const results = service.findCompatibleUpdateOperations(resource, detailsOp);
+      expect(results).toContain(putOp);
+      expect(results).toContain(patchOp);
+      expect(results).not.toContain(otherPutOp);
+    });
+
+    it('should find best matching update operation with PUT as default priority', () => {
+      const result = service.findCompatibleUpdateOperation(resource, listOp);
+      expect(result).toBe(putOp);
+    });
+
+    it('should respect preferMethod when PATCH is requested', () => {
+      const result = service.findCompatibleUpdateOperation(resource, listOp, 'PATCH');
+      expect(result).toBe(patchOp);
+    });
+
+    it('should return null when resource has no update operations', () => {
+      const noUpdateRes: ApiResource = {
+        id: 'read_only',
+        name: 'read_only',
+        label: 'Read Only',
+        operations: [listOp]
+      };
+      expect(service.findCompatibleUpdateOperation(noUpdateRes)).toBeNull();
+      expect(service.findCompatibleUpdateOperations(noUpdateRes)).toEqual([]);
+    });
+  });
+
   describe('resolveParameters', () => {
     const detailsOpWithPetId: ApiOperation = {
       id: 'get_pet_by_id',

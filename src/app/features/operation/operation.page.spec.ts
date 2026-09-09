@@ -268,6 +268,43 @@ describe('OperationPage', () => {
     ]
   };
 
+  const mockUpdateOperation: ApiOperation = {
+    id: 'put_api_products_id',
+    operationId: 'updateProductById',
+    method: 'PUT',
+    path: '/api/products/{id}',
+    summary: 'Update Product by ID',
+    description: 'Updates product record completely',
+    type: 'update',
+    parameters: [
+      {
+        name: 'id',
+        location: 'path',
+        required: true,
+        schema: { type: 'string' },
+        description: 'Product unique identifier'
+      }
+    ],
+    requestBody: {
+      contentType: 'application/json',
+      required: true,
+      schema: {
+        type: 'object',
+        properties: {
+          name: { type: 'string', required: true, title: 'Product Name' },
+          price: { type: 'number', required: true, title: 'Price' }
+        },
+        requiredProperties: ['name', 'price']
+      }
+    },
+    responses: [
+      {
+        statusCode: '200',
+        description: 'Product updated successfully'
+      }
+    ]
+  };
+
   const mockApiDefinition: ApiDefinition = {
     title: 'Acme Platform API',
     version: '1.4.0',
@@ -284,7 +321,7 @@ describe('OperationPage', () => {
         id: 'products',
         name: 'products',
         label: 'Products',
-        operations: [mockListOperation, mockDetailsOperation, mockCreateOperation, mockDeleteOperation]
+        operations: [mockListOperation, mockDetailsOperation, mockCreateOperation, mockUpdateOperation, mockDeleteOperation]
       },
       {
         id: 'system',
@@ -965,6 +1002,70 @@ describe('OperationPage', () => {
 
     expect(component.activeDeleteConfirmation()).toBeNull();
     expect(fixture.nativeElement.querySelector('app-delete-confirm-dialog')).toBeNull();
+  });
+
+  it('should open and close edit record modal and notify mutation with auto-refresh on update success', () => {
+    const listResult: ApiExecutionResult = {
+      status: 200,
+      statusText: 'OK',
+      isSuccess: true,
+      data: [
+        { id: 25, name: 'Acoustic Guitar', price: 299 }
+      ],
+      durationMs: 15
+    };
+    (executorService.execute as any).mockReturnValue(of(listResult));
+
+    fixture.componentRef.setInput('operationId', 'listProducts');
+    fixture.detectChanges();
+
+    // Initial list execution
+    component.onExecute();
+    fixture.detectChanges();
+
+    expect(component.activeEditRecord()).toBeNull();
+
+    // Trigger edit action from row
+    component.onEditRecord({
+      record: { id: 25, name: 'Acoustic Guitar', price: 299 },
+      updateOp: mockUpdateOperation,
+      availableOps: [mockUpdateOperation],
+      params: { id: '25' },
+      missingParams: [],
+      detailsOp: mockDetailsOperation
+    });
+    fixture.detectChanges();
+
+    expect(component.activeEditRecord()).toBeTruthy();
+    expect(component.activeEditRecord()?.params).toEqual({ id: '25' });
+
+    const editDialog = fixture.nativeElement.querySelector('app-edit-record-dialog');
+    expect(editDialog).toBeTruthy();
+
+    const notifySpy = vi.spyOn(sessionService, 'notifyResourceMutation');
+    const executeSpy = vi.spyOn(component, 'onExecute');
+
+    // Simulate successful update response from edit dialog
+    const updateSuccessResult: ApiExecutionResult = {
+      status: 200,
+      statusText: 'OK',
+      isSuccess: true,
+      data: { id: 25, name: 'Acoustic Guitar Pro', price: 349 },
+      durationMs: 45
+    };
+
+    component.onRecordUpdated(updateSuccessResult);
+    fixture.detectChanges();
+
+    expect(notifySpy).toHaveBeenCalledWith('products', 'updateProductById', updateSuccessResult);
+    expect(executeSpy).toHaveBeenCalled();
+
+    // Close edit modal
+    component.onCloseEditRecord();
+    fixture.detectChanges();
+
+    expect(component.activeEditRecord()).toBeNull();
+    expect(fixture.nativeElement.querySelector('app-edit-record-dialog')).toBeNull();
   });
 });
 
