@@ -32,6 +32,8 @@ import { LoadingIndicatorComponent } from '../../shared/components/loading-indic
 import { EmptyStateComponent } from '../../shared/components/empty-state/empty-state.component';
 import { JsonViewerComponent } from '../../shared/components/json-viewer/json-viewer.component';
 
+import { AuthConfigDialogComponent } from '../workspace/auth-config-dialog.component';
+
 export interface CustomHeaderItem {
   id: string;
   key: string;
@@ -48,6 +50,7 @@ export interface CustomHeaderItem {
     RouterModule,
     MatIconModule,
     MatButtonModule,
+    AuthConfigDialogComponent,
     HttpBadgeComponent,
     SchemaViewerComponent,
     ResponseDataViewerComponent,
@@ -109,6 +112,18 @@ export interface CustomHeaderItem {
 
                 <div class="badge-group">
                   <span class="type-badge" [attr.data-type]="op.type">{{ op.type }}</span>
+                  @if (op.requiresAuth) {
+                    <button
+                      type="button"
+                      class="auth-indicator-btn font-mono"
+                      [class.active]="hasBearerToken()"
+                      (click)="isAuthDialogOpen.set(true)"
+                      title="Click to configure API Bearer Token"
+                    >
+                      <mat-icon class="auth-btn-icon">{{ hasBearerToken() ? 'lock' : 'lock_outline' }}</mat-icon>
+                      <span>{{ hasBearerToken() ? 'BEARER AUTH' : 'AUTH REQUIRED' }}</span>
+                    </button>
+                  }
                   @if (op.method === 'GET') {
                     <span class="get-flavor-tag font-mono" [attr.data-flavor]="op.type">
                       {{ op.type === 'list' ? 'GET Collection (List)' : (op.type === 'details' ? 'GET Item (Details)' : 'GET Query') }}
@@ -129,6 +144,7 @@ export interface CustomHeaderItem {
                     <mat-icon class="tool-icon">{{ copiedPath() ? 'check' : 'content_copy' }}</mat-icon>
                     <span>{{ copiedPath() ? 'Copied' : 'Copy Path' }}</span>
                   </button>
+
 
                   <button
                     type="button"
@@ -187,8 +203,26 @@ export interface CustomHeaderItem {
               }
             </section>
 
+            <!-- Authentication Warning Banner when auth required but missing -->
+            @if (op.requiresAuth && !hasBearerToken()) {
+              <div class="auth-banner-alert font-mono">
+                <div class="alert-content">
+                  <mat-icon class="alert-icon">vpn_key</mat-icon>
+                  <div class="alert-text">
+                    <span class="alert-title">BEARER AUTHENTICATION REQUIRED</span>
+                    <span class="alert-desc font-sans">This endpoint requires authentication per OpenAPI security requirements. No Bearer token is currently active in this session.</span>
+                  </div>
+                </div>
+                <button type="button" class="btn-configure-auth" (click)="isAuthDialogOpen.set(true)">
+                  <mat-icon class="btn-icon">lock</mat-icon>
+                  <span>Configure Token</span>
+                </button>
+              </div>
+            }
+
             <!-- Workbench Columns -->
             <div class="workbench-grid">
+
               <!-- Request Column -->
               <div class="request-column">
                 @if (validationError()) {
@@ -857,8 +891,15 @@ export interface CustomHeaderItem {
           (close)="onCloseDeleteConfirmation()"
         />
       }
+
+      <!-- Auth Configuration Modal -->
+      @if (isAuthDialogOpen()) {
+        <app-auth-config-dialog (close)="isAuthDialogOpen.set(false)" />
+      }
     </div>
   `,
+
+
   styles: [`
     .operation-page-layout { display: flex; flex-direction: column; height: 100vh; background: var(--canvas-bg); color: var(--canvas-text-primary); overflow: hidden; }
     .operation-topbar { height: 48px; min-height: 48px; background: var(--canvas-surface); border-bottom: 1px solid var(--canvas-border); padding: 0 16px; display: flex; align-items: center; justify-content: space-between; gap: 16px; z-index: 10; }
@@ -882,7 +923,21 @@ export interface CustomHeaderItem {
     .type-badge { font-size: 10px; text-transform: uppercase; font-family: var(--font-mono); font-weight: 600; padding: 2px 6px; border-radius: var(--radius-sm); letter-spacing: 0.5px; background: var(--canvas-surface-elevated); border: 1px solid var(--canvas-border); color: var(--canvas-text-secondary); }
     .type-badge[data-type="action"] { color: #e3b341; background: rgba(227, 179, 65, 0.1); border-color: rgba(227, 179, 65, 0.3); }
     .type-badge[data-type="unknown"] { color: #a371f7; background: rgba(163, 113, 247, 0.1); border-color: rgba(163, 113, 247, 0.3); }
+    .auth-indicator-btn { display: inline-flex; align-items: center; gap: 4px; font-size: 10px; font-weight: 600; padding: 2px 6px; border-radius: var(--radius-sm); letter-spacing: 0.5px; background: rgba(148, 163, 184, 0.08); border: 1px solid rgba(148, 163, 184, 0.25); color: #94a3b8; cursor: pointer; transition: all 0.15s ease; }
+    .auth-indicator-btn:hover { background: rgba(148, 163, 184, 0.15); color: #f1f5f9; }
+    .auth-indicator-btn.active { color: #38bdf8; background: rgba(56, 189, 248, 0.1); border-color: rgba(56, 189, 248, 0.35); }
+    .auth-indicator-btn.active:hover { background: rgba(56, 189, 248, 0.18); }
+    .auth-btn-icon { font-size: 12px; width: 12px; height: 12px; }
+    .auth-banner-alert { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; background: rgba(30, 41, 59, 0.35); border: 1px solid #1e293b; border-left: 3px solid #38bdf8; border-radius: var(--radius-sm); }
+    .auth-banner-alert .alert-content { display: flex; align-items: center; gap: 10px; }
+    .auth-banner-alert .alert-icon { font-size: 18px; width: 18px; height: 18px; color: #38bdf8; flex-shrink: 0; }
+    .auth-banner-alert .alert-text { display: flex; flex-direction: column; gap: 2px; }
+    .auth-banner-alert .alert-title { font-size: 11px; font-weight: 700; color: #f1f5f9; letter-spacing: 0.5px; }
+    .auth-banner-alert .alert-desc { font-size: 12px; color: #94a3b8; }
+    .btn-configure-auth { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; font-size: 12px; font-weight: 500; color: #f1f5f9; background: #0284c7; border: 1px solid #0369a1; border-radius: var(--radius-sm); cursor: pointer; flex-shrink: 0; transition: background-color 0.15s; }
+    .btn-configure-auth:hover { background: #0369a1; }
     .get-flavor-tag { font-size: 10px; font-family: var(--font-mono); font-weight: 600; padding: 2px 6px; border-radius: var(--radius-sm); letter-spacing: 0.5px; background: rgba(56, 139, 253, 0.1); border: 1px solid rgba(56, 139, 253, 0.3); color: #58a6ff; }
+
     .get-flavor-tag[data-flavor="list"] { color: #58a6ff; background: rgba(56, 139, 253, 0.12); border-color: rgba(56, 139, 253, 0.35); }
     .get-flavor-tag[data-flavor="details"] { color: #3fb950; background: rgba(46, 160, 67, 0.12); border-color: rgba(46, 160, 67, 0.35); }
     .deprecated-tag { font-size: 10px; font-family: var(--font-mono); font-weight: 700; color: var(--color-danger); background: rgba(218, 54, 51, 0.12); border: 1px solid rgba(218, 54, 51, 0.3); padding: 2px 6px; border-radius: var(--radius-sm); }
@@ -1082,11 +1137,14 @@ export class OperationPage implements OnInit {
   readonly executionResult = signal<ApiExecutionResult | null>(null);
   readonly activeBodyTab = signal<'form' | 'editor' | 'schema'>('form');
   readonly activeResponseTab = signal<'body' | 'headers' | 'docs'>('body');
+  readonly isAuthDialogOpen = signal<boolean>(false);
+  readonly hasBearerToken = this.sessionService.hasBearerToken;
   readonly activeDetailsInspection = signal<{
     detailsOp: ApiOperation;
     params: Record<string, string>;
     missingParams?: ApiParameter[];
   } | null>(null);
+
   readonly activeEditRecord = signal<{
     record: unknown;
     updateOp: ApiOperation;

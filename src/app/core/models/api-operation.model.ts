@@ -1,6 +1,7 @@
 import { ApiParameter } from './api-parameter.model';
 import { ApiResponse } from './api-response.model';
 import { ApiSchema } from './api-schema.model';
+import { ApiSecurityRequirement } from './api-definition.model';
 
 export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'HEAD' | 'OPTIONS';
 
@@ -33,4 +34,8 @@ export interface ApiOperation {
   responses: ApiResponse[];
   tags?: string[];
   deprecated?: boolean;
+  security?: ApiSecurityRequirement[];
+  requiresAuth?: boolean;
+  applicableSecuritySchemes?: string[];
 }
+

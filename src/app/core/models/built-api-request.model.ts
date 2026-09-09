@@ -37,4 +37,6 @@ export interface BuiltApiRequest {
 
 export interface BuildRequestOptions {
   skipValidation?: boolean;
+  bearerToken?: string | null;
 }
+

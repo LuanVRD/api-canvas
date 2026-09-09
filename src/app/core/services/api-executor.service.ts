@@ -5,6 +5,7 @@ import { ApiOperation } from '../models/api-operation.model';
 import { ApiExecutionResult } from '../models/api-execution-result.model';
 import { ApiRequestInput } from '../models/api-request-input.model';
 import { ApiRequestBuilderService } from './api-request-builder.service';
+import { ApiSessionService } from './api-session.service';
 import { RequestValidationError } from '../models/built-api-request.model';
 
 @Injectable({
@@ -13,18 +14,25 @@ import { RequestValidationError } from '../models/built-api-request.model';
 export class ApiExecutorService {
   private readonly http = inject(HttpClient);
   private readonly requestBuilder = inject(ApiRequestBuilderService);
+  private readonly session = inject(ApiSessionService);
 
   execute(
     baseUrl: string,
     operation: ApiOperation,
-    input: ApiRequestInput = {}
+    input: ApiRequestInput = {},
+    options?: { bearerToken?: string | null; skipValidation?: boolean }
   ): Observable<ApiExecutionResult> {
     const startTime = performance.now();
+    const token = options?.bearerToken !== undefined ? options.bearerToken : this.session.bearerToken();
 
     let built;
     try {
-      built = this.requestBuilder.build(baseUrl, operation, input);
+      built = this.requestBuilder.build(baseUrl, operation, input, {
+        skipValidation: options?.skipValidation,
+        bearerToken: token
+      });
     } catch (err: unknown) {
+
       const duration = Math.round(performance.now() - startTime);
       const message = err instanceof Error ? err.message : 'Invalid request parameters';
       const details = err instanceof RequestValidationError ? err.errors : undefined;

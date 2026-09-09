@@ -1,5 +1,5 @@
 import { computed, inject, Injectable, signal } from '@angular/core';
-import { ApiDefinition } from '../models/api-definition.model';
+import { ApiDefinition, ApiSecurityScheme } from '../models/api-definition.model';
 import { ApiOperation } from '../models/api-operation.model';
 import { ApiResource } from '../models/api-resource.model';
 import { ApiExecutionResult } from '../models/api-execution-result.model';
@@ -28,11 +28,25 @@ export class ApiSessionService {
   private readonly _openApiUrl = signal<string | null>(null);
   private readonly _rawSpec = signal<unknown | null>(null);
   private readonly _lastResourceMutation = signal<ApiResourceMutationEvent | null>(null);
+  private readonly _bearerToken = signal<string | null>(null);
 
   /**
    * Current normalized API definition.
    */
   readonly apiDefinition = this._apiDefinition.asReadonly();
+
+  /**
+   * Current in-memory bearer token for authenticated requests in the active session.
+   */
+  readonly bearerToken = this._bearerToken.asReadonly();
+
+  /**
+   * Indicates whether a non-empty bearer token is configured for the session.
+   */
+  readonly hasBearerToken = computed<boolean>(() => {
+    const token = this._bearerToken();
+    return typeof token === 'string' && token.trim().length > 0;
+  });
 
   /**
    * Last resource mutation event (e.g. create/update/delete operation execution).
@@ -85,6 +99,30 @@ export class ApiSessionService {
   readonly resources = computed<ApiResource[]>(() => this._apiDefinition()?.resources ?? []);
 
   /**
+   * List of security schemes defined in the active API.
+   */
+  readonly securitySchemes = computed<ApiSecurityScheme[]>(
+    () => this._apiDefinition()?.securitySchemes ?? []
+  );
+
+  /**
+   * List of HTTP Bearer compatible security schemes in the active API.
+   */
+  readonly bearerSchemes = computed<ApiSecurityScheme[]>(() =>
+    this.securitySchemes().filter((s) => s.isBearer)
+  );
+
+  /**
+   * Whether the active API has any security schemes defined.
+   */
+  readonly hasSecuritySchemes = computed<boolean>(() => this.securitySchemes().length > 0);
+
+  /**
+   * Whether the active API has any Bearer-compatible security schemes defined.
+   */
+  readonly hasBearerScheme = computed<boolean>(() => this.bearerSchemes().length > 0);
+
+  /**
    * Currently selected resource object, or null if none is selected or matches.
    */
   readonly selectedResource = computed<ApiResource | null>(() => {
@@ -102,6 +140,7 @@ export class ApiSessionService {
     this._apiDefinition.set(definition);
     this._openApiUrl.set(metadata?.openApiUrl ?? null);
     this._rawSpec.set(metadata?.rawSpec ?? null);
+    this._bearerToken.set(null);
 
     const availableResources = definition.resources ?? [];
     if (metadata?.defaultResourceId && availableResources.some((r) => r.id === metadata.defaultResourceId)) {
@@ -112,6 +151,22 @@ export class ApiSessionService {
       this._selectedResourceId.set(null);
     }
   }
+
+  /**
+   * Sets the active in-memory Bearer token for the session.
+   */
+  setBearerToken(token: string | null): void {
+    const clean = token && token.trim().length > 0 ? token.trim() : null;
+    this._bearerToken.set(clean);
+  }
+
+  /**
+   * Clears the current in-memory Bearer token.
+   */
+  clearBearerToken(): void {
+    this._bearerToken.set(null);
+  }
+
 
   /**
    * Selects an active resource by its ID or resource object.
@@ -259,6 +314,8 @@ export class ApiSessionService {
     this._openApiUrl.set(null);
     this._rawSpec.set(null);
     this._lastResourceMutation.set(null);
+    this._bearerToken.set(null);
   }
 }
+
 

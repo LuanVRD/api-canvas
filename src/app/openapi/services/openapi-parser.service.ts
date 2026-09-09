@@ -1,6 +1,12 @@
 import { inject, Injectable } from '@angular/core';
-import { ApiDefinition, ApiServer } from '../../core/models/api-definition.model';
+import {
+  ApiDefinition,
+  ApiSecurityRequirement,
+  ApiSecurityScheme,
+  ApiServer
+} from '../../core/models/api-definition.model';
 import { ApiOperation } from '../../core/models/api-operation.model';
+
 import { SchemaResolverService } from './schema-resolver.service';
 import { OperationClassifierService } from './operation-classifier.service';
 import { OperationMapper } from '../mappers/operation.mapper';
@@ -63,6 +69,14 @@ export class OpenApiParserService {
       baseUrl = `${schemes}://${doc['host']}${basePath}`;
     }
 
+    // Parse security schemes (OpenAPI 3.x components.securitySchemes & Swagger 2.0 securityDefinitions)
+    const securitySchemes = this.parseSecuritySchemes(doc);
+
+    // Global security requirements (doc.security)
+    const globalSecurity: ApiSecurityRequirement[] | undefined = Array.isArray(doc['security'])
+      ? (doc['security'] as ApiSecurityRequirement[])
+      : undefined;
+
     // Parse paths and operations
     const operations: ApiOperation[] = [];
     const paths = (doc['paths'] || {}) as Record<string, unknown>;
@@ -83,7 +97,8 @@ export class OpenApiParserService {
             doc,
             this.schemaResolver,
             this.classifier,
-            pathLevelParams
+            pathLevelParams,
+            globalSecurity
           );
           operations.push(operation);
         }
@@ -108,7 +123,57 @@ export class OpenApiParserService {
       description,
       baseUrl,
       servers: servers.length > 0 ? servers : undefined,
-      resources
+      resources,
+      securitySchemes: securitySchemes.length > 0 ? securitySchemes : undefined,
+      security: globalSecurity && globalSecurity.length > 0 ? globalSecurity : undefined
     };
   }
+
+  private parseSecuritySchemes(doc: Record<string, unknown>): ApiSecurityScheme[] {
+    const schemes: ApiSecurityScheme[] = [];
+    const components = doc['components'] as Record<string, unknown> | undefined;
+    const rawSchemes = (components?.['securitySchemes'] || doc['securityDefinitions'] || {}) as Record<string, unknown>;
+
+
+    for (const [id, def] of Object.entries(rawSchemes)) {
+      if (!def || typeof def !== 'object') continue;
+      const s = def as Record<string, unknown>;
+      const rawType = (s['type'] as string) || 'http';
+      const scheme = typeof s['scheme'] === 'string' ? s['scheme'] : undefined;
+      const bearerFormat = typeof s['bearerFormat'] === 'string' ? s['bearerFormat'] : undefined;
+      const name = typeof s['name'] === 'string' ? s['name'] : undefined;
+      const inLocation =
+        typeof s['in'] === 'string' ? (s['in'].toLowerCase() as 'header' | 'query' | 'cookie') : undefined;
+      const description = typeof s['description'] === 'string' ? s['description'] : undefined;
+
+      const typeLower = rawType.toLowerCase();
+      const isHttpBearer = typeLower === 'http' && scheme?.toLowerCase() === 'bearer';
+      const isApiKeyAuthHeader =
+        typeLower === 'apikey' &&
+        inLocation === 'header' &&
+        (name?.toLowerCase() === 'authorization' ||
+          id.toLowerCase().includes('bearer') ||
+          id.toLowerCase().includes('jwt'));
+      const isOAuth = typeLower === 'oauth2' || typeLower === 'openidconnect';
+      const isBearer =
+        isHttpBearer ||
+        isApiKeyAuthHeader ||
+        isOAuth ||
+        (Boolean(bearerFormat) && typeLower === 'http');
+
+      schemes.push({
+        id,
+        type: rawType as import('../../core/models/api-definition.model').ApiSecuritySchemeType,
+        scheme,
+        bearerFormat,
+        name,
+        in: inLocation,
+        description,
+        isBearer
+      });
+    }
+
+    return schemes;
+  }
 }
+

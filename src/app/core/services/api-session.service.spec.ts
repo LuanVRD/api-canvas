@@ -219,4 +219,54 @@ describe('ApiSessionService', () => {
 
     expect(service.getCompatibleListOperation('non_existing')).toBeNull();
   });
+
+  it('should manage in-memory bearer token and compute security scheme helpers', () => {
+    const authDef: ApiDefinition = {
+      ...mockApiDefinition,
+      securitySchemes: [
+        {
+          id: 'bearerAuth',
+          type: 'http',
+          scheme: 'bearer',
+          bearerFormat: 'JWT',
+          isBearer: true
+        },
+        {
+          id: 'apiKeyAuth',
+          type: 'apiKey',
+          name: 'X-API-KEY',
+          in: 'header',
+          isBearer: false
+        }
+      ]
+    };
+
+    service.setSession(authDef);
+
+    expect(service.hasSecuritySchemes()).toBe(true);
+    expect(service.hasBearerScheme()).toBe(true);
+    expect(service.securitySchemes().length).toBe(2);
+    expect(service.bearerSchemes().length).toBe(1);
+    expect(service.hasBearerToken()).toBe(false);
+    expect(service.bearerToken()).toBeNull();
+
+    // Set Bearer token
+    service.setBearerToken('my-secret-jwt-token');
+    expect(service.hasBearerToken()).toBe(true);
+    expect(service.bearerToken()).toBe('my-secret-jwt-token');
+
+    // Clear Bearer token
+    service.clearBearerToken();
+    expect(service.hasBearerToken()).toBe(false);
+    expect(service.bearerToken()).toBeNull();
+
+    // Set again and ensure clearSession cleans it
+    service.setBearerToken('another-token');
+    expect(service.hasBearerToken()).toBe(true);
+
+    service.clearSession();
+    expect(service.hasBearerToken()).toBe(false);
+    expect(service.bearerToken()).toBeNull();
+  });
 });
+

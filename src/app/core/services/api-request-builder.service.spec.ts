@@ -447,4 +447,88 @@ describe('ApiRequestBuilderService', () => {
       expect(built.url).toBe('https://api.example.com/users/{userGuid}');
     });
   });
+
+  describe('Authorization header & Bearer token injection', () => {
+    it('should inject Authorization: Bearer <token> only for operations requiring authentication', () => {
+      const protectedOp: ApiOperation = {
+        id: 'get_secure_data',
+        method: 'GET',
+        path: '/secure/data',
+        type: 'details',
+        requiresAuth: true,
+        parameters: [],
+        responses: []
+      };
+
+      const built = service.build('https://api.example.com', protectedOp, {}, {
+        bearerToken: 'my-jwt-token-123'
+      });
+
+      expect(built.headers['Authorization']).toBe('Bearer my-jwt-token-123');
+    });
+
+    it('should not inject Authorization header if operation is public (requiresAuth === false or undefined)', () => {
+      const publicOp: ApiOperation = {
+        id: 'get_public_status',
+        method: 'GET',
+        path: '/public/status',
+        type: 'details',
+        requiresAuth: false,
+        parameters: [],
+        responses: []
+      };
+
+      const built = service.build('https://api.example.com', publicOp, {}, {
+        bearerToken: 'my-jwt-token-123'
+      });
+
+      expect(built.headers['Authorization']).toBeUndefined();
+    });
+
+    it('should not double-prefix if token already starts with "Bearer "', () => {
+      const protectedOp: ApiOperation = {
+        id: 'get_secure_data',
+        method: 'GET',
+        path: '/secure/data',
+        type: 'details',
+        requiresAuth: true,
+        parameters: [],
+        responses: []
+      };
+
+      const built = service.build('https://api.example.com', protectedOp, {}, {
+        bearerToken: 'Bearer existing-bearer-token'
+      });
+
+      expect(built.headers['Authorization']).toBe('Bearer existing-bearer-token');
+    });
+
+    it('should let explicitly provided input.headers["Authorization"] override session bearerToken', () => {
+      const protectedOp: ApiOperation = {
+        id: 'get_secure_data',
+        method: 'GET',
+        path: '/secure/data',
+        type: 'details',
+        requiresAuth: true,
+        parameters: [],
+        responses: []
+      };
+
+      const built = service.build(
+        'https://api.example.com',
+        protectedOp,
+        {
+          headers: {
+            Authorization: 'CustomScheme custom-token'
+          }
+        },
+        {
+          bearerToken: 'session-bearer-token'
+        }
+      );
+
+      expect(built.headers['Authorization']).toBe('CustomScheme custom-token');
+    });
+  });
 });
+

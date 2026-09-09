@@ -164,7 +164,16 @@ export class ApiRequestBuilderService {
     // 3. Preparação de Headers
     const headers: Record<string, string> = {};
 
-    // Headers informados no input
+    // Injeção de Bearer Token se a operação exigir autenticação
+    if (operation.requiresAuth && options.bearerToken && options.bearerToken.trim().length > 0) {
+      const rawToken = options.bearerToken.trim();
+      const tokenValue = rawToken.toLowerCase().startsWith('bearer ')
+        ? rawToken
+        : `Bearer ${rawToken}`;
+      headers['Authorization'] = tokenValue;
+    }
+
+    // Headers informados explicitamente no input (têm precedência)
     if (input.headers) {
       for (const [key, val] of Object.entries(input.headers)) {
         if (!this.isUndefinedOrNull(val)) {
@@ -172,6 +181,7 @@ export class ApiRequestBuilderService {
         }
       }
     }
+
 
     // Resolução de Content-Type se houver body
     if (input.body !== undefined && input.body !== null) {

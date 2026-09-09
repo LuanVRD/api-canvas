@@ -259,6 +259,132 @@ describe('OpenApiParserService', () => {
     });
   });
 
+  describe('Security Schemes & Requirements parsing', () => {
+    it('should parse OpenAPI 3.x components.securitySchemes and identify Bearer HTTP schemes', () => {
+      const specWithAuth = {
+        openapi: '3.0.3',
+        info: { title: 'Secured API', version: '1.0.0' },
+        servers: [{ url: 'https://secure.example.com/api' }],
+        components: {
+          securitySchemes: {
+            bearerAuth: {
+              type: 'http',
+              scheme: 'bearer',
+              bearerFormat: 'JWT',
+              description: 'JWT Bearer Authentication'
+            },
+            apiKeyAuth: {
+              type: 'apiKey',
+              in: 'header',
+              name: 'X-API-Key',
+              description: 'API Key Header'
+            }
+          }
+        },
+        security: [{ bearerAuth: [] }],
+        paths: {
+          '/profile': {
+            get: {
+              summary: 'Get user profile',
+              responses: { '200': { description: 'Profile data' } }
+            }
+          },
+          '/public-status': {
+            get: {
+              summary: 'Public status',
+              security: [], // Explicitly public/anonymous
+              responses: { '200': { description: 'Status OK' } }
+            }
+          },
+          '/custom-auth': {
+            post: {
+              summary: 'Custom auth endpoint',
+              security: [{ apiKeyAuth: ['write:all'] }],
+              responses: { '200': { description: 'Success' } }
+            }
+          }
+        }
+      };
+
+      const def = service.parse(specWithAuth);
+
+      expect(def.securitySchemes).toBeDefined();
+      expect(def.securitySchemes!.length).toBe(2);
+
+      const bearerScheme = def.securitySchemes!.find((s) => s.id === 'bearerAuth');
+      expect(bearerScheme).toBeDefined();
+      expect(bearerScheme!.type).toBe('http');
+      expect(bearerScheme!.scheme).toBe('bearer');
+      expect(bearerScheme!.bearerFormat).toBe('JWT');
+      expect(bearerScheme!.isBearer).toBe(true);
+      expect(bearerScheme!.description).toBe('JWT Bearer Authentication');
+
+      const apiKeyScheme = def.securitySchemes!.find((s) => s.id === 'apiKeyAuth');
+      expect(apiKeyScheme).toBeDefined();
+      expect(apiKeyScheme!.isBearer).toBe(false);
+
+      expect(def.security).toEqual([{ bearerAuth: [] }]);
+
+      // Check operations auth resolution across resources
+      const allOps = def.resources.flatMap((r) => r.operations);
+      const profileOp = allOps.find((o) => o.path === '/profile');
+      expect(profileOp).toBeDefined();
+      expect(profileOp!.requiresAuth).toBe(true);
+      expect(profileOp!.applicableSecuritySchemes).toEqual(['bearerAuth']);
+
+      const publicOp = allOps.find((o) => o.path === '/public-status');
+      expect(publicOp).toBeDefined();
+      expect(publicOp!.requiresAuth).toBe(false);
+      expect(publicOp!.security).toEqual([]);
+      expect(publicOp!.applicableSecuritySchemes).toEqual([]);
+
+      const customAuthOp = allOps.find((o) => o.path === '/custom-auth');
+      expect(customAuthOp).toBeDefined();
+      expect(customAuthOp!.requiresAuth).toBe(true);
+      expect(customAuthOp!.applicableSecuritySchemes).toEqual(['apiKeyAuth']);
+
+    });
+
+    it('should parse Swagger 2.0 securityDefinitions with Bearer apiKey header', () => {
+      const swagger2WithAuth = {
+        swagger: '2.0',
+        info: { title: 'Swagger 2 Secured API', version: '1.0' },
+        host: 'api.swagger2.com',
+        basePath: '/v1',
+        securityDefinitions: {
+          Bearer: {
+            type: 'apiKey',
+            name: 'Authorization',
+            in: 'header',
+            description: 'Enter: Bearer {token}'
+          }
+        },
+        security: [{ Bearer: [] }],
+        paths: {
+          '/users': {
+            get: {
+              summary: 'List users',
+              responses: { '200': { description: 'Users list' } }
+            }
+          }
+        }
+      };
+
+      const def = service.parse(swagger2WithAuth);
+      expect(def.securitySchemes).toBeDefined();
+      expect(def.securitySchemes!.length).toBe(1);
+
+      const bearerDef = def.securitySchemes![0];
+      expect(bearerDef.id).toBe('Bearer');
+      expect(bearerDef.isBearer).toBe(true);
+      expect(bearerDef.in).toBe('header');
+
+      const userOp = def.resources[0].operations[0];
+      expect(userOp.requiresAuth).toBe(true);
+      expect(userOp.applicableSecuritySchemes).toEqual(['Bearer']);
+    });
+  });
+
   describe('Error handling', () => {
     it('should throw controlled error on invalid or empty documents', () => {
       expect(() => service.parse(null)).toThrowError(/Documento OpenAPI inválido/);
@@ -267,4 +393,5 @@ describe('OpenApiParserService', () => {
     });
   });
 });
+
 

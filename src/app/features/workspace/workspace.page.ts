@@ -1,8 +1,9 @@
-import { Component, OnInit, OnDestroy, inject, effect } from '@angular/core';
+import { Component, OnInit, OnDestroy, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router } from '@angular/router';
 import { Subscription } from 'rxjs';
 import { ResourceSidebarComponent } from './resource-sidebar.component';
+import { AuthConfigDialogComponent } from './auth-config-dialog.component';
 import { ApiResource } from '../../core/models/api-resource.model';
 import { ApiOperation } from '../../core/models/api-operation.model';
 import { StatusIndicatorComponent } from '../../shared/components/status-indicator/status-indicator.component';
@@ -18,6 +19,7 @@ import { MatIconModule } from '@angular/material/icon';
   imports: [
     CommonModule,
     ResourceSidebarComponent,
+    AuthConfigDialogComponent,
     StatusIndicatorComponent,
     HttpBadgeComponent,
     EmptyStateComponent,
@@ -54,6 +56,17 @@ import { MatIconModule } from '@angular/material/icon';
         <div class="header-actions">
           <button
             type="button"
+            class="action-btn auth-btn"
+            [class.active]="hasBearerToken()"
+            (click)="isAuthDialogOpen.set(true)"
+            title="Configure API Authentication (Bearer Token)"
+          >
+            <mat-icon class="btn-icon">{{ hasBearerToken() ? 'lock' : 'lock_outline' }}</mat-icon>
+            <span>{{ hasBearerToken() ? 'Auth: Active' : 'Auth' }}</span>
+          </button>
+
+          <button
+            type="button"
             class="action-btn disconnect-btn"
             (click)="onReconnect()"
             title="Change connected API specification"
@@ -63,6 +76,7 @@ import { MatIconModule } from '@angular/material/icon';
           </button>
         </div>
       </header>
+
 
       <!-- Workspace Body: Navigation Sidebar + Content Area -->
       <div class="workspace-body">
@@ -109,6 +123,12 @@ import { MatIconModule } from '@angular/material/icon';
                       <div class="op-main">
                         <app-http-badge [method]="op.method" />
                         <span class="op-path font-mono" [title]="op.path">{{ op.path }}</span>
+                        @if (op.requiresAuth) {
+                          <span class="auth-lock-badge font-mono" title="Protected operation (Requires Authentication)">
+                            <mat-icon class="badge-lock-icon">lock</mat-icon>
+                            <span>AUTH</span>
+                          </span>
+                        }
                         @if (op.type && op.type !== 'unknown') {
                           <span class="op-type-badge">{{ op.type }}</span>
                         }
@@ -155,7 +175,12 @@ import { MatIconModule } from '@angular/material/icon';
           }
         </main>
       </div>
+
+      @if (isAuthDialogOpen()) {
+        <app-auth-config-dialog (close)="isAuthDialogOpen.set(false)" />
+      }
     </div>
+
   `,
   styles: [`
     .workspace-layout {
@@ -241,6 +266,7 @@ import { MatIconModule } from '@angular/material/icon';
       .header-actions {
         display: flex;
         align-items: center;
+        gap: 8px;
         flex-shrink: 0;
 
         .action-btn {
@@ -264,6 +290,17 @@ import { MatIconModule } from '@angular/material/icon';
             background: #282e37;
           }
 
+          &.auth-btn.active {
+            color: #34d399;
+            background: rgba(52, 211, 153, 0.08);
+            border-color: rgba(52, 211, 153, 0.3);
+
+            &:hover {
+              background: rgba(52, 211, 153, 0.15);
+              border-color: #34d399;
+            }
+          }
+
           .btn-icon {
             font-size: 16px;
             width: 16px;
@@ -271,6 +308,7 @@ import { MatIconModule } from '@angular/material/icon';
           }
         }
       }
+
     }
 
     .workspace-body {
@@ -400,6 +438,25 @@ import { MatIconModule } from '@angular/material/icon';
             font-weight: 500;
           }
 
+          .auth-lock-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 3px;
+            font-size: 9px;
+            letter-spacing: 0.04em;
+            color: #38bdf8;
+            background: rgba(56, 189, 248, 0.08);
+            border: 1px solid rgba(56, 189, 248, 0.25);
+            padding: 1px 4px;
+            border-radius: var(--radius-sm);
+
+            .badge-lock-icon {
+              font-size: 10px;
+              width: 10px;
+              height: 10px;
+            }
+          }
+
           .op-type-badge {
             font-size: 10px;
             text-transform: uppercase;
@@ -410,6 +467,7 @@ import { MatIconModule } from '@angular/material/icon';
             padding: 1px 5px;
             border-radius: var(--radius-sm);
           }
+
 
           .deprecated-badge {
             font-size: 10px;
@@ -550,6 +608,8 @@ export class WorkspacePage implements OnInit, OnDestroy {
 
   private routeSub?: Subscription;
 
+  readonly isAuthDialogOpen = signal<boolean>(false);
+  readonly hasBearerToken = this.sessionService.hasBearerToken;
   readonly hasActiveApi = this.sessionService.hasActiveApi;
   readonly apiTitle = this.sessionService.apiTitle;
   readonly apiVersion = this.sessionService.apiVersion;
@@ -557,6 +617,7 @@ export class WorkspacePage implements OnInit, OnDestroy {
   readonly resources = this.sessionService.resources;
   readonly selectedResourceId = this.sessionService.selectedResourceId;
   readonly selectedResource = this.sessionService.selectedResource;
+
 
   ngOnInit(): void {
     this.routeSub = this.route.paramMap.subscribe((params) => {

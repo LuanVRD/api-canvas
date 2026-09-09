@@ -2,24 +2,29 @@ import { TestBed } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { ApiExecutorService } from './api-executor.service';
+import { ApiSessionService } from './api-session.service';
 import { ApiOperation } from '../models/api-operation.model';
 
 describe('ApiExecutorService', () => {
   let service: ApiExecutorService;
+  let sessionService: ApiSessionService;
   let httpMock: HttpTestingController;
 
   beforeEach(() => {
     TestBed.configureTestingModule({
       providers: [
         ApiExecutorService,
+        ApiSessionService,
         provideHttpClient(),
         provideHttpClientTesting()
       ]
     });
 
     service = TestBed.inject(ApiExecutorService);
+    sessionService = TestBed.inject(ApiSessionService);
     httpMock = TestBed.inject(HttpTestingController);
   });
+
 
   afterEach(() => {
     httpMock.verify();
@@ -225,4 +230,50 @@ describe('ApiExecutorService', () => {
     const req = httpMock.expectOne('https://api.example.com/items');
     req.flush({ message: 'Database down' }, { status: 500, statusText: 'Internal Server Error' });
   });
+
+  it('should automatically attach Authorization Bearer header when token is in session and operation requires auth', () => {
+    sessionService.setBearerToken('session-jwt-token-999');
+
+    const protectedOp: ApiOperation = {
+      id: 'get_secure_user',
+      method: 'GET',
+      path: '/user/me',
+      type: 'details',
+      requiresAuth: true,
+      parameters: [],
+      responses: []
+    };
+
+    service.execute('https://api.example.com', protectedOp, {}).subscribe((result) => {
+      expect(result.isSuccess).toBe(true);
+    });
+
+    const req = httpMock.expectOne('https://api.example.com/user/me');
+    expect(req.request.headers.get('Authorization')).toBe('Bearer session-jwt-token-999');
+    req.flush({ username: 'john' });
+  });
+
+  it('should not attach Authorization header to public operation even when token is in session', () => {
+    sessionService.setBearerToken('session-jwt-token-999');
+
+    const publicOp: ApiOperation = {
+      id: 'get_public_ping',
+      method: 'GET',
+      path: '/ping',
+      type: 'details',
+      requiresAuth: false,
+      parameters: [],
+      responses: []
+    };
+
+    service.execute('https://api.example.com', publicOp, {}).subscribe((result) => {
+      expect(result.isSuccess).toBe(true);
+    });
+
+    const req = httpMock.expectOne('https://api.example.com/ping');
+    expect(req.request.headers.has('Authorization')).toBe(false);
+    req.flush({ status: 'pong' });
+  });
+
 });
+

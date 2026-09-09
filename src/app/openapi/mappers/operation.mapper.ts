@@ -1,13 +1,14 @@
 import { ApiOperation, ApiRequestBody, HttpMethod } from '../../core/models/api-operation.model';
 import { ApiParameter, ParameterLocation } from '../../core/models/api-parameter.model';
 import { ApiResponse } from '../../core/models/api-response.model';
+import { ApiSecurityRequirement } from '../../core/models/api-definition.model';
 import { SchemaResolverService } from '../services/schema-resolver.service';
 import { OperationClassifierService } from '../services/operation-classifier.service';
 
 export class OperationMapper {
   /**
    * Maps an OpenAPI 3.x / Swagger 2.0 path operation object into an internal ApiOperation model,
-   * resolving all schemas, parameters, request body, and responses.
+   * resolving all schemas, parameters, request body, responses, and security requirements.
    */
   static toInternal(
     rawPath: string,
@@ -16,7 +17,8 @@ export class OperationMapper {
     rootDocument: unknown,
     schemaResolver: SchemaResolverService,
     classifier: OperationClassifierService,
-    pathLevelParameters: unknown[] = []
+    pathLevelParameters: unknown[] = [],
+    globalSecurity?: ApiSecurityRequirement[]
   ): ApiOperation {
     const httpMethod = method.toUpperCase() as HttpMethod;
     const operationId = rawOperation['operationId'] as string | undefined;
@@ -33,6 +35,45 @@ export class OperationMapper {
     const responses = this.extractResponses(rawOperation['responses'], rootDocument, schemaResolver);
     const type = classifier.classify(httpMethod, rawPath);
 
+    // Security requirements resolution: operation-level security overrides root-level security
+    let security: ApiSecurityRequirement[] | undefined;
+    let requiresAuth = false;
+    let applicableSecuritySchemes: string[] = [];
+
+    if (rawOperation['security'] !== undefined) {
+      if (Array.isArray(rawOperation['security'])) {
+        security = rawOperation['security'] as ApiSecurityRequirement[];
+        // An empty array [] explicitly indicates the operation does not require any security (public/anonymous)
+        if (security.length > 0) {
+          requiresAuth = true;
+          const schemeSet = new Set<string>();
+          for (const req of security) {
+            if (req && typeof req === 'object') {
+              for (const schemeKey of Object.keys(req)) {
+                schemeSet.add(schemeKey);
+              }
+            }
+          }
+          applicableSecuritySchemes = Array.from(schemeSet);
+        } else {
+          requiresAuth = false;
+          applicableSecuritySchemes = [];
+        }
+      }
+    } else if (globalSecurity && Array.isArray(globalSecurity) && globalSecurity.length > 0) {
+      security = globalSecurity;
+      requiresAuth = true;
+      const schemeSet = new Set<string>();
+      for (const req of globalSecurity) {
+        if (req && typeof req === 'object') {
+          for (const schemeKey of Object.keys(req)) {
+            schemeSet.add(schemeKey);
+          }
+        }
+      }
+      applicableSecuritySchemes = Array.from(schemeSet);
+    }
+
     return {
       id,
       operationId,
@@ -45,9 +86,13 @@ export class OperationMapper {
       requestBody,
       responses,
       tags: Array.isArray(rawOperation['tags']) ? (rawOperation['tags'] as string[]) : [],
-      deprecated: !!rawOperation['deprecated']
+      deprecated: !!rawOperation['deprecated'],
+      security,
+      requiresAuth,
+      applicableSecuritySchemes
     };
   }
+
 
   private static extractParameters(
     rawParams: unknown[],
