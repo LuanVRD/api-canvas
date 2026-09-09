@@ -1,0 +1,163 @@
+import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { ResponseDataViewerComponent } from './response-data-viewer.component';
+import { ApiExecutionResult } from '../../core/models/api-execution-result.model';
+
+describe('ResponseDataViewerComponent', () => {
+  let component: ResponseDataViewerComponent;
+  let fixture: ComponentFixture<ResponseDataViewerComponent>;
+
+  beforeEach(async () => {
+    await TestBed.configureTestingModule({
+      imports: [ResponseDataViewerComponent]
+    }).compileComponents();
+
+    fixture = TestBed.createComponent(ResponseDataViewerComponent);
+    component = fixture.componentInstance;
+  });
+
+  it('should detect array response and infer columns', () => {
+    const res: ApiExecutionResult = {
+      status: 200,
+      statusText: 'OK',
+      isSuccess: true,
+      data: [
+        { id: 1, name: 'Item A', active: true },
+        { id: 2, name: 'Item B', active: false }
+      ]
+    };
+    component.result = res;
+    fixture.detectChanges();
+
+    expect(component.detectedType()).toBe('array');
+    expect(component.detectedTypeLabel()).toBe('Table');
+    expect(component.inferredColumns().length).toBe(3);
+  });
+
+  it('should detect object response for single record (details)', () => {
+    const res: ApiExecutionResult = {
+      status: 200,
+      statusText: 'OK',
+      isSuccess: true,
+      data: { id: 42, title: 'Single Detail', price: 99.9 }
+    };
+    component.result = res;
+    fixture.detectChanges();
+
+    expect(component.detectedType()).toBe('object');
+    expect(component.detectedTypeLabel()).toBe('Details');
+  });
+
+  it('should detect primitive responses (string, number, boolean)', () => {
+    component.result = {
+      status: 200,
+      statusText: 'OK',
+      isSuccess: true,
+      data: 'Plain text output'
+    };
+    fixture.detectChanges();
+    expect(component.detectedType()).toBe('primitive');
+    expect(component.detectedTypeLabel()).toBe('Value');
+
+    component.result = {
+      status: 200,
+      statusText: 'OK',
+      isSuccess: true,
+      data: 12345
+    };
+    fixture.detectChanges();
+    expect(component.detectedType()).toBe('primitive');
+
+    component.result = {
+      status: 200,
+      statusText: 'OK',
+      isSuccess: true,
+      data: true
+    };
+    fixture.detectChanges();
+    expect(component.detectedType()).toBe('primitive');
+  });
+
+  it('should detect empty response for 204 No Content, empty array, and empty object', () => {
+    // 204 No Content
+    component.result = {
+      status: 204,
+      statusText: 'No Content',
+      isSuccess: true,
+      data: null
+    };
+    fixture.detectChanges();
+    expect(component.detectedType()).toBe('empty');
+    expect(component.emptyStateTitle()).toBe('204 No Content');
+
+    // Empty array []
+    component.result = {
+      status: 200,
+      statusText: 'OK',
+      isSuccess: true,
+      data: []
+    };
+    fixture.detectChanges();
+    expect(component.detectedType()).toBe('empty');
+    expect(component.emptyStateTitle()).toBe('Empty Collection');
+
+    // Empty object {}
+    component.result = {
+      status: 200,
+      statusText: 'OK',
+      isSuccess: true,
+      data: {}
+    };
+    fixture.detectChanges();
+    expect(component.detectedType()).toBe('empty');
+    expect(component.emptyStateTitle()).toBe('Empty Object');
+  });
+
+  it('should support non-200 success statuses such as 201, 202, 206, 304', () => {
+    component.result = {
+      status: 201,
+      statusText: 'Created',
+      isSuccess: true,
+      data: { id: 99, status: 'created' }
+    };
+    fixture.detectChanges();
+    expect(component.detectedType()).toBe('object');
+
+    component.result = {
+      status: 304,
+      statusText: 'Not Modified',
+      isSuccess: true,
+      data: null
+    };
+    fixture.detectChanges();
+    expect(component.detectedType()).toBe('empty');
+  });
+
+  it('should switch between visual and raw JSON mode', () => {
+    component.result = {
+      status: 200,
+      statusText: 'OK',
+      isSuccess: true,
+      data: { name: 'Raw Test' }
+    };
+    fixture.detectChanges();
+
+    expect(component.activeMode()).toBe('visual');
+    component.activeMode.set('raw');
+    fixture.detectChanges();
+    expect(component.activeMode()).toBe('raw');
+    expect(component.rawFormattedText()).toContain('"name": "Raw Test"');
+  });
+
+  it('should parse stringified JSON data safely without error', () => {
+    component.result = {
+      status: 200,
+      statusText: 'OK',
+      isSuccess: true,
+      data: '{"parsedKey": "parsedVal"}'
+    };
+    fixture.detectChanges();
+
+    expect(component.detectedType()).toBe('object');
+    expect(component.parsedData()).toEqual({ parsedKey: 'parsedVal' });
+  });
+});

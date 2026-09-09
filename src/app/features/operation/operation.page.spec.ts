@@ -123,6 +123,65 @@ describe('OperationPage', () => {
     ]
   };
 
+  const mockListOperation: ApiOperation = {
+    id: 'get_api_products',
+    operationId: 'listProducts',
+    method: 'GET',
+    path: '/api/products',
+    summary: 'List all products',
+    description: 'Returns a paginated list of catalog products',
+    type: 'list',
+    parameters: [
+      {
+        name: 'category',
+        location: 'query',
+        required: false,
+        schema: { type: 'string' },
+        description: 'Filter by category'
+      },
+      {
+        name: 'limit',
+        location: 'query',
+        required: false,
+        schema: { type: 'number', default: 20 },
+        description: 'Page size'
+      }
+    ],
+    responses: [
+      {
+        statusCode: '200',
+        description: 'List of products',
+        contentType: 'application/json'
+      }
+    ]
+  };
+
+  const mockDetailsOperation: ApiOperation = {
+    id: 'get_api_products_id',
+    operationId: 'getProductById',
+    method: 'GET',
+    path: '/api/products/{id}',
+    summary: 'Get Product by ID',
+    description: 'Returns product details by identifier',
+    type: 'details',
+    parameters: [
+      {
+        name: 'id',
+        location: 'path',
+        required: true,
+        schema: { type: 'string' },
+        description: 'Product unique identifier'
+      }
+    ],
+    responses: [
+      {
+        statusCode: '200',
+        description: 'Product detail record',
+        contentType: 'application/json'
+      }
+    ]
+  };
+
   const mockApiDefinition: ApiDefinition = {
     title: 'Acme Platform API',
     version: '1.4.0',
@@ -134,6 +193,12 @@ describe('OperationPage', () => {
         name: 'orders',
         label: 'Orders',
         operations: [mockActionOperation]
+      },
+      {
+        id: 'products',
+        name: 'products',
+        label: 'Products',
+        operations: [mockListOperation, mockDetailsOperation]
       },
       {
         id: 'system',
@@ -416,4 +481,123 @@ describe('OperationPage', () => {
 
     expect(routerNavigateSpy).toHaveBeenCalledWith(['/workspace', 'orders']);
   });
+
+  it('should render specialized GET list view, hide request body, and display collection in dynamic table', () => {
+    const listResult: ApiExecutionResult = {
+      status: 200,
+      statusText: 'OK',
+      isSuccess: true,
+      data: [
+        { id: 1, name: 'Acoustic Guitar', price: 1200 },
+        { id: 2, name: 'Electric Bass', price: 1500 }
+      ],
+      duration: 15,
+      durationMs: 15
+    };
+    (executorService.execute as any).mockReturnValue(of(listResult));
+
+    fixture.componentRef.setInput('operationId', 'listProducts');
+    fixture.detectChanges();
+
+    expect(component.currentOperation()?.type).toBe('list');
+    expect(component.currentOperation()?.method).toBe('GET');
+
+    const compiled = fixture.nativeElement as HTMLElement;
+    expect(compiled.textContent).toContain('GET Collection (List)');
+    // Request body section must not exist for GET operations
+    expect(compiled.querySelector('h2#request-body-heading')).toBeNull();
+
+    // Execute GET list request with query params
+    component.onQueryParamChange('category', 'Guitars');
+    component.onExecute();
+    fixture.detectChanges();
+
+    expect(executorService.execute).toHaveBeenCalledWith(
+      'https://api.acme.com',
+      mockListOperation,
+      {
+        path: {},
+        query: { category: 'Guitars', limit: '20' },
+        headers: {},
+        body: undefined
+      }
+    );
+
+    expect(compiled.textContent).toContain('Acoustic Guitar');
+    expect(compiled.textContent).toContain('Electric Bass');
+  });
+
+  it('should validate required path parameters for GET details operation and render object details', () => {
+    const detailsResult: ApiExecutionResult = {
+      status: 200,
+      statusText: 'OK',
+      isSuccess: true,
+      data: {
+        id: 'prod_99',
+        name: 'Master Keyboard',
+        price: 2400,
+        inStock: true
+      },
+      duration: 18,
+      durationMs: 18
+    };
+    (executorService.execute as any).mockReturnValue(of(detailsResult));
+
+    fixture.componentRef.setInput('operationId', 'getProductById');
+    fixture.detectChanges();
+
+    expect(component.currentOperation()?.type).toBe('details');
+
+    const compiled = fixture.nativeElement as HTMLElement;
+    expect(compiled.textContent).toContain('GET Item (Details)');
+
+    // Attempt execute without path parameter -> validation error
+    component.onExecute();
+    fixture.detectChanges();
+
+    expect(component.validationError()).toContain('Missing required path parameter: "id"');
+    expect(executorService.execute).not.toHaveBeenCalled();
+
+    // Set path parameter and execute
+    component.onPathParamChange('id', 'prod_99');
+    component.onExecute();
+    fixture.detectChanges();
+
+    expect(component.validationError()).toBeNull();
+    expect(executorService.execute).toHaveBeenCalledWith(
+      'https://api.acme.com',
+      mockDetailsOperation,
+      {
+        path: { id: 'prod_99' },
+        query: {},
+        headers: {},
+        body: undefined
+      }
+    );
+
+    expect(compiled.textContent).toContain('Master Keyboard');
+    expect(compiled.textContent).toContain('2400');
+  });
+
+  it('should handle 204 No Content for GET operation with clean empty state', () => {
+    const emptyResult: ApiExecutionResult = {
+      status: 204,
+      statusText: 'No Content',
+      isSuccess: true,
+      data: null,
+      duration: 8,
+      durationMs: 8
+    };
+    (executorService.execute as any).mockReturnValue(of(emptyResult));
+
+    fixture.componentRef.setInput('operationId', 'listProducts');
+    fixture.detectChanges();
+
+    component.onExecute();
+    fixture.detectChanges();
+
+    const compiled = fixture.nativeElement as HTMLElement;
+    expect(compiled.textContent).toContain('204 No Content');
+  });
 });
+

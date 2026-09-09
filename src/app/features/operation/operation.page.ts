@@ -22,6 +22,7 @@ import { ApiExecutionResult } from '../../core/models/api-execution-result.model
 import { ApiRequestInput } from '../../core/models/api-request-input.model';
 import { HttpBadgeComponent } from '../../shared/components/http-badge/http-badge.component';
 import { SchemaViewerComponent } from '../../shared/components/schema-viewer/schema-viewer.component';
+import { ResponseDataViewerComponent } from '../../dynamic-ui/response-data-viewer/response-data-viewer.component';
 
 export interface CustomHeaderItem {
   id: string;
@@ -40,7 +41,8 @@ export interface CustomHeaderItem {
     MatIconModule,
     MatButtonModule,
     HttpBadgeComponent,
-    SchemaViewerComponent
+    SchemaViewerComponent,
+    ResponseDataViewerComponent
   ],
   template: `
     <div class="operation-page-layout">
@@ -93,6 +95,11 @@ export interface CustomHeaderItem {
 
                 <div class="badge-group">
                   <span class="type-badge" [attr.data-type]="op.type">{{ op.type }}</span>
+                  @if (op.method === 'GET') {
+                    <span class="get-flavor-tag font-mono" [attr.data-flavor]="op.type">
+                      {{ op.type === 'list' ? 'GET Collection (List)' : (op.type === 'details' ? 'GET Item (Details)' : 'GET Query') }}
+                    </span>
+                  }
                   @if (op.deprecated) {
                     <span class="deprecated-tag">DEPRECATED</span>
                   }
@@ -405,8 +412,8 @@ export interface CustomHeaderItem {
                   </div>
                 </section>
 
-                <!-- Request Body Section -->
-                @if (requestBody(); as rb) {
+                <!-- Request Body Section (Hidden for GET operations) -->
+                @if (op.method !== 'GET' && requestBody(); as rb) {
                   <section class="technical-section" aria-labelledby="request-body-heading">
                     <div class="section-title-bar">
                       <div class="title-with-icon">
@@ -626,7 +633,7 @@ export interface CustomHeaderItem {
                         }
 
                         <div class="response-body-viewer">
-                          <pre class="response-pre font-mono"><code>{{ formatOutput(res.data) }}</code></pre>
+                          <app-response-data-viewer [result]="res" [data]="res.data" />
                         </div>
                       }
 
@@ -761,6 +768,9 @@ export interface CustomHeaderItem {
     .type-badge { font-size: 10px; text-transform: uppercase; font-family: var(--font-mono); font-weight: 600; padding: 2px 6px; border-radius: var(--radius-sm); letter-spacing: 0.5px; background: var(--canvas-surface-elevated); border: 1px solid var(--canvas-border); color: var(--canvas-text-secondary); }
     .type-badge[data-type="action"] { color: #e3b341; background: rgba(227, 179, 65, 0.1); border-color: rgba(227, 179, 65, 0.3); }
     .type-badge[data-type="unknown"] { color: #a371f7; background: rgba(163, 113, 247, 0.1); border-color: rgba(163, 113, 247, 0.3); }
+    .get-flavor-tag { font-size: 10px; font-family: var(--font-mono); font-weight: 600; padding: 2px 6px; border-radius: var(--radius-sm); letter-spacing: 0.5px; background: rgba(56, 139, 253, 0.1); border: 1px solid rgba(56, 139, 253, 0.3); color: #58a6ff; }
+    .get-flavor-tag[data-flavor="list"] { color: #58a6ff; background: rgba(56, 139, 253, 0.12); border-color: rgba(56, 139, 253, 0.35); }
+    .get-flavor-tag[data-flavor="details"] { color: #3fb950; background: rgba(46, 160, 67, 0.12); border-color: rgba(46, 160, 67, 0.35); }
     .deprecated-tag { font-size: 10px; font-family: var(--font-mono); font-weight: 700; color: var(--color-danger); background: rgba(218, 54, 51, 0.12); border: 1px solid rgba(218, 54, 51, 0.3); padding: 2px 6px; border-radius: var(--radius-sm); }
     .banner-actions { margin-left: auto; display: flex; align-items: center; gap: 8px; }
     .tool-btn { height: 28px; padding: 0 10px; font-size: 12px; background: var(--canvas-surface); border: 1px solid var(--canvas-border); border-radius: var(--radius-sm); color: var(--canvas-text-secondary); cursor: pointer; display: flex; align-items: center; gap: 6px; transition: all 0.12s ease; }
