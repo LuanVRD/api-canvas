@@ -28,6 +28,9 @@ import { DynamicFormComponent } from '../../dynamic-ui/dynamic-form/dynamic-form
 import { RecordDetailsDrawerComponent } from '../../dynamic-ui/object-details/record-details-drawer.component';
 import { DeleteConfirmDialogComponent } from '../../dynamic-ui/delete-dialog/delete-confirm-dialog.component';
 import { EditRecordDialogComponent } from '../../dynamic-ui/edit-dialog/edit-record-dialog.component';
+import { LoadingIndicatorComponent } from '../../shared/components/loading-indicator/loading-indicator.component';
+import { EmptyStateComponent } from '../../shared/components/empty-state/empty-state.component';
+import { JsonViewerComponent } from '../../shared/components/json-viewer/json-viewer.component';
 
 export interface CustomHeaderItem {
   id: string;
@@ -51,7 +54,9 @@ export interface CustomHeaderItem {
     DynamicFormComponent,
     RecordDetailsDrawerComponent,
     DeleteConfirmDialogComponent,
-    EditRecordDialogComponent
+    EditRecordDialogComponent,
+    LoadingIndicatorComponent,
+    EmptyStateComponent
   ],
   template: `
     <div class="operation-page-layout">
@@ -363,9 +368,12 @@ export interface CustomHeaderItem {
                       }
                     </div>
                   } @else {
-                    <div class="empty-section-card">
-                      <span>No parameters defined for this operation.</span>
-                    </div>
+                    <app-empty-state
+                      icon="tune"
+                      title="No parameters defined"
+                      description="This operation does not require path, query, or header parameters."
+                      [compact]="true"
+                    />
                   }
 
                   <!-- Custom Headers Sub-section -->
@@ -601,9 +609,8 @@ export interface CustomHeaderItem {
 
                   <!-- Execution Loading State -->
                   @if (isExecuting()) {
-                    <div class="console-loading-state font-mono">
-                      <div class="spinner"></div>
-                      <span>Sending HTTP {{ op.method }} request...</span>
+                    <div class="console-loading-wrapper">
+                      <app-loading-indicator [message]="'Sending HTTP ' + op.method + ' request...'" />
                     </div>
                   } @else if (executionResult(); as res) {
                     <!-- Execution Result Display -->
@@ -677,7 +684,16 @@ export interface CustomHeaderItem {
                           <div class="response-error-alert font-mono">
                             <mat-icon class="err-alert-icon">error</mat-icon>
                             <div class="err-alert-body">
-                              <div class="err-msg">{{ res.error.message }}</div>
+                              <div class="err-title-row">
+                                <span class="err-cat-badge">{{ res.error.category || 'ERROR' }}</span>
+                                <span class="err-msg">{{ res.error.message }}</span>
+                              </div>
+                              @if (res.error.hint) {
+                                <div class="err-hint">
+                                  <mat-icon class="hint-icon">lightbulb</mat-icon>
+                                  <span>{{ res.error.hint }}</span>
+                                </div>
+                              }
                               @if (res.error.details && res.error.details !== res.data) {
                                 <div class="err-details">{{ formatOutput(res.error.details) }}</div>
                               }
@@ -727,13 +743,11 @@ export interface CustomHeaderItem {
                   } @else {
                     <!-- Empty / Idle Console State -->
                     <div class="console-idle-state">
-                      <div class="idle-message">
-                        <mat-icon class="idle-icon">play_circle_outline</mat-icon>
-                        <h3>Ready to Execute</h3>
-                        <p>
-                          Configure parameters or payload and click <strong>Execute Request</strong> or press <code class="font-mono">Ctrl+Enter</code>.
-                        </p>
-                      </div>
+                      <app-empty-state
+                        icon="play_circle_outline"
+                        title="Ready to Execute"
+                        description="Configure parameters or payload and click Execute Request or press Ctrl+Enter."
+                      />
 
                       <div class="documented-specs-preview">
                         <div class="preview-title">
@@ -987,11 +1001,16 @@ export interface CustomHeaderItem {
     .succ-actions { display: flex; align-items: center; gap: 8px; }
     .list-nav-btn { height: 24px; padding: 0 8px; font-size: 11px; font-weight: 500; color: var(--canvas-text-primary); background: var(--canvas-surface-elevated); border: 1px solid var(--canvas-border); border-radius: var(--radius-sm); cursor: pointer; display: inline-flex; align-items: center; gap: 4px; transition: all 0.12s ease; }
     .list-nav-btn:hover { border-color: var(--color-success); color: var(--color-success); background: #282e37; }
-    .response-error-alert { padding: 8px 10px; background: rgba(218, 54, 51, 0.12); border: 1px solid rgba(218, 54, 51, 0.3); border-radius: var(--radius-sm); display: flex; align-items: flex-start; gap: 6px; font-size: 12px; color: #f85149; }
-    .err-alert-icon { font-size: 15px; width: 15px; height: 15px; margin-top: 1px; }
-    .err-alert-body { flex: 1; }
-    .err-msg { font-weight: 600; }
+    .response-error-alert { padding: 10px 12px; background: rgba(218, 54, 51, 0.12); border: 1px solid rgba(218, 54, 51, 0.3); border-radius: var(--radius-sm); display: flex; align-items: flex-start; gap: 8px; font-size: 12px; color: #f85149; }
+    .err-alert-icon { font-size: 16px; width: 16px; height: 16px; margin-top: 1px; flex-shrink: 0; }
+    .err-alert-body { flex: 1; display: flex; flex-direction: column; gap: 4px; }
+    .err-title-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+    .err-cat-badge { background: rgba(248, 81, 73, 0.2); padding: 1px 4px; border-radius: 2px; font-size: 10px; font-weight: 700; }
+    .err-msg { font-weight: 600; line-height: 1.4; }
+    .err-hint { display: flex; align-items: flex-start; gap: 6px; margin: 4px 0 0; font-size: 11px; color: var(--canvas-text-secondary); }
+    .err-hint .hint-icon { font-size: 14px; width: 14px; height: 14px; color: var(--color-warning); flex-shrink: 0; }
     .err-details { margin-top: 4px; font-size: 11px; color: #ff7b72; white-space: pre-wrap; }
+    .console-loading-wrapper { padding: 40px 16px; }
     .response-body-viewer { background: var(--canvas-bg); border: 1px solid var(--canvas-border); border-radius: var(--radius-sm); padding: 10px; max-height: 480px; overflow-y: auto; }
     .response-pre { margin: 0; font-size: 12px; line-height: 1.5; color: var(--canvas-text-primary); white-space: pre-wrap; word-break: break-all; }
     .response-headers-viewer { background: var(--canvas-bg); border: 1px solid var(--canvas-border); border-radius: var(--radius-sm); padding: 10px; max-height: 380px; overflow-y: auto; }

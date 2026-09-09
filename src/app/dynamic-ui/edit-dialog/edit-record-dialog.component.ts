@@ -24,6 +24,8 @@ import { ApiSessionService } from '../../core/services/api-session.service';
 import { ApiExecutorService } from '../../core/services/api-executor.service';
 import { HttpBadgeComponent } from '../../shared/components/http-badge/http-badge.component';
 import { DynamicFormComponent } from '../dynamic-form/dynamic-form.component';
+import { LoadingIndicatorComponent } from '../../shared/components/loading-indicator/loading-indicator.component';
+import { JsonViewerComponent } from '../../shared/components/json-viewer/json-viewer.component';
 
 @Component({
   selector: 'app-edit-record-dialog',
@@ -34,7 +36,9 @@ import { DynamicFormComponent } from '../dynamic-form/dynamic-form.component';
     ReactiveFormsModule,
     MatIconModule,
     HttpBadgeComponent,
-    DynamicFormComponent
+    DynamicFormComponent,
+    LoadingIndicatorComponent,
+    JsonViewerComponent
   ],
   template: `
     <div class="dialog-backdrop" (click)="onBackdropClick($event)">
@@ -115,9 +119,8 @@ import { DynamicFormComponent } from '../dynamic-form/dynamic-form.component';
         <div class="dialog-body">
           <!-- Loading State for Server Fetch -->
           @if (isLoadingDetails()) {
-            <div class="loading-box font-mono">
-              <div class="spinner"></div>
-              <span>Fetching current record values from server...</span>
+            <div class="loading-box">
+              <app-loading-indicator message="Fetching current record values from server..." />
             </div>
           }
 
@@ -201,11 +204,21 @@ import { DynamicFormComponent } from '../dynamic-form/dynamic-form.component';
                 @if (validationError(); as vErr) {
                   <span class="err-msg">{{ vErr }}</span>
                 } @else if (executionResult(); as res) {
-                  <span class="err-msg">
-                    Execution Failed (HTTP {{ res.status }} {{ res.statusText }}): {{ res.error?.message || 'Server returned an error.' }}
-                  </span>
+                  <div class="err-title-row">
+                    @if (res.error?.category) {
+                      <span class="err-cat font-mono">{{ res.error?.category }}</span>
+                    }
+                    <span class="err-msg">
+                      HTTP {{ res.status }} {{ res.statusText }}: {{ res.error?.message || 'Server returned an error.' }}
+                    </span>
+                  </div>
+                  @if (res.error?.hint) {
+                    <p class="err-hint">{{ res.error?.hint }}</p>
+                  }
                   @if (res.error?.details && res.error?.details !== res.data) {
-                    <div class="err-details">{{ formatDetails(res.error?.details) }}</div>
+                    <div class="err-details">
+                      <app-json-viewer [data]="res.error?.details" [showHeader]="false" maxHeight="150px" />
+                    </div>
                   }
                 }
               </div>
@@ -230,8 +243,12 @@ import { DynamicFormComponent } from '../dynamic-form/dynamic-form.component';
             (click)="onSave()"
             [disabled]="isExecuting() || !areAllMissingParamsProvided()"
           >
-            <mat-icon class="icon-sm">{{ isExecuting() ? 'hourglass_top' : 'save' }}</mat-icon>
-            <span>{{ isExecuting() ? 'Saving...' : ('Update (' + activeOperation().method + ')') }}</span>
+            @if (isExecuting()) {
+              <app-loading-indicator [inline]="true" size="sm" message="Saving..." />
+            } @else {
+              <mat-icon class="icon-sm">save</mat-icon>
+              <span>{{ 'Update (' + activeOperation().method + ')' }}</span>
+            }
           </button>
         </footer>
       </div>

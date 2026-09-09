@@ -36,10 +36,14 @@ export class ApiExecutorService {
         duration,
         durationMs: duration,
         isSuccess: false,
+        timestamp: Date.now(),
         error: {
           message,
+          category: 'VALIDATION_ERROR',
           status: 0,
-          details
+          statusText: 'Validation Error',
+          details,
+          hint: 'Preencha todos os parâmetros obrigatórios antes de enviar a requisição.'
         }
       });
     }
@@ -78,27 +82,49 @@ export class ApiExecutorService {
 
           return {
             status: response.status,
-            statusText: response.statusText,
+            statusText: response.statusText || (response.status === 200 ? 'OK' : response.status === 201 ? 'Created' : response.status === 204 ? 'No Content' : 'Success'),
             headers: resHeaders,
             data: response.body,
             duration,
             durationMs: duration,
-            isSuccess: response.ok || (response.status >= 200 && response.status < 300)
+            isSuccess: response.ok || (response.status >= 200 && response.status < 300),
+            timestamp: Date.now()
           };
         }),
         catchError((error): Observable<ApiExecutionResult> => {
           const duration = Math.round(performance.now() - startTime);
+          const isCorsOrNetwork = !error.status || error.status === 0;
+          const status = error.status || 0;
+          const statusText = isCorsOrNetwork
+            ? 'CORS or Network Error'
+            : error.statusText || (status >= 500 ? 'Server Error' : 'Client Error');
+
+          const category = isCorsOrNetwork ? 'CORS_OR_NETWORK' : 'HTTP_ERROR';
+          const message = isCorsOrNetwork
+            ? `Falha de rede ou restrição de CORS ao conectar a ${built.url}.`
+            : (typeof error.error === 'object' && error.error?.message
+                ? error.error.message
+                : error.message || `Erro HTTP ${status} retornado pelo servidor.`);
+
+          const hint = isCorsOrNetwork
+            ? 'Verifique se o servidor backend está online e se os cabeçalhos de CORS (Access-Control-Allow-Origin, Access-Control-Allow-Methods) permitem requisições do frontend.'
+            : undefined;
+
           return of({
-            status: error.status || 0,
-            statusText: error.statusText || 'Network Error',
-            data: error.error || error.message,
+            status,
+            statusText,
+            data: error.error || null,
             duration,
             durationMs: duration,
             isSuccess: false,
+            timestamp: Date.now(),
             error: {
-              message: error.message || 'Unknown network error',
-              status: error.status,
-              details: error.error
+              message,
+              category,
+              status,
+              statusText,
+              details: error.error || error.message,
+              hint
             }
           });
         })

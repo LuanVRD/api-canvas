@@ -21,6 +21,9 @@ import { ApiExecutorService } from '../../core/services/api-executor.service';
 import { ResourceOperationMatcherService } from '../../core/services/resource-operation-matcher.service';
 import { HttpBadgeComponent } from '../../shared/components/http-badge/http-badge.component';
 import { ObjectDetailsComponent } from './object-details.component';
+import { LoadingIndicatorComponent } from '../../shared/components/loading-indicator/loading-indicator.component';
+import { EmptyStateComponent } from '../../shared/components/empty-state/empty-state.component';
+import { JsonViewerComponent } from '../../shared/components/json-viewer/json-viewer.component';
 
 @Component({
   selector: 'app-record-details-drawer',
@@ -30,7 +33,10 @@ import { ObjectDetailsComponent } from './object-details.component';
     FormsModule,
     MatIconModule,
     HttpBadgeComponent,
-    ObjectDetailsComponent
+    ObjectDetailsComponent,
+    LoadingIndicatorComponent,
+    EmptyStateComponent,
+    JsonViewerComponent
   ],
   template: `
     <div class="drawer-backdrop" (click)="onBackdropClick($event)">
@@ -187,13 +193,12 @@ import { ObjectDetailsComponent } from './object-details.component';
         <div class="drawer-body">
           <!-- Loading State -->
           @if (isExecuting()) {
-            <div class="loading-state font-mono">
-              <div class="spinner"></div>
-              <span>Fetching details from {{ operation.path }}...</span>
+            <div class="loading-state">
+              <app-loading-indicator [message]="'Fetching details from ' + operation.path + '...'" />
             </div>
           }
 
-          <!-- Execution Error Banner (e.g. 404, 400, 500) -->
+          <!-- Execution Error Banner (e.g. 404, 400, 500, CORS) -->
           @else if (executionResult()?.isSuccess === false) {
             <div class="error-container">
               <div class="error-card font-mono">
@@ -202,10 +207,18 @@ import { ObjectDetailsComponent } from './object-details.component';
                   <span class="err-title">
                     HTTP {{ executionResult()?.status }} - {{ executionResult()?.statusText || 'Request Failed' }}
                   </span>
+                  @if (executionResult()?.error?.category) {
+                    <span class="err-cat font-mono">{{ executionResult()?.error?.category }}</span>
+                  }
                 </div>
                 <p class="err-msg">{{ getErrorMessage() }}</p>
+                @if (executionResult()?.error?.hint) {
+                  <p class="err-hint">{{ executionResult()?.error?.hint }}</p>
+                }
                 @if (executionResult()?.data) {
-                  <pre class="err-payload">{{ formatJson(executionResult()?.data) }}</pre>
+                  <div class="err-payload-wrapper">
+                    <app-json-viewer [data]="executionResult()?.data" [showHeader]="false" maxHeight="200px" />
+                  </div>
                 }
               </div>
 
@@ -226,7 +239,7 @@ import { ObjectDetailsComponent } from './object-details.component';
               </div>
             } @else {
               <div class="raw-details-wrapper">
-                <pre class="raw-pre font-mono"><code>{{ formatJson(res.data) }}</code></pre>
+                <app-json-viewer [data]="res.data" [showHeader]="false" />
               </div>
             }
           }
@@ -234,8 +247,12 @@ import { ObjectDetailsComponent } from './object-details.component';
           <!-- Initial / Empty State if not yet executed and not missing params -->
           @else if (!hasMissingParams()) {
             <div class="idle-state">
-              <mat-icon class="idle-icon">hourglass_empty</mat-icon>
-              <span>Ready to fetch details</span>
+              <app-empty-state
+                icon="hourglass_empty"
+                title="Ready to fetch details"
+                description="Click Refresh or provide parameters to load record details."
+                [compact]="true"
+              />
             </div>
           }
         </div>

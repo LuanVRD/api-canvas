@@ -17,6 +17,7 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { OpenApiLoaderService } from '../../openapi/services/openapi-loader.service';
 import { OpenApiParserService } from '../../openapi/services/openapi-parser.service';
 import { ApiSessionService } from '../../core/services/api-session.service';
+import { LoadingIndicatorComponent } from '../../shared/components/loading-indicator/loading-indicator.component';
 
 
 export interface ApiConnectionConfig {
@@ -57,7 +58,8 @@ export function httpUrlValidator(): ValidatorFn {
     MatInputModule,
     MatButtonModule,
     MatIconModule,
-    MatProgressSpinnerModule
+    MatProgressSpinnerModule,
+    LoadingIndicatorComponent
   ],
   template: `
     <div class="connect-container">
@@ -138,8 +140,7 @@ export function httpUrlValidator(): ValidatorFn {
             >
               @if (loading()) {
                 <span class="btn-inner">
-                  <mat-spinner diameter="16" class="button-spinner" />
-                  <span>Connecting...</span>
+                  <app-loading-indicator class="button-spinner" [inline]="true" size="sm" message="Connecting..." />
                 </span>
               } @else {
                 <span class="btn-inner">

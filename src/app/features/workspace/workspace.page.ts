@@ -7,6 +7,7 @@ import { ApiResource } from '../../core/models/api-resource.model';
 import { ApiOperation } from '../../core/models/api-operation.model';
 import { StatusIndicatorComponent } from '../../shared/components/status-indicator/status-indicator.component';
 import { HttpBadgeComponent } from '../../shared/components/http-badge/http-badge.component';
+import { EmptyStateComponent } from '../../shared/components/empty-state/empty-state.component';
 import { ApiSessionService } from '../../core/services/api-session.service';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
@@ -19,6 +20,7 @@ import { MatIconModule } from '@angular/material/icon';
     ResourceSidebarComponent,
     StatusIndicatorComponent,
     HttpBadgeComponent,
+    EmptyStateComponent,
     MatButtonModule,
     MatIconModule
   ],
@@ -130,9 +132,13 @@ import { MatIconModule } from '@angular/material/icon';
                       </div>
                     </div>
                   } @empty {
-                    <div class="empty-operations">
-                      <mat-icon class="empty-icon">info_outline</mat-icon>
-                      <p>No operations found for this resource in the OpenAPI specification.</p>
+                    <div class="empty-operations-wrapper">
+                      <app-empty-state
+                        icon="info_outline"
+                        title="No operations found"
+                        description="No operations found for this resource in the OpenAPI specification."
+                        [compact]="true"
+                      />
                     </div>
                   }
                 </div>
@@ -140,9 +146,11 @@ import { MatIconModule } from '@angular/material/icon';
             </section>
           } @else {
             <section class="empty-workspace">
-              <mat-icon class="empty-icon">account_tree</mat-icon>
-              <h2>Select a Resource</h2>
-              <p>Select an API resource from the sidebar to inspect its available operations and schemas.</p>
+              <app-empty-state
+                icon="account_tree"
+                title="Select a Resource"
+                description="Select an API resource from the sidebar to inspect its available operations and schemas."
+              />
             </section>
           }
         </main>

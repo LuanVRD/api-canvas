@@ -19,6 +19,8 @@ import { ApiRequestInput } from '../../core/models/api-request-input.model';
 import { ApiSessionService } from '../../core/services/api-session.service';
 import { ApiExecutorService } from '../../core/services/api-executor.service';
 import { HttpBadgeComponent } from '../../shared/components/http-badge/http-badge.component';
+import { LoadingIndicatorComponent } from '../../shared/components/loading-indicator/loading-indicator.component';
+import { JsonViewerComponent } from '../../shared/components/json-viewer/json-viewer.component';
 
 export interface KeyValueSummary {
   key: string;
@@ -32,7 +34,9 @@ export interface KeyValueSummary {
     CommonModule,
     FormsModule,
     MatIconModule,
-    HttpBadgeComponent
+    HttpBadgeComponent,
+    LoadingIndicatorComponent,
+    JsonViewerComponent
   ],
   template: `
     <div class="dialog-backdrop" (click)="onBackdropClick($event)">
@@ -160,10 +164,18 @@ export interface KeyValueSummary {
                 <span class="err-title">
                   HTTP {{ executionResult()?.status }} - {{ executionResult()?.statusText || 'Deletion Failed' }}
                 </span>
+                @if (executionResult()?.error?.category) {
+                  <span class="err-cat font-mono">{{ executionResult()?.error?.category }}</span>
+                }
               </div>
               <p class="err-msg">{{ getErrorMessage() }}</p>
+              @if (executionResult()?.error?.hint) {
+                <p class="err-hint">{{ executionResult()?.error?.hint }}</p>
+              }
               @if (executionResult()?.data) {
-                <pre class="err-raw">{{ formatPayload(executionResult()?.data) }}</pre>
+                <div class="err-raw-wrapper">
+                  <app-json-viewer [data]="executionResult()?.data" [showHeader]="false" maxHeight="150px" />
+                </div>
               }
             </div>
           }
@@ -186,10 +198,12 @@ export interface KeyValueSummary {
             (click)="executeDelete()"
             [disabled]="isExecuting() || !areAllRequiredParamsProvided()"
           >
-            <mat-icon class="icon-sm" [class.spinning]="isExecuting()">
-              {{ isExecuting() ? 'hourglass_top' : 'delete' }}
-            </mat-icon>
-            <span>{{ isExecuting() ? 'Deleting...' : 'Delete Record' }}</span>
+            @if (isExecuting()) {
+              <app-loading-indicator [inline]="true" size="sm" message="Deleting..." />
+            } @else {
+              <mat-icon class="icon-sm">delete</mat-icon>
+              <span>Delete Record</span>
+            }
           </button>
         </footer>
       </div>

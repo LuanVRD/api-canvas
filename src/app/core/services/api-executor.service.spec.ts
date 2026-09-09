@@ -182,4 +182,47 @@ describe('ApiExecutorService', () => {
     expect(req.request.method).toBe('GET');
     req.flush([]);
   });
+
+  it('should categorize status 0 as CORS_OR_NETWORK error with helpful diagnostic hint', () => {
+    const operation: ApiOperation = {
+      id: 'fetch_data',
+      method: 'GET',
+      path: '/data',
+      type: 'list',
+      parameters: [],
+      responses: []
+    };
+
+    service.execute('https://blocked-api.example.com', operation, {}).subscribe((result) => {
+      expect(result.isSuccess).toBe(false);
+      expect(result.status).toBe(0);
+      expect(result.statusText).toBe('CORS or Network Error');
+      expect(result.error?.category).toBe('CORS_OR_NETWORK');
+      expect(result.error?.hint).toContain('CORS');
+    });
+
+    const req = httpMock.expectOne('https://blocked-api.example.com/data');
+    req.error(new ProgressEvent('error'), { status: 0, statusText: 'Unknown Error' });
+  });
+
+  it('should categorize status 500 as HTTP_ERROR with server error details', () => {
+    const operation: ApiOperation = {
+      id: 'create_item',
+      method: 'POST',
+      path: '/items',
+      type: 'create',
+      parameters: [],
+      responses: []
+    };
+
+    service.execute('https://api.example.com', operation, { body: { name: 'Test' } }).subscribe((result) => {
+      expect(result.isSuccess).toBe(false);
+      expect(result.status).toBe(500);
+      expect(result.error?.category).toBe('HTTP_ERROR');
+      expect(result.error?.message).toContain('Database down');
+    });
+
+    const req = httpMock.expectOne('https://api.example.com/items');
+    req.flush({ message: 'Database down' }, { status: 500, statusText: 'Internal Server Error' });
+  });
 });

@@ -3,6 +3,8 @@ import { CommonModule } from '@angular/common';
 import { MatIconModule } from '@angular/material/icon';
 import { DynamicTableComponent } from '../dynamic-table/dynamic-table.component';
 import { ObjectDetailsComponent } from '../object-details/object-details.component';
+import { EmptyStateComponent } from '../../shared/components/empty-state/empty-state.component';
+import { JsonViewerComponent } from '../../shared/components/json-viewer/json-viewer.component';
 import { TableSchemaService, TableColumnDescriptor } from '../dynamic-table/table-schema.service';
 import { ApiExecutionResult } from '../../core/models/api-execution-result.model';
 import { ApiSchema } from '../../core/models/api-schema.model';
@@ -21,7 +23,9 @@ export type ViewMode = 'visual' | 'raw';
     CommonModule,
     MatIconModule,
     DynamicTableComponent,
-    ObjectDetailsComponent
+    ObjectDetailsComponent,
+    EmptyStateComponent,
+    JsonViewerComponent
   ],
   template: `
     <div class="response-viewer-container">
@@ -75,10 +79,12 @@ export type ViewMode = 'visual' | 'raw';
         @if (activeMode() === 'visual') {
           <!-- 1. EMPTY STATE -->
           @if (detectedType() === 'empty') {
-            <div class="empty-response-box">
-              <mat-icon class="empty-icon">inbox</mat-icon>
-              <h4 class="empty-title">{{ emptyStateTitle() }}</h4>
-              <p class="empty-desc">{{ emptyStateDescription() }}</p>
+            <div class="empty-response-wrapper">
+              <app-empty-state
+                icon="inbox"
+                [title]="emptyStateTitle()"
+                [description]="emptyStateDescription()"
+              />
             </div>
           }
 
@@ -122,18 +128,14 @@ export type ViewMode = 'visual' | 'raw';
 
           <!-- 5. UNEXPECTED / INVALID FORMAT FALLBACK -->
           @else {
-            <div class="invalid-format-card">
-              <div class="invalid-header">
-                <mat-icon class="warn-icon">warning_amber</mat-icon>
-                <span>Unexpected or unparsed payload format</span>
-              </div>
-              <pre class="raw-pre font-mono">{{ rawFormattedText() }}</pre>
+            <div class="invalid-format-wrapper">
+              <app-json-viewer [data]="parsedData()" [showHeader]="false" />
             </div>
           }
         } @else {
           <!-- RAW JSON VIEW -->
-          <div class="raw-code-container">
-            <pre class="raw-pre font-mono"><code>{{ rawFormattedText() }}</code></pre>
+          <div class="raw-code-wrapper">
+            <app-json-viewer [data]="parsedData()" [showHeader]="false" />
           </div>
         }
       </div>
