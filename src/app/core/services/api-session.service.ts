@@ -1,8 +1,9 @@
-import { computed, Injectable, signal } from '@angular/core';
+import { computed, inject, Injectable, signal } from '@angular/core';
 import { ApiDefinition } from '../models/api-definition.model';
 import { ApiOperation } from '../models/api-operation.model';
 import { ApiResource } from '../models/api-resource.model';
 import { ApiExecutionResult } from '../models/api-execution-result.model';
+import { ResourceOperationMatcherService } from './resource-operation-matcher.service';
 
 export interface ApiSessionMetadata {
   openApiUrl?: string;
@@ -21,6 +22,7 @@ export interface ApiResourceMutationEvent {
   providedIn: 'root'
 })
 export class ApiSessionService {
+  private readonly matcher = inject(ResourceOperationMatcherService);
   private readonly _apiDefinition = signal<ApiDefinition | null>(null);
   private readonly _selectedResourceId = signal<string | null>(null);
   private readonly _openApiUrl = signal<string | null>(null);
@@ -202,6 +204,22 @@ export class ApiSessionService {
 
     // 3. Fallback: Any GET operation in resource
     return resource.operations.find((op) => op.method === 'GET') ?? null;
+  }
+
+  /**
+   * Finds a compatible details operation for the specified resource and optional source operation.
+   */
+  getCompatibleDetailsOperation(
+    resourceId: string,
+    sourceOperation?: ApiOperation | null
+  ): ApiOperation | null {
+    const def = this._apiDefinition();
+    if (!def || !resourceId) return null;
+
+    const resource = def.resources.find((r) => r.id === resourceId);
+    if (!resource) return null;
+
+    return this.matcher.findCompatibleDetailsOperation(resource, sourceOperation);
   }
 
   /**

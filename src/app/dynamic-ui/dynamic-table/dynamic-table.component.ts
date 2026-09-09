@@ -52,30 +52,36 @@ import { ValueRendererComponent } from '../value-renderer/value-renderer.compone
               <ng-container matColumnDef="_actions">
                 <th mat-header-cell *matHeaderCellDef class="table-header actions-header"> Actions </th>
                 <td mat-cell *matCellDef="let element" class="table-cell actions-cell">
-                  <button
-                    type="button"
-                    class="action-icon-btn"
-                    (click)="rowView.emit(element)"
-                    title="View Details"
-                  >
-                    <mat-icon class="action-icon">visibility</mat-icon>
-                  </button>
-                  <button
-                    type="button"
-                    class="action-icon-btn"
-                    (click)="rowEdit.emit(element)"
-                    title="Edit"
-                  >
-                    <mat-icon class="action-icon">edit</mat-icon>
-                  </button>
-                  <button
-                    type="button"
-                    class="action-icon-btn delete"
-                    (click)="rowDelete.emit(element)"
-                    title="Delete"
-                  >
-                    <mat-icon class="action-icon">delete</mat-icon>
-                  </button>
+                  @if (showViewAction) {
+                    <button
+                      type="button"
+                      class="action-icon-btn view-btn"
+                      (click)="onViewClicked($event, element)"
+                      [title]="viewTooltip"
+                    >
+                      <mat-icon class="action-icon">visibility</mat-icon>
+                    </button>
+                  }
+                  @if (showEditAction) {
+                    <button
+                      type="button"
+                      class="action-icon-btn"
+                      (click)="rowEdit.emit(element)"
+                      title="Edit"
+                    >
+                      <mat-icon class="action-icon">edit</mat-icon>
+                    </button>
+                  }
+                  @if (showDeleteAction) {
+                    <button
+                      type="button"
+                      class="action-icon-btn delete"
+                      (click)="rowDelete.emit(element)"
+                      title="Delete"
+                    >
+                      <mat-icon class="action-icon">delete</mat-icon>
+                    </button>
+                  }
                 </td>
               </ng-container>
             }
@@ -266,6 +272,10 @@ export class DynamicTableComponent {
   @Input({ required: true }) data: unknown[] = [];
   @Input({ required: true }) columns: TableColumnDescriptor[] = [];
   @Input() showActions = false;
+  @Input() showViewAction = true;
+  @Input() showEditAction = true;
+  @Input() showDeleteAction = true;
+  @Input() viewTooltip = 'View Details';
 
   @Output() rowView = new EventEmitter<unknown>();
   @Output() rowEdit = new EventEmitter<unknown>();
@@ -275,6 +285,11 @@ export class DynamicTableComponent {
   get displayedColumns(): string[] {
     const keys = this.columns.map((c) => c.key);
     return this.showActions ? [...keys, '_actions'] : keys;
+  }
+
+  onViewClicked(event: MouseEvent, element: unknown): void {
+    event.stopPropagation();
+    this.rowView.emit(element);
   }
 
   getCellValue(element: unknown, key: string): unknown {

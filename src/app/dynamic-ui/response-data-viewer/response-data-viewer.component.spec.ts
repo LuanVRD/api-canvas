@@ -1,6 +1,8 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ResponseDataViewerComponent } from './response-data-viewer.component';
 import { ApiExecutionResult } from '../../core/models/api-execution-result.model';
+import { ApiSessionService } from '../../core/services/api-session.service';
+import { ApiOperation } from '../../core/models/api-operation.model';
 
 describe('ResponseDataViewerComponent', () => {
   let component: ResponseDataViewerComponent;
@@ -182,5 +184,69 @@ describe('ResponseDataViewerComponent', () => {
 
     expect(component.detectedType()).toBe('object');
     expect(component.parsedData()).toEqual({ parsedKey: 'parsedVal' });
+  });
+
+  it('should emit inspectRecord event when row view is triggered', () => {
+    const listOp: ApiOperation = {
+      id: 'get_products',
+      method: 'GET',
+      path: '/products',
+      type: 'list',
+      parameters: [],
+      responses: []
+    };
+
+    const detailsOp: ApiOperation = {
+      id: 'get_product_by_id',
+      method: 'GET',
+      path: '/products/{id}',
+      type: 'details',
+      parameters: [
+        {
+          name: 'id',
+          location: 'path',
+          required: true,
+          schema: { type: 'integer' }
+        }
+      ],
+      responses: []
+    };
+
+    const sessionService = TestBed.inject(ApiSessionService);
+    sessionService.setSession({
+      title: 'Test Store',
+      version: '1.0.0',
+      baseUrl: 'https://store.test',
+      resources: [
+        {
+          id: 'products',
+          name: 'products',
+          label: 'Products',
+          operations: [listOp, detailsOp]
+        }
+      ]
+    });
+
+    component.sourceOperation = listOp;
+    component.result = {
+      status: 200,
+      statusText: 'OK',
+      isSuccess: true,
+      data: [{ id: 456, name: 'Sample Item' }]
+    };
+
+    fixture.detectChanges();
+
+    expect(component.hasDetailsOp()).toBe(true);
+
+    const inspectSpy = vi.spyOn(component.inspectRecord, 'emit');
+    component.onRowInspect({ id: 456, name: 'Sample Item' });
+
+    expect(inspectSpy).toHaveBeenCalledWith({
+      record: { id: 456, name: 'Sample Item' },
+      detailsOp,
+      params: { id: '456' },
+      missingParams: []
+    });
   });
 });

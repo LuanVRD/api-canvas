@@ -838,5 +838,45 @@ describe('OperationPage', () => {
     expect(compiled.textContent).toContain('400 Bad Request');
     expect(compiled.textContent).toContain('Product name already exists');
   });
+
+  it('should open and close record details drawer when inspecting a table record', () => {
+    (executorService.execute as any).mockReturnValue(
+      of({
+        status: 200,
+        statusText: 'OK',
+        isSuccess: true,
+        data: { id: 1, name: 'Acoustic Guitar' },
+        duration: 15,
+        durationMs: 15
+      })
+    );
+
+    fixture.componentRef.setInput('operationId', 'getProducts');
+    fixture.detectChanges();
+
+    expect(component.activeDetailsInspection()).toBeNull();
+
+    // Trigger inspect
+    component.onInspectRecord({
+      record: { id: 1, name: 'Acoustic Guitar' },
+      detailsOp: mockDetailsOperation,
+      params: { id: '1' },
+      missingParams: []
+    });
+    fixture.detectChanges();
+
+    expect(component.activeDetailsInspection()).toBeTruthy();
+    expect(component.activeDetailsInspection()?.params).toEqual({ id: '1' });
+
+    const drawer = fixture.nativeElement.querySelector('app-record-details-drawer');
+    expect(drawer).toBeTruthy();
+
+    // Close drawer
+    component.onCloseDetailsInspection();
+    fixture.detectChanges();
+
+    expect(component.activeDetailsInspection()).toBeNull();
+    expect(fixture.nativeElement.querySelector('app-record-details-drawer')).toBeNull();
+  });
 });
 

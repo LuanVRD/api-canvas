@@ -1,4 +1,4 @@
-import { Component, computed, inject, Input, signal } from '@angular/core';
+import { Component, computed, EventEmitter, inject, Input, Output, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { MatIconModule } from '@angular/material/icon';
 import { DynamicTableComponent } from '../dynamic-table/dynamic-table.component';
@@ -6,6 +6,10 @@ import { ObjectDetailsComponent } from '../object-details/object-details.compone
 import { TableSchemaService, TableColumnDescriptor } from '../dynamic-table/table-schema.service';
 import { ApiExecutionResult } from '../../core/models/api-execution-result.model';
 import { ApiSchema } from '../../core/models/api-schema.model';
+import { ApiOperation } from '../../core/models/api-operation.model';
+import { ApiParameter } from '../../core/models/api-parameter.model';
+import { ApiSessionService } from '../../core/services/api-session.service';
+import { ResourceOperationMatcherService } from '../../core/services/resource-operation-matcher.service';
 
 export type ResponsePayloadType = 'empty' | 'array' | 'object' | 'primitive' | 'invalid';
 export type ViewMode = 'visual' | 'raw';
@@ -84,7 +88,12 @@ export type ViewMode = 'visual' | 'raw';
               <app-dynamic-table
                 [data]="$any(parsedData())"
                 [columns]="inferredColumns()"
-                [showActions]="false"
+                [showActions]="hasDetailsOp()"
+                [showViewAction]="true"
+                [showEditAction]="false"
+                [showDeleteAction]="false"
+                viewTooltip="Inspect record details"
+                (rowView)="onRowInspect($event)"
               />
             </div>
           }
@@ -315,10 +324,37 @@ export type ViewMode = 'visual' | 'raw';
 })
 export class ResponseDataViewerComponent {
   private readonly tableSchema = inject(TableSchemaService);
+  private readonly session = inject(ApiSessionService);
+  private readonly matcher = inject(ResourceOperationMatcherService);
 
   private _result = signal<ApiExecutionResult | null>(null);
   private _data = signal<unknown>(null);
   private _schema = signal<ApiSchema | null>(null);
+  private _sourceOperation = signal<ApiOperation | null>(null);
+  private _activePathParams = signal<Record<string, string>>({});
+
+  @Input()
+  set sourceOperation(val: ApiOperation | null | undefined) {
+    this._sourceOperation.set(val ?? null);
+  }
+  get sourceOperation(): ApiOperation | null {
+    return this._sourceOperation();
+  }
+
+  @Input()
+  set activePathParams(val: Record<string, string> | null | undefined) {
+    this._activePathParams.set(val ?? {});
+  }
+  get activePathParams(): Record<string, string> {
+    return this._activePathParams();
+  }
+
+  @Output() inspectRecord = new EventEmitter<{
+    record: unknown;
+    detailsOp: ApiOperation;
+    params: Record<string, string>;
+    missingParams?: ApiParameter[];
+  }>();
 
   @Input()
   set result(val: ApiExecutionResult | null) {
@@ -346,6 +382,45 @@ export class ResponseDataViewerComponent {
 
   activeMode = signal<ViewMode>('visual');
   copied = signal<boolean>(false);
+
+  /**
+   * Discovered compatible details operation for the current resource/collection context.
+   */
+  readonly detailsOperation = computed<ApiOperation | null>(() => {
+    const srcOp = this._sourceOperation();
+    if (!srcOp) {
+      const currentRes = this.session.selectedResource();
+      if (!currentRes) return null;
+      return this.matcher.findCompatibleDetailsOperation(currentRes);
+    }
+
+    const parentRes = this.session.getResourceForOperation(srcOp.id || srcOp.operationId || '');
+    if (!parentRes) return null;
+
+    return this.matcher.findCompatibleDetailsOperation(parentRes, srcOp);
+  });
+
+  readonly hasDetailsOp = computed<boolean>(() => {
+    return this.detailsOperation() !== null;
+  });
+
+  onRowInspect(record: unknown): void {
+    const detailsOp = this.detailsOperation();
+    if (!detailsOp) return;
+
+    const resolution = this.matcher.resolveParameters(
+      detailsOp,
+      record,
+      this._activePathParams()
+    );
+
+    this.inspectRecord.emit({
+      record,
+      detailsOp,
+      params: resolution.resolvedParams,
+      missingParams: resolution.missingParams
+    });
+  }
 
   private effectiveData = computed<unknown>(() => {
     const directData = this._data();

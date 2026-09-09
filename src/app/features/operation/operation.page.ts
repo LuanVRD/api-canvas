@@ -25,6 +25,7 @@ import { HttpBadgeComponent } from '../../shared/components/http-badge/http-badg
 import { SchemaViewerComponent } from '../../shared/components/schema-viewer/schema-viewer.component';
 import { ResponseDataViewerComponent } from '../../dynamic-ui/response-data-viewer/response-data-viewer.component';
 import { DynamicFormComponent } from '../../dynamic-ui/dynamic-form/dynamic-form.component';
+import { RecordDetailsDrawerComponent } from '../../dynamic-ui/object-details/record-details-drawer.component';
 
 export interface CustomHeaderItem {
   id: string;
@@ -45,7 +46,8 @@ export interface CustomHeaderItem {
     HttpBadgeComponent,
     SchemaViewerComponent,
     ResponseDataViewerComponent,
-    DynamicFormComponent
+    DynamicFormComponent,
+    RecordDetailsDrawerComponent
   ],
   template: `
     <div class="operation-page-layout">
@@ -684,6 +686,9 @@ export interface CustomHeaderItem {
                             [result]="res"
                             [data]="res.data"
                             [schema]="currentResponseSchema()"
+                            [sourceOperation]="currentOperation()"
+                            [activePathParams]="pathParamValues()"
+                            (inspectRecord)="onInspectRecord($event)"
                           />
                         </div>
                       }
@@ -794,6 +799,16 @@ export interface CustomHeaderItem {
           </div>
         }
       </main>
+
+      <!-- Record Details Drawer / Modal -->
+      @if (activeDetailsInspection(); as inspection) {
+        <app-record-details-drawer
+          [operation]="inspection.detailsOp"
+          [initialParams]="inspection.params"
+          [missingParams]="inspection.missingParams || []"
+          (close)="onCloseDetailsInspection()"
+        />
+      }
     </div>
   `,
   styles: [`
@@ -1014,6 +1029,11 @@ export class OperationPage implements OnInit {
   readonly executionResult = signal<ApiExecutionResult | null>(null);
   readonly activeBodyTab = signal<'form' | 'editor' | 'schema'>('form');
   readonly activeResponseTab = signal<'body' | 'headers' | 'docs'>('body');
+  readonly activeDetailsInspection = signal<{
+    detailsOp: ApiOperation;
+    params: Record<string, string>;
+    missingParams?: ApiParameter[];
+  } | null>(null);
 
   readonly apiTitle = this.sessionService.apiTitle;
   readonly apiVersion = this.sessionService.apiVersion;
@@ -1441,6 +1461,23 @@ export class OperationPage implements OnInit {
     } else {
       this.router.navigate(['/workspace']);
     }
+  }
+
+  onInspectRecord(event: {
+    record: unknown;
+    detailsOp: ApiOperation;
+    params: Record<string, string>;
+    missingParams?: ApiParameter[];
+  }): void {
+    this.activeDetailsInspection.set({
+      detailsOp: event.detailsOp,
+      params: event.params,
+      missingParams: event.missingParams
+    });
+  }
+
+  onCloseDetailsInspection(): void {
+    this.activeDetailsInspection.set(null);
   }
 
   onCopyPath(path: string): void {
