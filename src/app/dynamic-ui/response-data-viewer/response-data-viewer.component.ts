@@ -5,6 +5,7 @@ import { DynamicTableComponent } from '../dynamic-table/dynamic-table.component'
 import { ObjectDetailsComponent } from '../object-details/object-details.component';
 import { TableSchemaService, TableColumnDescriptor } from '../dynamic-table/table-schema.service';
 import { ApiExecutionResult } from '../../core/models/api-execution-result.model';
+import { ApiSchema } from '../../core/models/api-schema.model';
 
 export type ResponsePayloadType = 'empty' | 'array' | 'object' | 'primitive' | 'invalid';
 export type ViewMode = 'visual' | 'raw';
@@ -317,6 +318,7 @@ export class ResponseDataViewerComponent {
 
   private _result = signal<ApiExecutionResult | null>(null);
   private _data = signal<unknown>(null);
+  private _schema = signal<ApiSchema | null>(null);
 
   @Input()
   set result(val: ApiExecutionResult | null) {
@@ -332,6 +334,14 @@ export class ResponseDataViewerComponent {
   }
   get data(): unknown {
     return this._data();
+  }
+
+  @Input()
+  set schema(val: ApiSchema | null | undefined) {
+    this._schema.set(val ?? null);
+  }
+  get schema(): ApiSchema | null {
+    return this._schema();
   }
 
   activeMode = signal<ViewMode>('visual');
@@ -410,8 +420,9 @@ export class ResponseDataViewerComponent {
 
   inferredColumns = computed<TableColumnDescriptor[]>(() => {
     const val = this.parsedData();
+    const schema = this._schema();
     if (Array.isArray(val)) {
-      return this.tableSchema.inferColumns(val);
+      return this.tableSchema.inferColumns(val, schema);
     }
     return [];
   });

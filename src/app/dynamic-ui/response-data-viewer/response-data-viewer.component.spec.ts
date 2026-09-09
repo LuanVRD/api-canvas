@@ -33,6 +33,29 @@ describe('ResponseDataViewerComponent', () => {
     expect(component.inferredColumns().length).toBe(3);
   });
 
+  it('should use provided schema to infer columns when available', () => {
+    component.schema = {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          code: { type: 'string', title: 'Product Code' },
+          amount: { type: 'number' }
+        }
+      }
+    };
+    component.result = {
+      status: 200,
+      statusText: 'OK',
+      isSuccess: true,
+      data: [{ code: 'P01', amount: 100 }]
+    };
+    fixture.detectChanges();
+
+    expect(component.inferredColumns().length).toBe(2);
+    expect(component.inferredColumns()[0].label).toBe('Product Code');
+  });
+
   it('should detect object response for single record (details)', () => {
     const res: ApiExecutionResult = {
       status: 200,

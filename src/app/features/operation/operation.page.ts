@@ -633,7 +633,11 @@ export interface CustomHeaderItem {
                         }
 
                         <div class="response-body-viewer">
-                          <app-response-data-viewer [result]="res" [data]="res.data" />
+                          <app-response-data-viewer
+                            [result]="res"
+                            [data]="res.data"
+                            [schema]="currentResponseSchema()"
+                          />
                         </div>
                       }
 
@@ -963,6 +967,28 @@ export class OperationPage implements OnInit {
     const id = this.targetOpId();
     if (!id) return null;
     return this.sessionService.getOperation(id);
+  });
+
+  readonly currentResponseSchema = computed<ApiSchema | null>(() => {
+    const op = this.currentOperation();
+    const res = this.executionResult();
+    if (!op || !op.responses || op.responses.length === 0) return null;
+
+    if (res) {
+      const statusStr = String(res.status);
+      const exactMatch = op.responses.find((r) => r.statusCode === statusStr);
+      if (exactMatch?.schema) return exactMatch.schema;
+
+      const groupMatch = op.responses.find(
+        (r) => r.statusCode === `${statusStr[0]}XX` || r.statusCode === `${statusStr[0]}xx`
+      );
+      if (groupMatch?.schema) return groupMatch.schema;
+    }
+
+    const successResp = op.responses.find(
+      (r) => r.statusCode === '200' || r.statusCode === '201' || r.statusCode === '2XX' || r.statusCode === 'default'
+    );
+    return successResp?.schema || op.responses[0]?.schema || null;
   });
 
   readonly parentResource = computed(() => {
