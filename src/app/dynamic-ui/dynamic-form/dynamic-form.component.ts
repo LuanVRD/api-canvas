@@ -168,10 +168,8 @@ export class DynamicFormComponent implements OnChanges {
   ngOnChanges(changes: SimpleChanges): void {
     if (changes['schema'] && this.schema) {
       this.initFromSchema(this.schema);
-    }
-
-    if (changes['initialValue'] && this.initialValue && this.form) {
-      this.form.patchValue(this.initialValue, { emitEvent: false });
+    } else if (changes['initialValue'] && this.initialValue && this.form) {
+      this.formSchemaService.populateFormValues(this.form, this.initialValue, this.fields);
     }
 
     if (changes['disabled'] && this.form) {
@@ -184,15 +182,15 @@ export class DynamicFormComponent implements OnChanges {
   }
 
   private initFromSchema(schema: ApiSchema): void {
-    const { form, fields } = this.formSchemaService.buildFormGroup(schema);
+    const { form, fields } = this.formSchemaService.buildFormGroup(schema, this.initialValue);
     this.form = form;
     this.fields = fields;
 
     if (this.initialValue) {
-      this.form.patchValue(this.initialValue, { emitEvent: false });
+      this.formSchemaService.populateFormValues(this.form, this.initialValue, this.fields);
     }
 
-    this.form.valueChanges.subscribe((val) => {
+    this.form.valueChanges.subscribe(() => {
       this.formChange.emit(this.getPayload());
     });
   }
@@ -213,7 +211,7 @@ export class DynamicFormComponent implements OnChanges {
     if (!this.form) return;
     this.form.reset();
     if (this.initialValue) {
-      this.form.patchValue(this.initialValue);
+      this.formSchemaService.populateFormValues(this.form, this.initialValue, this.fields);
     }
     this.formReset.emit();
   }
@@ -230,4 +228,5 @@ export class DynamicFormComponent implements OnChanges {
     return !!this.form && this.form.valid;
   }
 }
+
 

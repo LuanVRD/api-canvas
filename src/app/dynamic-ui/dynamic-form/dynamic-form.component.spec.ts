@@ -160,5 +160,67 @@ describe('DynamicFormComponent', () => {
     expect(resetSpy).toHaveBeenCalled();
     expect(component.form.get('name')?.value).toBe('DefaultName');
   });
+
+  it('should handle complex schema with nested objects and arrays end-to-end', () => {
+    const complexSchema: ApiSchema = {
+      type: 'object',
+      requiredProperties: ['orderId', 'customer'],
+      properties: {
+        orderId: { type: 'string' },
+        customer: {
+          type: 'object',
+          requiredProperties: ['email'],
+          properties: {
+            name: { type: 'string' },
+            email: { type: 'string' }
+          }
+        },
+        tags: {
+          type: 'array',
+          items: { type: 'string' }
+        }
+      }
+    };
+
+    const initialData = {
+      orderId: 'ORD-999',
+      customer: { name: 'Bob', email: 'bob@example.com' },
+      tags: ['vip', 'urgent']
+    };
+
+    component.schema = complexSchema;
+    component.initialValue = initialData;
+    component.ngOnChanges({
+      schema: {
+        currentValue: complexSchema,
+        previousValue: undefined,
+        firstChange: true,
+        isFirstChange: () => true
+      },
+      initialValue: {
+        currentValue: initialData,
+        previousValue: undefined,
+        firstChange: true,
+        isFirstChange: () => true
+      }
+    });
+    fixture.detectChanges();
+
+    expect(component.form).toBeTruthy();
+    expect(component.form?.get('orderId')?.value).toBe('ORD-999');
+
+    const customerGroup = component.form?.get('customer') as FormGroup;
+    expect(customerGroup.get('email')?.value).toBe('bob@example.com');
+
+    const submitSpy = vi.spyOn(component.formSubmit, 'emit');
+    component.onSubmit();
+
+    expect(submitSpy).toHaveBeenCalledWith({
+      orderId: 'ORD-999',
+      customer: { name: 'Bob', email: 'bob@example.com' },
+      tags: ['vip', 'urgent']
+    });
+  });
 });
+
 

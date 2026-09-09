@@ -1,8 +1,9 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
+import { FormArray, FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { DynamicFieldComponent } from './dynamic-field.component';
 import { FormFieldDescriptor } from './form-field.model';
+import { FormSchemaService } from './form-schema.service';
 
 describe('DynamicFieldComponent', () => {
   let component: DynamicFieldComponent;
@@ -10,7 +11,8 @@ describe('DynamicFieldComponent', () => {
 
   beforeEach(async () => {
     await TestBed.configureTestingModule({
-      imports: [DynamicFieldComponent, ReactiveFormsModule, NoopAnimationsModule]
+      imports: [DynamicFieldComponent, ReactiveFormsModule, NoopAnimationsModule],
+      providers: [FormSchemaService]
     }).compileComponents();
 
     fixture = TestBed.createComponent(DynamicFieldComponent);
@@ -120,17 +122,102 @@ describe('DynamicFieldComponent', () => {
     expect(input).toBeTruthy();
   });
 
-  it('should render a textarea for type json', () => {
+  it('should render a textarea for type json and show fallback reason if isFallback', () => {
     setupField({
       key: 'metadata',
       label: 'Metadata JSON',
       type: 'json',
-      required: false
+      required: false,
+      isFallback: true,
+      fallbackReason: 'Cyclic schema reference detected'
     }, '{"tier": "premium"}');
 
     const compiled = fixture.nativeElement as HTMLElement;
     const textarea = compiled.querySelector('textarea[matInput]');
+    const fallbackNote = compiled.querySelector('.fallback-note');
+
     expect(textarea).toBeTruthy();
+    expect(fallbackNote?.textContent).toContain('Cyclic schema reference detected');
+  });
+
+  it('should render nested object container with child fields', () => {
+    const field: FormFieldDescriptor = {
+      key: 'address',
+      label: 'Mailing Address',
+      type: 'object',
+      required: true,
+      children: [
+        { key: 'street', label: 'Street', type: 'text', required: true },
+        { key: 'zip', label: 'Zip Code', type: 'text', required: false }
+      ]
+    };
+
+    component.field = field;
+    component.form = new FormGroup({
+      address: new FormGroup({
+        street: new FormControl('123 Elm St', [Validators.required]),
+        zip: new FormControl('90210')
+      })
+    });
+    fixture.detectChanges();
+
+    const compiled = fixture.nativeElement as HTMLElement;
+    const objectCard = compiled.querySelector('.nested-object-card');
+    expect(objectCard).toBeTruthy();
+    expect(objectCard?.querySelector('.nested-title')?.textContent).toContain('Mailing Address');
+
+    const childFields = objectCard?.querySelectorAll('app-dynamic-field');
+    expect(childFields?.length).toBe(2);
+  });
+
+  it('should render array container with items and allow adding and removing items', () => {
+    const field: FormFieldDescriptor = {
+      key: 'tags',
+      label: 'Tags',
+      type: 'array',
+      required: false,
+      itemDescriptor: {
+        key: 'tags_item',
+        label: 'Tag Name',
+        type: 'text',
+        required: true,
+        defaultValue: 'new-tag'
+      }
+    };
+
+    const tagsArray = new FormArray([
+      new FormControl('alpha'),
+      new FormControl('beta')
+    ]);
+
+    component.field = field;
+    component.form = new FormGroup({
+      tags: tagsArray
+    });
+    fixture.detectChanges();
+
+    const compiled = fixture.nativeElement as HTMLElement;
+    const arrayCard = compiled.querySelector('.nested-array-card');
+    expect(arrayCard).toBeTruthy();
+    expect(arrayCard?.querySelector('.count-badge')?.textContent).toContain('[2]');
+
+    // Add item
+    const addBtn = arrayCard?.querySelector('.btn-add-item') as HTMLButtonElement;
+    expect(addBtn).toBeTruthy();
+    addBtn.click();
+    fixture.detectChanges();
+
+    expect(tagsArray.length).toBe(3);
+    expect(tagsArray.at(2).value).toBe('new-tag');
+
+    // Remove item at index 0
+    const removeBtns = arrayCard?.querySelectorAll('.btn-remove-item');
+    expect(removeBtns?.length).toBe(3);
+    (removeBtns![0] as HTMLButtonElement).click();
+    fixture.detectChanges();
+
+    expect(tagsArray.length).toBe(2);
+    expect(tagsArray.at(0).value).toBe('beta');
   });
 
   describe('Validation Error Messages', () => {
@@ -228,3 +315,4 @@ describe('DynamicFieldComponent', () => {
     });
   });
 });
+

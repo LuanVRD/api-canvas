@@ -5,7 +5,10 @@ export type FormFieldType =
   | 'select'
   | 'date'
   | 'datetime'
-  | 'json';
+  | 'object'
+  | 'array'
+  | 'json'
+  | 'unsupported';
 
 export interface FormFieldOption {
   label: string;
@@ -34,4 +37,8 @@ export interface FormFieldDescriptor {
   constraints?: FormFieldConstraints;
   readOnly?: boolean;
   nullable?: boolean;
+  children?: FormFieldDescriptor[];
+  itemDescriptor?: FormFieldDescriptor;
+  isFallback?: boolean;
+  fallbackReason?: string;
 }

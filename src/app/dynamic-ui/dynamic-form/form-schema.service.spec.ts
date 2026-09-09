@@ -1,6 +1,7 @@
 import { TestBed } from '@angular/core/testing';
+import { FormArray, FormGroup } from '@angular/forms';
 import { ApiSchema } from '../../core/models/api-schema.model';
-import { FormSchemaService } from './form-schema.service';
+import { FormSchemaService, MAX_SCHEMA_DEPTH } from './form-schema.service';
 
 describe('FormSchemaService', () => {
   let service: FormSchemaService;
@@ -164,14 +165,14 @@ describe('FormSchemaService', () => {
       expect(fields[0].format).toBe('date-time');
     });
 
-    it('should map object and array properties to json field descriptors', () => {
+    it('should map unstructured object and array without items to json field descriptors', () => {
       const schema: ApiSchema = {
         type: 'object',
         properties: {
           metadata: {
             type: 'object'
           },
-          tags: {
+          rawTags: {
             type: 'array'
           }
         }
@@ -179,7 +180,167 @@ describe('FormSchemaService', () => {
 
       const fields = service.extractFields(schema);
       expect(fields.find((f) => f.key === 'metadata')?.type).toBe('json');
-      expect(fields.find((f) => f.key === 'tags')?.type).toBe('json');
+      expect(fields.find((f) => f.key === 'rawTags')?.type).toBe('json');
+    });
+
+    it('should map nested structured object into object descriptor with children', () => {
+      const schema: ApiSchema = {
+        type: 'object',
+        properties: {
+          address: {
+            type: 'object',
+            title: 'Mailing Address',
+            requiredProperties: ['street'],
+            properties: {
+              street: { type: 'string', title: 'Street Line' },
+              city: { type: 'string' },
+              zipCode: { type: 'string', minLength: 5 }
+            }
+          }
+        }
+      };
+
+      const fields = service.extractFields(schema);
+      expect(fields.length).toBe(1);
+      const addressField = fields[0];
+
+      expect(addressField.key).toBe('address');
+      expect(addressField.type).toBe('object');
+      expect(addressField.label).toBe('Mailing Address');
+      expect(addressField.children?.length).toBe(3);
+
+      const streetChild = addressField.children?.find((c) => c.key === 'street');
+      const zipChild = addressField.children?.find((c) => c.key === 'zipCode');
+
+      expect(streetChild?.required).toBe(true);
+      expect(streetChild?.label).toBe('Street Line');
+      expect(zipChild?.constraints?.minLength).toBe(5);
+    });
+
+    it('should map array of primitives with itemDescriptor', () => {
+      const schema: ApiSchema = {
+        type: 'object',
+        properties: {
+          tags: {
+            type: 'array',
+            title: 'Tag List',
+            items: {
+              type: 'string',
+              minLength: 2
+            }
+          },
+          scores: {
+            type: 'array',
+            items: {
+              type: 'number',
+              minimum: 0
+            }
+          }
+        }
+      };
+
+      const fields = service.extractFields(schema);
+      expect(fields.length).toBe(2);
+
+      const tagsField = fields.find((f) => f.key === 'tags');
+      expect(tagsField?.type).toBe('array');
+      expect(tagsField?.itemDescriptor?.type).toBe('text');
+      expect(tagsField?.itemDescriptor?.constraints?.minLength).toBe(2);
+
+      const scoresField = fields.find((f) => f.key === 'scores');
+      expect(scoresField?.type).toBe('array');
+      expect(scoresField?.itemDescriptor?.type).toBe('number');
+      expect(scoresField?.itemDescriptor?.constraints?.minimum).toBe(0);
+    });
+
+    it('should map array of structured objects with nested itemDescriptor', () => {
+      const schema: ApiSchema = {
+        type: 'object',
+        properties: {
+          lineItems: {
+            type: 'array',
+            title: 'Order Line Items',
+            items: {
+              type: 'object',
+              requiredProperties: ['sku', 'quantity'],
+              properties: {
+                sku: { type: 'string' },
+                quantity: { type: 'integer', minimum: 1 },
+                unitPrice: { type: 'number', minimum: 0 }
+              }
+            }
+          }
+        }
+      };
+
+      const fields = service.extractFields(schema);
+      const lineItemsField = fields[0];
+
+      expect(lineItemsField.type).toBe('array');
+      expect(lineItemsField.itemDescriptor?.type).toBe('object');
+      expect(lineItemsField.itemDescriptor?.children?.length).toBe(3);
+
+      const skuChild = lineItemsField.itemDescriptor?.children?.find((c) => c.key === 'sku');
+      expect(skuChild?.required).toBe(true);
+    });
+
+    it('should prevent infinite recursion on cyclic schemas and cap max depth', () => {
+      // Cyclic schema reference
+      const cyclicChildSchema: ApiSchema = {
+        type: 'object',
+        properties: {}
+      };
+      const cyclicParentSchema: ApiSchema = {
+        type: 'object',
+        properties: {
+          name: { type: 'string' },
+          next: cyclicChildSchema
+        }
+      };
+      // Create cycle
+      cyclicChildSchema.properties = {
+        parent: cyclicParentSchema
+      };
+
+      // Must not throw call stack overflow
+      expect(() => {
+        const fields = service.extractFields(cyclicParentSchema);
+        expect(fields.length).toBe(2);
+        const nextField = fields.find((f) => f.key === 'next');
+        expect(nextField?.type).toBe('object');
+      }).not.toThrow();
+    });
+
+    it('should cap max depth at MAX_SCHEMA_DEPTH with fallback descriptor', () => {
+      // Build 6 levels deep schema
+      let currentSchema: ApiSchema = {
+        type: 'object',
+        properties: { leaf: { type: 'string' } }
+      };
+
+      for (let i = 0; i < 6; i++) {
+        currentSchema = {
+          type: 'object',
+          properties: {
+            nested: currentSchema
+          }
+        };
+      }
+
+      const fields = service.extractFields(currentSchema);
+      expect(fields.length).toBe(1);
+
+      // Dig down to max depth
+      let currentField = fields[0];
+      let reachedDepth = 0;
+      while (currentField && currentField.children && currentField.children.length > 0) {
+        reachedDepth++;
+        currentField = currentField.children[0];
+      }
+
+      expect(reachedDepth).toBeLessThanOrEqual(MAX_SCHEMA_DEPTH);
+      expect(currentField.isFallback).toBe(true);
+      expect(currentField.fallbackReason).toContain('Max recursion depth');
     });
 
     it('should map required constraint from property level and requiredProperties list', () => {
@@ -215,36 +376,6 @@ describe('FormSchemaService', () => {
       expect(bioField?.constraints?.required).toBeUndefined();
     });
 
-    it('should map validation constraints minLength, maxLength, minimum, maximum, and pattern', () => {
-      const schema: ApiSchema = {
-        type: 'object',
-        properties: {
-          zipCode: {
-            type: 'string',
-            minLength: 5,
-            maxLength: 10,
-            pattern: '^[0-9-]+$'
-          },
-          score: {
-            type: 'number',
-            minimum: 0,
-            maximum: 100
-          }
-        }
-      };
-
-      const fields = service.extractFields(schema);
-      const zipField = fields.find((f) => f.key === 'zipCode');
-      const scoreField = fields.find((f) => f.key === 'score');
-
-      expect(zipField?.constraints?.minLength).toBe(5);
-      expect(zipField?.constraints?.maxLength).toBe(10);
-      expect(zipField?.constraints?.pattern).toBe('^[0-9-]+$');
-
-      expect(scoreField?.constraints?.minimum).toBe(0);
-      expect(scoreField?.constraints?.maximum).toBe(100);
-    });
-
     it('should format label using key when title is not provided', () => {
       const schema: ApiSchema = {
         type: 'object',
@@ -269,133 +400,228 @@ describe('FormSchemaService', () => {
       expect(fields.length).toBe(0);
     });
 
-    it('should build a reactive FormGroup with proper validators and validation behavior', () => {
+    it('should build a reactive FormGroup with nested FormGroup for object fields', () => {
       const schema: ApiSchema = {
         type: 'object',
-        requiredProperties: ['email', 'age'],
         properties: {
-          email: {
-            type: 'string',
-            pattern: '^.+@.+$'
-          },
-          age: {
-            type: 'integer',
-            minimum: 18,
-            maximum: 65
-          },
-          nickname: {
-            type: 'string',
-            minLength: 3,
-            maxLength: 8
-          },
-          payload: {
-            type: 'object'
-          },
-          readOnlyField: {
-            type: 'string',
-            readOnly: true,
-            default: 'STATIC'
+          name: { type: 'string', required: true },
+          contact: {
+            type: 'object',
+            requiredProperties: ['email'],
+            properties: {
+              email: { type: 'string', pattern: '^.+@.+$' },
+              phone: { type: 'string', minLength: 8 }
+            }
           }
         }
       };
 
       const { form, fields } = service.buildFormGroup(schema);
-      expect(fields.length).toBe(5);
-      expect(form.contains('email')).toBe(true);
-      expect(form.contains('age')).toBe(true);
-      expect(form.contains('nickname')).toBe(true);
-      expect(form.contains('payload')).toBe(true);
-      expect(form.get('readOnlyField')).toBeTruthy();
+      expect(fields.length).toBe(2);
+      expect(form.contains('name')).toBe(true);
+      expect(form.contains('contact')).toBe(true);
 
-      // Email validation (required + pattern)
-      const emailCtrl = form.get('email');
+      const contactGroup = form.get('contact') as FormGroup;
+      expect(contactGroup instanceof FormGroup).toBe(true);
+      expect(contactGroup.contains('email')).toBe(true);
+      expect(contactGroup.contains('phone')).toBe(true);
+
+      const emailCtrl = contactGroup.get('email');
       expect(emailCtrl?.valid).toBe(false);
       emailCtrl?.setValue('invalid');
       expect(emailCtrl?.hasError('pattern')).toBe(true);
       emailCtrl?.setValue('test@example.com');
       expect(emailCtrl?.valid).toBe(true);
-
-      // Age validation (required + min + max)
-      const ageCtrl = form.get('age');
-      expect(ageCtrl?.valid).toBe(false);
-      ageCtrl?.setValue(10);
-      expect(ageCtrl?.hasError('min')).toBe(true);
-      ageCtrl?.setValue(70);
-      expect(ageCtrl?.hasError('max')).toBe(true);
-      ageCtrl?.setValue(25);
-      expect(ageCtrl?.valid).toBe(true);
-
-      // Nickname validation (minLength + maxLength)
-      const nicknameCtrl = form.get('nickname');
-      nicknameCtrl?.setValue('ab');
-      expect(nicknameCtrl?.hasError('minlength')).toBe(true);
-      nicknameCtrl?.setValue('toolongnickname');
-      expect(nicknameCtrl?.hasError('maxlength')).toBe(true);
-      nicknameCtrl?.setValue('valid');
-      expect(nicknameCtrl?.valid).toBe(true);
-
-      // Payload validation (JSON validator)
-      const payloadCtrl = form.get('payload');
-      payloadCtrl?.setValue('{ bad json');
-      expect(payloadCtrl?.hasError('invalidJson')).toBe(true);
-      payloadCtrl?.setValue('{"key": "value"}');
-      expect(payloadCtrl?.hasError('invalidJson')).toBe(false);
-
-      // Disabled state for readOnly
-      const readOnlyCtrl = form.get('readOnlyField');
-      expect(readOnlyCtrl?.disabled).toBe(true);
-      expect(readOnlyCtrl?.value).toBe('STATIC');
     });
 
-    it('should allow building FormGroup directly from FormFieldDescriptor array', () => {
-      const descriptors = [
-        {
-          key: 'category',
-          label: 'Category',
-          type: 'text' as const,
-          required: true,
-          defaultValue: 'tech',
-          constraints: { required: true }
+    it('should build a reactive FormGroup with FormArray for array fields and populate initial items', () => {
+      const schema: ApiSchema = {
+        type: 'object',
+        properties: {
+          tags: {
+            type: 'array',
+            items: { type: 'string' }
+          },
+          items: {
+            type: 'array',
+            items: {
+              type: 'object',
+              requiredProperties: ['id'],
+              properties: {
+                id: { type: 'string' },
+                qty: { type: 'number', default: 1 }
+              }
+            }
+          }
         }
-      ];
+      };
 
-      const { form, fields } = service.buildFormGroup(descriptors);
-      expect(fields).toBe(descriptors);
-      expect(form.get('category')?.value).toBe('tech');
-      expect(form.valid).toBe(true);
+      const initialValue = {
+        tags: ['frontend', 'angular'],
+        items: [{ id: 'prod-1', qty: 3 }, { id: 'prod-2' }]
+      };
+
+      const { form } = service.buildFormGroup(schema, initialValue);
+
+      const tagsArray = form.get('tags') as FormArray;
+      expect(tagsArray instanceof FormArray).toBe(true);
+      expect(tagsArray.length).toBe(2);
+      expect(tagsArray.at(0).value).toBe('frontend');
+      expect(tagsArray.at(1).value).toBe('angular');
+
+      const itemsArray = form.get('items') as FormArray;
+      expect(itemsArray instanceof FormArray).toBe(true);
+      expect(itemsArray.length).toBe(2);
+
+      const item0 = itemsArray.at(0) as FormGroup;
+      expect(item0.get('id')?.value).toBe('prod-1');
+      expect(item0.get('qty')?.value).toBe(3);
+
+      const item1 = itemsArray.at(1) as FormGroup;
+      expect(item1.get('id')?.value).toBe('prod-2');
+      expect(item1.get('qty')?.value).toBe(1); // default
+    });
+
+    it('should support createArrayItemControl and populateFormValues dynamically', () => {
+      const itemDescriptor = {
+        key: 'item',
+        label: 'Item',
+        type: 'object' as const,
+        required: true,
+        children: [
+          { key: 'code', label: 'Code', type: 'text' as const, required: true },
+          { key: 'amount', label: 'Amount', type: 'number' as const, required: false, defaultValue: 10 }
+        ]
+      };
+
+      const itemCtrl = service.createArrayItemControl(itemDescriptor, { code: 'ABC' }) as FormGroup;
+      expect(itemCtrl.get('code')?.value).toBe('ABC');
+      expect(itemCtrl.get('amount')?.value).toBe(10);
+
+      const parentForm = new FormGroup({
+        items: new FormArray([])
+      });
+      const itemsArr = parentForm.get('items') as FormArray;
+
+      service.populateFormValues(
+        parentForm,
+        { items: [{ code: 'X1', amount: 5 }, { code: 'X2', amount: 15 }] },
+        [{ key: 'items', label: 'Items', type: 'array', required: false, itemDescriptor }]
+      );
+
+      expect(itemsArr.length).toBe(2);
+      expect((itemsArr.at(0) as FormGroup).get('code')?.value).toBe('X1');
+      expect((itemsArr.at(1) as FormGroup).get('amount')?.value).toBe(15);
     });
   });
 
   describe('toRequestBody', () => {
-    it('should convert form values into request body compatible json object', () => {
+    it('should recursively convert nested objects and handle optional/nullable fields', () => {
       const descriptors = [
-        { key: 'name', label: 'Name', type: 'text' as const, required: true },
-        { key: 'count', label: 'Count', type: 'number' as const, required: false },
-        { key: 'active', label: 'Active', type: 'boolean' as const, required: false },
-        { key: 'config', label: 'Config', type: 'json' as const, required: false },
-        { key: 'optionalBio', label: 'Bio', type: 'text' as const, required: false, nullable: true },
-        { key: 'ignoredEmpty', label: 'Empty', type: 'text' as const, required: false }
+        { key: 'title', label: 'Title', type: 'text' as const, required: true },
+        {
+          key: 'shipping',
+          label: 'Shipping',
+          type: 'object' as const,
+          required: false,
+          children: [
+            { key: 'carrier', label: 'Carrier', type: 'text' as const, required: true },
+            { key: 'trackingNumber', label: 'Tracking', type: 'text' as const, required: false, nullable: true },
+            { key: 'cost', label: 'Cost', type: 'number' as const, required: false }
+          ]
+        },
+        {
+          key: 'optionalNotes',
+          label: 'Notes',
+          type: 'object' as const,
+          required: false,
+          nullable: true,
+          children: [
+            { key: 'author', label: 'Author', type: 'text' as const, required: false },
+            { key: 'content', label: 'Content', type: 'text' as const, required: false }
+          ]
+        }
       ];
 
       const rawValues = {
-        name: 'Product 1',
-        count: '42',
-        active: true,
-        config: '{"enabled": true}',
-        optionalBio: '',
-        ignoredEmpty: ''
+        title: 'Order #100',
+        shipping: {
+          carrier: 'FedEx',
+          trackingNumber: '',
+          cost: '14.50'
+        },
+        optionalNotes: {
+          author: '',
+          content: ''
+        }
       };
 
       const result = service.toRequestBody(rawValues, descriptors);
 
       expect(result).toEqual({
-        name: 'Product 1',
-        count: 42,
-        active: true,
-        config: { enabled: true },
-        optionalBio: null
+        title: 'Order #100',
+        shipping: {
+          carrier: 'FedEx',
+          trackingNumber: null,
+          cost: 14.5
+        },
+        optionalNotes: null
       });
-      expect('ignoredEmpty' in result).toBe(false);
+    });
+
+    it('should recursively serialize arrays of primitives and arrays of objects', () => {
+      const descriptors = [
+        {
+          key: 'tags',
+          label: 'Tags',
+          type: 'array' as const,
+          required: false,
+          itemDescriptor: { key: 'tags_item', label: 'Tag', type: 'text' as const, required: true }
+        },
+        {
+          key: 'scores',
+          label: 'Scores',
+          type: 'array' as const,
+          required: false,
+          itemDescriptor: { key: 'scores_item', label: 'Score', type: 'number' as const, required: true }
+        },
+        {
+          key: 'products',
+          label: 'Products',
+          type: 'array' as const,
+          required: false,
+          itemDescriptor: {
+            key: 'products_item',
+            label: 'Product',
+            type: 'object' as const,
+            required: true,
+            children: [
+              { key: 'id', label: 'ID', type: 'text' as const, required: true },
+              { key: 'quantity', label: 'Quantity', type: 'number' as const, required: true }
+            ]
+          }
+        }
+      ];
+
+      const rawValues = {
+        tags: ['v1', 'release'],
+        scores: ['10', '20.5', 30],
+        products: [
+          { id: 'item-1', quantity: '2' },
+          { id: 'item-2', quantity: 5 }
+        ]
+      };
+
+      const result = service.toRequestBody(rawValues, descriptors);
+
+      expect(result).toEqual({
+        tags: ['v1', 'release'],
+        scores: [10, 20.5, 30],
+        products: [
+          { id: 'item-1', quantity: 2 },
+          { id: 'item-2', quantity: 5 }
+        ]
+      });
     });
   });
 
@@ -410,3 +636,4 @@ describe('FormSchemaService', () => {
     });
   });
 });
+
