@@ -16,6 +16,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
 import { ApiSessionService } from '../../core/services/api-session.service';
 import { ApiExecutorService } from '../../core/services/api-executor.service';
+import { UiConfigurationService } from '../../core/services/ui-configuration.service';
 import { ApiOperation, ApiRequestBody } from '../../core/models/api-operation.model';
 import { ApiParameter } from '../../core/models/api-parameter.model';
 import { ApiSchema } from '../../core/models/api-schema.model';
@@ -529,6 +530,8 @@ export interface CustomHeaderItem {
                           #dynForm
                           [schema]="rb.schema"
                           [initialValue]="dynamicFormInitialValue()"
+                          [resourceConfig]="activeResourceConfig()"
+                          [globalFields]="globalFieldsConfig()"
                           [showActions]="false"
                           [disabled]="isExecuting()"
                           (formChange)="onDynamicFormChange($event)"
@@ -1113,6 +1116,7 @@ export interface CustomHeaderItem {
 export class OperationPage implements OnInit {
   private readonly sessionService = inject(ApiSessionService);
   private readonly executorService = inject(ApiExecutorService);
+  private readonly uiConfigService = inject(UiConfigurationService);
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
 
@@ -1239,6 +1243,17 @@ export class OperationPage implements OnInit {
     const id = this.targetOpId();
     if (!id) return null;
     return this.sessionService.getResourceForOperation(id);
+  });
+
+  readonly uiConfig = this.sessionService.uiConfiguration;
+
+  readonly globalFieldsConfig = computed(() => this.uiConfig()?.fields);
+
+  readonly activeResourceConfig = computed(() => {
+    const resource = this.parentResource();
+    const config = this.uiConfig();
+    if (!resource || !config) return undefined;
+    return this.uiConfigService.getResourceConfig(config, resource.name);
   });
 
   readonly pathParams = computed<ApiParameter[]>(() => {

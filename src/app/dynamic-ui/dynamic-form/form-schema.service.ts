@@ -1,4 +1,4 @@
-import { Injectable } from '@angular/core';
+import { Injectable, inject } from '@angular/core';
 import {
   AbstractControl,
   FormArray,
@@ -8,6 +8,11 @@ import {
   Validators
 } from '@angular/forms';
 import { ApiSchema } from '../../core/models/api-schema.model';
+import {
+  UiFieldConfiguration,
+  UiResourceConfiguration
+} from '../../core/models/ui-configuration.model';
+import { UiConfigurationService } from '../../core/services/ui-configuration.service';
 import {
   FormFieldConstraints,
   FormFieldDescriptor,
@@ -28,19 +33,25 @@ export const MAX_SCHEMA_DEPTH = 4;
   providedIn: 'root'
 })
 export class FormSchemaService {
+  private readonly uiConfigService = inject(UiConfigurationService);
+
   /**
    * Transforms an ApiSchema into an agnostic array of FormFieldDescriptor items.
    * Supports nested object properties, arrays of primitives, arrays of objects,
-   * cycle detection, and max depth capping.
+   * cycle detection, max depth capping, and optional UiConfiguration overrides.
    *
    * @param schema The OpenAPI ApiSchema representing the input model or request body.
    * @param depth Current recursion depth.
    * @param visited Set of visited ApiSchema objects to prevent infinite recursion.
+   * @param resourceConfig Optional resource configuration or fields dictionary with UI overrides.
+   * @param globalFields Optional global field overrides dictionary.
    */
   extractFields(
     schema?: ApiSchema | null,
     depth = 0,
-    visited = new Set<ApiSchema>()
+    visited = new Set<ApiSchema>(),
+    resourceConfig?: UiResourceConfiguration | Record<string, UiFieldConfiguration> | null,
+    globalFields?: Record<string, UiFieldConfiguration> | null
   ): FormFieldDescriptor[] {
     if (!schema || !schema.properties || Object.keys(schema.properties).length === 0) {
       return [];
@@ -49,7 +60,7 @@ export class FormSchemaService {
     const nextVisited = new Set(visited);
     nextVisited.add(schema);
 
-    return Object.entries(schema.properties).map(([key, propSchema]) => {
+    const rawFields: FormFieldDescriptor[] = Object.entries(schema.properties).map(([key, propSchema]): FormFieldDescriptor => {
       const isRequired = !!(
         propSchema.required ||
         (schema.requiredProperties && schema.requiredProperties.includes(key))
@@ -204,6 +215,23 @@ export class FormSchemaService {
 
       return descriptor;
     });
+
+    if (depth === 0 && (resourceConfig || globalFields)) {
+      const normalizedResourceConfig: UiResourceConfiguration | null =
+        resourceConfig && 'fields' in resourceConfig
+          ? (resourceConfig as UiResourceConfiguration)
+          : resourceConfig
+            ? { fields: resourceConfig as Record<string, UiFieldConfiguration> }
+            : null;
+
+      return this.uiConfigService.applyFieldOverrides(
+        rawFields,
+        normalizedResourceConfig,
+        globalFields
+      );
+    }
+
+    return rawFields;
   }
 
   /**
@@ -341,13 +369,42 @@ export class FormSchemaService {
    *
    * @param input Schema or array of field descriptors.
    * @param initialValue Optional initial values to populate controls (including FormArrays).
+   * @param resourceConfig Optional resource configuration or fields dictionary with UI overrides.
+   * @param globalFields Optional global field overrides dictionary.
    */
   buildFormGroup(
     input?: ApiSchema | FormFieldDescriptor[] | null,
-    initialValue?: Record<string, unknown> | null
+    initialValue?: Record<string, unknown> | null,
+    resourceConfig?: UiResourceConfiguration | Record<string, UiFieldConfiguration> | null,
+    globalFields?: Record<string, UiFieldConfiguration> | null
   ): { form: FormGroup; fields: FormFieldDescriptor[] } {
     const form = new FormGroup({});
-    const fields = Array.isArray(input) ? input : this.extractFields(input);
+    const normalizedResourceConfig: UiResourceConfiguration | null =
+      resourceConfig && 'fields' in resourceConfig
+        ? (resourceConfig as UiResourceConfiguration)
+        : resourceConfig
+          ? { fields: resourceConfig as Record<string, UiFieldConfiguration> }
+          : null;
+
+    let fields: FormFieldDescriptor[];
+    if (Array.isArray(input)) {
+      fields =
+        resourceConfig || globalFields
+          ? this.uiConfigService.applyFieldOverrides(
+              input,
+              normalizedResourceConfig,
+              globalFields
+            )
+          : input;
+    } else {
+      fields = this.extractFields(
+        input,
+        0,
+        new Set(),
+        normalizedResourceConfig,
+        globalFields
+      );
+    }
 
     for (const field of fields) {
       const fieldVal =

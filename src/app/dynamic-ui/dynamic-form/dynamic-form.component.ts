@@ -16,6 +16,11 @@ import { FormFieldDescriptor } from './form-field.model';
 import { FormSchemaService } from './form-schema.service';
 import { DynamicFieldComponent } from './dynamic-field.component';
 
+import {
+  UiFieldConfiguration,
+  UiResourceConfiguration
+} from '../../core/models/ui-configuration.model';
+
 @Component({
   selector: 'app-dynamic-form',
   standalone: true,
@@ -154,6 +159,8 @@ export class DynamicFormComponent implements OnChanges {
   @Input() fields: FormFieldDescriptor[] = [];
   @Input() form?: FormGroup;
   @Input() initialValue?: Record<string, unknown> | null;
+  @Input() resourceConfig?: UiResourceConfiguration | Record<string, UiFieldConfiguration> | null;
+  @Input() globalFields?: Record<string, UiFieldConfiguration> | null;
   @Input() submitLabel = 'Submit';
   @Input() resetLabel = 'Reset';
   @Input() showActions = true;
@@ -166,7 +173,10 @@ export class DynamicFormComponent implements OnChanges {
   @Output() formReset = new EventEmitter<void>();
 
   ngOnChanges(changes: SimpleChanges): void {
-    if (changes['schema'] && this.schema) {
+    if (
+      (changes['schema'] || changes['resourceConfig'] || changes['globalFields']) &&
+      this.schema
+    ) {
       this.initFromSchema(this.schema);
     } else if (changes['initialValue'] && this.initialValue && this.form) {
       this.formSchemaService.populateFormValues(this.form, this.initialValue, this.fields);
@@ -182,7 +192,12 @@ export class DynamicFormComponent implements OnChanges {
   }
 
   private initFromSchema(schema: ApiSchema): void {
-    const { form, fields } = this.formSchemaService.buildFormGroup(schema, this.initialValue);
+    const { form, fields } = this.formSchemaService.buildFormGroup(
+      schema,
+      this.initialValue,
+      this.resourceConfig,
+      this.globalFields
+    );
     this.form = form;
     this.fields = fields;
 

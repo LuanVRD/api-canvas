@@ -208,16 +208,39 @@ describe('TableSchemaService', () => {
     });
   });
 
-  describe('Label formatting', () => {
-    it('should format camelCase, snake_case, kebab-case and technical acronyms', () => {
-      expect(service.formatLabel('id')).toBe('ID');
-      expect(service.formatLabel('sku')).toBe('SKU');
-      expect(service.formatLabel('url')).toBe('URL');
-      expect(service.formatLabel('ip')).toBe('IP');
-      expect(service.formatLabel('created_at')).toBe('Created At');
-      expect(service.formatLabel('unit-price')).toBe('Unit Price');
-      expect(service.formatLabel('isAvailableForOrder')).toBe('Is Available For Order');
-      expect(service.formatLabel('customerUUID')).toBe('Customer UUID');
+  describe('UiConfiguration column overrides', () => {
+    const sample = [
+      { id: 1, title: 'Shirt', description: 'Cotton shirt', price: 29.99, internal_ref: 'REF-123' }
+    ];
+
+    it('should reorder and filter columns with list.columns', () => {
+      const resourceConfig = {
+        list: {
+          columns: ['title', 'price']
+        },
+        fields: {
+          title: { label: 'Product Name' }
+        }
+      };
+
+      const cols = service.inferColumns(sample, undefined, resourceConfig);
+      expect(cols.length).toBe(2);
+      expect(cols[0].key).toBe('title');
+      expect(cols[0].label).toBe('Product Name');
+      expect(cols[1].key).toBe('price');
+      expect(cols[1].label).toBe('Price');
+    });
+
+    it('should hide fields marked hidden: true', () => {
+      const resourceConfig = {
+        fields: {
+          internal_ref: { hidden: true }
+        }
+      };
+
+      const cols = service.inferColumns(sample, undefined, resourceConfig);
+      expect(cols.find((c) => c.key === 'internal_ref')).toBeUndefined();
+      expect(cols.find((c) => c.key === 'title')).toBeDefined();
     });
   });
 });

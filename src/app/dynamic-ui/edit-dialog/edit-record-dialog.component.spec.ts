@@ -1,4 +1,5 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { signal } from '@angular/core';
 import { EditRecordDialogComponent } from './edit-record-dialog.component';
 import { ApiSessionService } from '../../core/services/api-session.service';
 import { ApiExecutorService } from '../../core/services/api-executor.service';
@@ -12,7 +13,11 @@ describe('EditRecordDialogComponent', () => {
   let component: EditRecordDialogComponent;
   let fixture: ComponentFixture<EditRecordDialogComponent>;
   let mockExecutor: { execute: ReturnType<typeof vi.fn> };
-  let mockSession: { baseUrl: ReturnType<typeof vi.fn> };
+  let mockSession: {
+    baseUrl: ReturnType<typeof signal>;
+    uiConfiguration: ReturnType<typeof signal>;
+    getResourceForOperation: ReturnType<typeof vi.fn>;
+  };
   let mockRouter: { navigate: ReturnType<typeof vi.fn> };
 
   const putOp: ApiOperation = {
@@ -79,7 +84,9 @@ describe('EditRecordDialogComponent', () => {
       execute: vi.fn()
     };
     mockSession = {
-      baseUrl: vi.fn(() => 'https://api.example.com')
+      baseUrl: signal('https://api.example.com'),
+      uiConfiguration: signal(null),
+      getResourceForOperation: vi.fn(() => null)
     };
     mockRouter = {
       navigate: vi.fn()

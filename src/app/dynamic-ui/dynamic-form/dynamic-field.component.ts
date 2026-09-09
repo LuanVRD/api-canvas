@@ -141,6 +141,12 @@ import { FormSchemaService } from './form-schema.service';
                                   <input matInput type="datetime-local" [formControl]="$any(itemCtrl)">
                                 </mat-form-field>
                               }
+                              @case ('textarea') {
+                                <mat-form-field appearance="outline" class="w-full form-field-compact">
+                                  <mat-label>{{ field.itemDescriptor?.label || ('Item #' + (i + 1)) }}</mat-label>
+                                  <textarea matInput rows="2" class="form-textarea" [formControl]="$any(itemCtrl)"></textarea>
+                                </mat-form-field>
+                              }
                               @default {
                                 <mat-form-field appearance="outline" class="w-full form-field-compact">
                                   <mat-label>{{ field.itemDescriptor?.label || ('Item #' + (i + 1)) }}</mat-label>
@@ -269,6 +275,24 @@ import { FormSchemaService } from './form-schema.service';
           </div>
         }
 
+        @case ('textarea') {
+          <mat-form-field appearance="outline" class="w-full form-field-compact">
+            <mat-label>{{ field.label }}</mat-label>
+            <textarea
+              matInput
+              [formControlName]="field.key"
+              rows="3"
+              class="form-textarea"
+            ></textarea>
+            @if (field.description) {
+              <mat-hint>{{ field.description }}</mat-hint>
+            }
+            <mat-error *ngIf="control?.invalid && (control?.touched || control?.dirty)">
+              {{ getErrorMessage() }}
+            </mat-error>
+          </mat-form-field>
+        }
+
         @default {
           <mat-form-field appearance="outline" class="w-full form-field-compact">
             <mat-label>{{ field.label }}</mat-label>
@@ -295,6 +319,12 @@ import { FormSchemaService } from './form-schema.service';
     }
     .form-field-compact {
       font-size: 13px;
+    }
+    .form-textarea {
+      resize: vertical;
+      min-height: 56px;
+      font-family: var(--font-sans);
+      line-height: 1.4;
     }
     .toggle-field-box {
       padding: 6px 0 10px 0;

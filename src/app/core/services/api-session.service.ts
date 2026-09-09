@@ -3,12 +3,15 @@ import { ApiDefinition, ApiSecurityScheme } from '../models/api-definition.model
 import { ApiOperation } from '../models/api-operation.model';
 import { ApiResource } from '../models/api-resource.model';
 import { ApiExecutionResult } from '../models/api-execution-result.model';
+import { UiConfiguration } from '../models/ui-configuration.model';
 import { ResourceOperationMatcherService } from './resource-operation-matcher.service';
+import { UiConfigurationService } from './ui-configuration.service';
 
 export interface ApiSessionMetadata {
   openApiUrl?: string;
   rawSpec?: unknown;
   defaultResourceId?: string;
+  uiConfiguration?: UiConfiguration;
 }
 
 export interface ApiResourceMutationEvent {
@@ -23,7 +26,9 @@ export interface ApiResourceMutationEvent {
 })
 export class ApiSessionService {
   private readonly matcher = inject(ResourceOperationMatcherService);
+  private readonly uiConfigService = inject(UiConfigurationService);
   private readonly _apiDefinition = signal<ApiDefinition | null>(null);
+  private readonly _uiConfiguration = signal<UiConfiguration | null>(null);
   private readonly _selectedResourceId = signal<string | null>(null);
   private readonly _openApiUrl = signal<string | null>(null);
   private readonly _rawSpec = signal<unknown | null>(null);
@@ -35,6 +40,11 @@ export class ApiSessionService {
    * Current normalized API definition.
    */
   readonly apiDefinition = this._apiDefinition.asReadonly();
+
+  /**
+   * Current optional UI configuration overlay.
+   */
+  readonly uiConfiguration = this._uiConfiguration.asReadonly();
 
   /**
    * Current in-memory bearer token for authenticated requests in the active session.
@@ -118,9 +128,12 @@ export class ApiSessionService {
   readonly baseUrl = computed<string>(() => this._apiDefinition()?.baseUrl ?? '');
 
   /**
-   * List of resources defined in the active API.
+   * List of resources defined in the active API with visual UI overrides applied.
    */
-  readonly resources = computed<ApiResource[]>(() => this._apiDefinition()?.resources ?? []);
+  readonly resources = computed<ApiResource[]>(() => {
+    const raw = this._apiDefinition()?.resources ?? [];
+    return this.uiConfigService.mergeResources(raw, this._uiConfiguration());
+  });
 
   /**
    * List of security schemes defined in the active API.
@@ -162,10 +175,10 @@ export class ApiSessionService {
    * Currently selected resource object, or null if none is selected or matches.
    */
   readonly selectedResource = computed<ApiResource | null>(() => {
-    const def = this._apiDefinition();
+    const list = this.resources();
     const id = this._selectedResourceId();
-    if (!def || !id) return null;
-    return def.resources.find((r) => r.id === id) ?? null;
+    if (!id || list.length === 0) return null;
+    return list.find((r) => r.id === id) ?? null;
   });
 
   /**
@@ -174,12 +187,16 @@ export class ApiSessionService {
    */
   setSession(definition: ApiDefinition, metadata?: ApiSessionMetadata): void {
     this._apiDefinition.set(definition);
+    this._uiConfiguration.set(metadata?.uiConfiguration ?? null);
     this._openApiUrl.set(metadata?.openApiUrl ?? null);
     this._rawSpec.set(metadata?.rawSpec ?? null);
     this._bearerToken.set(null);
     this._apiKeys.set({});
 
-    const availableResources = definition.resources ?? [];
+    const availableResources = this.uiConfigService.mergeResources(
+      definition.resources ?? [],
+      metadata?.uiConfiguration
+    );
     if (metadata?.defaultResourceId && availableResources.some((r) => r.id === metadata.defaultResourceId)) {
       this._selectedResourceId.set(metadata.defaultResourceId);
     } else if (availableResources.length > 0) {
@@ -187,6 +204,27 @@ export class ApiSessionService {
     } else {
       this._selectedResourceId.set(null);
     }
+  }
+
+  /**
+   * Sets or updates the active UI configuration in session.
+   */
+  setUiConfiguration(config: UiConfiguration | null): void {
+    this._uiConfiguration.set(config);
+  }
+
+  /**
+   * Gets the active UI configuration from session.
+   */
+  getUiConfiguration(): UiConfiguration | null {
+    return this._uiConfiguration();
+  }
+
+  /**
+   * Clears the active UI configuration in session.
+   */
+  clearUiConfiguration(): void {
+    this._uiConfiguration.set(null);
   }
 
   /**
@@ -458,6 +496,7 @@ export class ApiSessionService {
    */
   clearSession(): void {
     this._apiDefinition.set(null);
+    this._uiConfiguration.set(null);
     this._selectedResourceId.set(null);
     this._openApiUrl.set(null);
     this._rawSpec.set(null);

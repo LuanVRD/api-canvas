@@ -635,5 +635,59 @@ describe('FormSchemaService', () => {
       expect(service.formatLabel('')).toBe('');
     });
   });
+
+  describe('UiConfiguration integration', () => {
+    const testSchema: ApiSchema = {
+      type: 'object',
+      properties: {
+        title: { type: 'string' },
+        description: { type: 'string' },
+        internal_code: { type: 'string' }
+      },
+      requiredProperties: ['title']
+    };
+
+    it('should apply label overrides, textarea control and hide fields in extractFields', () => {
+      const resourceConfig = {
+        fields: {
+          description: { label: 'Full Product Bio', control: 'textarea' as const },
+          internal_code: { hidden: true }
+        }
+      };
+      const globalFields = {
+        title: { label: 'Product Title' }
+      };
+
+      const fields = service.extractFields(testSchema, 0, new Set(), resourceConfig, globalFields);
+      expect(fields.length).toBe(2);
+
+      const titleField = fields.find((f) => f.key === 'title');
+      expect(titleField?.label).toBe('Product Title');
+      expect(titleField?.type).toBe('text');
+
+      const descField = fields.find((f) => f.key === 'description');
+      expect(descField?.label).toBe('Full Product Bio');
+      expect(descField?.type).toBe('textarea');
+
+      expect(fields.find((f) => f.key === 'internal_code')).toBeUndefined();
+    });
+
+    it('should apply config when buildFormGroup is called', () => {
+      const resourceConfig = {
+        fields: {
+          description: { control: 'textarea' as const },
+          internal_code: { hidden: true }
+        }
+      };
+
+      const { fields, form } = service.buildFormGroup(testSchema, undefined, resourceConfig);
+      expect(fields.length).toBe(2);
+      expect(fields.find((d) => d.key === 'description')?.type).toBe('textarea');
+      expect(fields.find((d) => d.key === 'internal_code')).toBeUndefined();
+      expect(form.contains('internal_code')).toBe(false);
+      expect(form.contains('title')).toBe(true);
+      expect(form.contains('description')).toBe(true);
+    });
+  });
 });
 

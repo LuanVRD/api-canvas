@@ -22,6 +22,7 @@ import { ApiExecutionResult } from '../../core/models/api-execution-result.model
 import { ApiRequestInput } from '../../core/models/api-request-input.model';
 import { ApiSessionService } from '../../core/services/api-session.service';
 import { ApiExecutorService } from '../../core/services/api-executor.service';
+import { UiConfigurationService } from '../../core/services/ui-configuration.service';
 import { HttpBadgeComponent } from '../../shared/components/http-badge/http-badge.component';
 import { DynamicFormComponent } from '../dynamic-form/dynamic-form.component';
 import { LoadingIndicatorComponent } from '../../shared/components/loading-indicator/loading-indicator.component';
@@ -177,6 +178,8 @@ import { JsonViewerComponent } from '../../shared/components/json-viewer/json-vi
                   #dynForm
                   [schema]="schema"
                   [initialValue]="formInitialValue()"
+                  [resourceConfig]="activeResourceConfig()"
+                  [globalFields]="globalFieldsConfig()"
                   [showActions]="false"
                   (formChange)="onDynamicFormChange($event)"
                 />
@@ -715,7 +718,19 @@ import { JsonViewerComponent } from '../../shared/components/json-viewer/json-vi
 export class EditRecordDialogComponent implements OnInit, OnChanges {
   private readonly session = inject(ApiSessionService);
   private readonly executor = inject(ApiExecutorService);
+  private readonly uiConfigService = inject(UiConfigurationService);
   private readonly router = inject(Router);
+
+  readonly uiConfig = typeof this.session.uiConfiguration === 'function' ? this.session.uiConfiguration : signal(null);
+  readonly globalFieldsConfig = computed(() => this.uiConfig()?.fields);
+  readonly activeResourceConfig = computed(() => {
+    const op = this.activeOperation();
+    const config = this.uiConfig();
+    if (!op || !config) return undefined;
+    const res = this.session.getResourceForOperation(op.id);
+    if (!res) return undefined;
+    return this.uiConfigService.getResourceConfig(config, res.name);
+  });
 
   @ViewChild('dynForm') dynamicFormRef?: DynamicFormComponent;
 

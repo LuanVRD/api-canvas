@@ -313,6 +313,21 @@ describe('DynamicFieldComponent', () => {
 
       expect(component.getErrorMessage()).toBe('Invalid JSON syntax.');
     });
+
+    it('should render textarea for type textarea', () => {
+      setupField({
+        key: 'longBio',
+        label: 'Long Biography',
+        type: 'textarea',
+        required: false,
+        description: 'Tell us about yourself'
+      }, 'Hello world');
+
+      const compiled = fixture.nativeElement as HTMLElement;
+      const textarea = compiled.querySelector('textarea.form-textarea') as HTMLTextAreaElement;
+      expect(textarea).toBeTruthy();
+      expect(textarea.value).toBe('Hello world');
+    });
   });
 });
 

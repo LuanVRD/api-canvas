@@ -10,8 +10,13 @@ import { ApiExecutionResult } from '../../core/models/api-execution-result.model
 import { ApiSchema } from '../../core/models/api-schema.model';
 import { ApiOperation } from '../../core/models/api-operation.model';
 import { ApiParameter } from '../../core/models/api-parameter.model';
+import {
+  UiFieldConfiguration,
+  UiResourceConfiguration
+} from '../../core/models/ui-configuration.model';
 import { ApiSessionService } from '../../core/services/api-session.service';
 import { ResourceOperationMatcherService } from '../../core/services/resource-operation-matcher.service';
+import { UiConfigurationService } from '../../core/services/ui-configuration.service';
 
 export type ResponsePayloadType = 'empty' | 'array' | 'object' | 'primitive' | 'invalid';
 export type ViewMode = 'visual' | 'raw';
@@ -331,12 +336,22 @@ export class ResponseDataViewerComponent {
   private readonly tableSchema = inject(TableSchemaService);
   private readonly session = inject(ApiSessionService);
   private readonly matcher = inject(ResourceOperationMatcherService);
+  private readonly uiConfigService = inject(UiConfigurationService);
 
   private _result = signal<ApiExecutionResult | null>(null);
   private _data = signal<unknown>(null);
   private _schema = signal<ApiSchema | null>(null);
   private _sourceOperation = signal<ApiOperation | null>(null);
   private _activePathParams = signal<Record<string, string>>({});
+  private _customResourceConfig = signal<UiResourceConfiguration | null>(null);
+
+  @Input()
+  set customResourceConfig(val: UiResourceConfiguration | null | undefined) {
+    this._customResourceConfig.set(val ?? null);
+  }
+  get customResourceConfig(): UiResourceConfiguration | null {
+    return this._customResourceConfig();
+  }
 
   @Input()
   set sourceOperation(val: ApiOperation | null | undefined) {
@@ -403,6 +418,38 @@ export class ResponseDataViewerComponent {
 
   activeMode = signal<ViewMode>('visual');
   copied = signal<boolean>(false);
+
+  /**
+   * Discovered matching UI resource configuration.
+   */
+  readonly activeResourceConfig = computed<UiResourceConfiguration | null>(() => {
+    const explicit = this._customResourceConfig();
+    if (explicit) return explicit;
+
+    const config = this.session.uiConfiguration();
+    if (!config) return null;
+
+    const srcOp = this._sourceOperation();
+    if (srcOp) {
+      const parentRes = this.session.getResourceForOperation(srcOp.id || srcOp.operationId || '');
+      if (parentRes) {
+        return (
+          this.uiConfigService.getResourceConfig(config, parentRes.id) ||
+          this.uiConfigService.getResourceConfig(config, parentRes.name)
+        );
+      }
+    }
+
+    const currentRes = this.session.selectedResource();
+    if (currentRes) {
+      return (
+        this.uiConfigService.getResourceConfig(config, currentRes.id) ||
+        this.uiConfigService.getResourceConfig(config, currentRes.name)
+      );
+    }
+
+    return null;
+  });
 
   /**
    * Discovered compatible details operation for the current resource/collection context.
@@ -611,8 +658,11 @@ export class ResponseDataViewerComponent {
   inferredColumns = computed<TableColumnDescriptor[]>(() => {
     const val = this.parsedData();
     const schema = this._schema();
+    const resConfig = this.activeResourceConfig();
+    const globalFields = this.session.uiConfiguration()?.fields;
+
     if (Array.isArray(val)) {
-      return this.tableSchema.inferColumns(val, schema);
+      return this.tableSchema.inferColumns(val, schema, resConfig, globalFields);
     }
     return [];
   });

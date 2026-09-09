@@ -1,5 +1,10 @@
-import { Injectable } from '@angular/core';
+import { Injectable, inject } from '@angular/core';
 import { ApiSchema, SchemaPrimitiveType } from '../../core/models/api-schema.model';
+import {
+  UiFieldConfiguration,
+  UiResourceConfiguration
+} from '../../core/models/ui-configuration.model';
+import { UiConfigurationService } from '../../core/services/ui-configuration.service';
 
 export interface TableColumnDescriptor {
   key: string;
@@ -16,24 +21,46 @@ const ISO_DATE_REGEX = /^\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)
   providedIn: 'root'
 })
 export class TableSchemaService {
+  private readonly uiConfigService = inject(UiConfigurationService);
+
   /**
-   * Infers column descriptors for rendering a dynamic table from data and optional OpenAPI response schema.
+   * Infers column descriptors for rendering a dynamic table from data, optional OpenAPI response schema,
+   * and optional UI configuration overrides (ordered list columns, custom labels, hidden fields).
    * Prioritizes the OpenAPI response schema when available, falling back to inspecting the first data record.
    *
    * @param data The collection of items returned by the GET request.
    * @param responseSchema Optional OpenAPI schema representing the response structure.
+   * @param resourceConfig Optional resource configuration containing list.columns or field definitions.
+   * @param globalFields Optional global field configurations.
    */
-  inferColumns(data: unknown[], responseSchema?: ApiSchema | null): TableColumnDescriptor[] {
+  inferColumns(
+    data: unknown[],
+    responseSchema?: ApiSchema | null,
+    resourceConfig?: UiResourceConfiguration | null,
+    globalFields?: Record<string, UiFieldConfiguration> | null
+  ): TableColumnDescriptor[] {
+    let inferred: TableColumnDescriptor[] = [];
+
     // 1. PRIORITIZE OPENAPI RESPONSE SCHEMA
     if (responseSchema) {
-      const schemaColumns = this.inferFromOpenApiSchema(responseSchema);
-      if (schemaColumns.length > 0) {
-        return schemaColumns;
-      }
+      inferred = this.inferFromOpenApiSchema(responseSchema);
     }
 
     // 2. FALLBACK: INSPECT DATA
-    return this.inferFromData(data);
+    if (inferred.length === 0) {
+      inferred = this.inferFromData(data);
+    }
+
+    // 3. APPLY UI CONFIGURATION OVERRIDES (columns, labels, hidden)
+    if (resourceConfig || globalFields) {
+      return this.uiConfigService.applyTableColumnOverrides(
+        inferred,
+        resourceConfig,
+        globalFields
+      );
+    }
+
+    return inferred;
   }
 
   /**

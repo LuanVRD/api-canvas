@@ -349,5 +349,56 @@ describe('ApiSessionService', () => {
     expect(service.hasAnyApiKey()).toBe(false);
     expect(service.getApiKey('apiKeyQuery')).toBeNull();
   });
+
+  it('should manage UiConfiguration and merge resource labels/hiding dynamically', () => {
+    service.setSession(mockApiDefinition);
+    expect(service.uiConfiguration()).toBeNull();
+    expect(service.resources()[0].label).toBe('Products');
+    expect(service.resources().length).toBe(2);
+
+    // Apply UI Configuration
+    service.setUiConfiguration({
+      resources: {
+        products: { label: 'Store Products' },
+        orders: { hidden: true }
+      }
+    });
+
+    expect(service.uiConfiguration()).toEqual({
+      resources: {
+        products: { label: 'Store Products' },
+        orders: { hidden: true }
+      }
+    });
+
+    // Computed resources should reflect the config
+    const merged = service.resources();
+    expect(merged.length).toBe(1);
+    expect(merged[0].id).toBe('products');
+    expect(merged[0].label).toBe('Store Products');
+
+    // Clear UI configuration
+    service.clearUiConfiguration();
+    expect(service.uiConfiguration()).toBeNull();
+    expect(service.resources().length).toBe(2);
+    expect(service.resources()[0].label).toBe('Products');
+  });
+
+  it('should accept uiConfiguration in setSession metadata', () => {
+    service.setSession(mockApiDefinition, {
+      uiConfiguration: {
+        resources: {
+          products: { label: 'Item Catalog' }
+        }
+      }
+    });
+
+    expect(service.uiConfiguration()).toBeDefined();
+    expect(service.resources()[0].label).toBe('Item Catalog');
+
+    // clearSession should also clear uiConfiguration
+    service.clearSession();
+    expect(service.uiConfiguration()).toBeNull();
+  });
 });
 
