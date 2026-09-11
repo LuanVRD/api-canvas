@@ -8,3 +8,5 @@ export * from './api-resource.model';
 export * from './api-definition.model';
 export * from './built-api-request.model';
 export * from './ui-configuration.model';
+export * from './ui-validation.model';
+export * from './storage.model';

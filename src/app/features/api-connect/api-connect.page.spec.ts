@@ -482,5 +482,32 @@ describe('ApiConnectPage', () => {
       expect(banner).toBeTruthy();
       expect(banner.textContent).toContain('JSON válido');
     });
+
+    it('should pass openApiUrl and rawSpec to sessionService.setSession upon successful connection', () => {
+      openApiLoaderMock.load.mockReturnValue(of({ openapi: '3.0.0' }));
+      openApiParserMock.parse.mockReturnValue(mockParsedDefinition);
+
+      component.form.setValue({
+        openApiUrl: 'https://api.reconnect-test.com/openapi.json',
+        baseUrl: 'https://api.reconnect-test.com/v1'
+      });
+
+      component.onConnect();
+
+      expect(sessionServiceMock.setSession).toHaveBeenCalledWith(
+        expect.objectContaining({ title: 'Order API' }),
+        {
+          openApiUrl: 'https://api.reconnect-test.com/openapi.json',
+          rawSpec: { openapi: '3.0.0' }
+        }
+      );
+      expect(storageServiceMock.addRecentApi).toHaveBeenCalledWith({
+        openApiUrl: 'https://api.reconnect-test.com/openapi.json',
+        baseUrl: 'https://api.reconnect-test.com/v1',
+        title: 'Order API'
+      });
+      expect(routerMock.navigate).toHaveBeenCalledWith(['/workspace']);
+    });
   });
 });
+

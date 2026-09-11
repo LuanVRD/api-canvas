@@ -1,5 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { ApiSessionService } from './api-session.service';
+import { StorageService } from './storage.service';
 import { ApiDefinition } from '../models/api-definition.model';
 import { ApiResource } from '../models/api-resource.model';
 
@@ -400,5 +401,111 @@ describe('ApiSessionService', () => {
     service.clearSession();
     expect(service.uiConfiguration()).toBeNull();
   });
+
+  describe('UI Configuration Persistence, Reconnection & Credential Security', () => {
+    let storageService: StorageService;
+    const testApiUrl = 'https://api.store.com/v1/openapi.json';
+
+    beforeEach(() => {
+      storageService = TestBed.inject(StorageService);
+      localStorage.clear();
+    });
+
+    it('should automatically recover saved UI configuration upon reconnecting to the same API', () => {
+      // 1. Initial connection and customization
+      service.setSession(mockApiDefinition, { openApiUrl: testApiUrl });
+      service.setUiConfiguration({
+        title: 'Customized Store UI',
+        resources: {
+          products: { label: 'Custom Products' },
+          orders: { hidden: true }
+        },
+        pages: {
+          custom_page: {
+            title: 'Analytics Page',
+            displayMode: 'dashboard'
+          }
+        }
+      });
+
+      // 2. Save configuration
+      const saved = service.saveCurrentUiConfiguration();
+      expect(saved).toBe(true);
+
+      // 3. Clear session (simulate user leaving or closing app)
+      service.clearSession();
+      expect(service.hasActiveApi()).toBe(false);
+      expect(service.uiConfiguration()).toBeNull();
+
+      // 4. Reconnect to the same API
+      service.setSession(mockApiDefinition, { openApiUrl: testApiUrl });
+
+      // 5. Verify restored configuration and merged resources
+      expect(service.uiConfiguration()).not.toBeNull();
+      expect(service.uiConfiguration()?.title).toBe('Customized Store UI');
+      expect(service.uiConfiguration()?.pages?.['custom_page']?.title).toBe('Analytics Page');
+      expect(service.resources().length).toBe(1);
+      expect(service.resources()[0].label).toBe('Custom Products');
+    });
+
+    it('should not recover configuration if connecting to a different API URL', () => {
+      // Save config for API A
+      service.setSession(mockApiDefinition, { openApiUrl: 'https://api.a.com/spec.json' });
+      service.setUiConfiguration({ title: 'Config A' });
+      service.saveCurrentUiConfiguration();
+      service.clearSession();
+
+      // Connect to API B
+      service.setSession(mockApiDefinition, { openApiUrl: 'https://api.b.com/spec.json' });
+      expect(service.uiConfiguration()).toBeNull();
+    });
+
+    it('should never persist Bearer tokens or API keys to storage during UI save operations', () => {
+      service.setSession(mockApiDefinition, { openApiUrl: testApiUrl });
+      service.setBearerToken('top-secret-bearer-token');
+      service.setApiKey('apiKeyHeader', 'secret-api-key-999');
+
+      service.setUiConfiguration({
+        title: 'Store Dashboard'
+      });
+      service.saveCurrentUiConfiguration();
+
+      // Check all raw keys in localStorage
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i)!;
+        const val = localStorage.getItem(key)!;
+        expect(val).not.toContain('top-secret-bearer-token');
+        expect(val).not.toContain('secret-api-key-999');
+      }
+
+      // Ensure tokens remain active in memory only
+      expect(service.bearerToken()).toBe('top-secret-bearer-token');
+      expect(service.getApiKey('apiKeyHeader')).toBe('secret-api-key-999');
+    });
+
+    it('should support replaceUiConfiguration, restoreDefaultUiConfiguration, and loadSavedUiConfiguration', () => {
+      service.setSession(mockApiDefinition, { openApiUrl: testApiUrl });
+
+      // Replace UI configuration
+      service.replaceUiConfiguration({
+        title: 'Replaced Title',
+        resources: { products: { label: 'Replaced Products' } }
+      });
+
+      expect(service.uiConfiguration()?.title).toBe('Replaced Title');
+      expect(service.resources()[0].label).toBe('Replaced Products');
+
+      // Load saved manually
+      const loaded = service.loadSavedUiConfiguration();
+      expect(loaded?.title).toBe('Replaced Title');
+
+      // Restore defaults
+      service.restoreDefaultUiConfiguration();
+      expect(service.uiConfiguration()).toBeNull();
+      expect(service.resources()[0].label).toBe('Products');
+      expect(storageService.getApiUiConfiguration(testApiUrl, mockApiDefinition.baseUrl)).toBeNull();
+    });
+  });
 });
+
 

@@ -194,4 +194,223 @@ describe('StorageService', () => {
       expect(service.getPreferences()).toEqual({});
     });
   });
+
+  describe('API UI Configuration Persistence & Isolation', () => {
+    const api1Url = 'https://api.example.com/v1/openapi.json';
+    const api1Base = 'https://api.example.com/v1';
+    const api2Url = 'https://api.other-service.com/spec.json';
+
+    it('should generate consistent and stable IDs and keys for identical API endpoints', () => {
+      const id1 = service.generateApiId(api1Url, api1Base);
+      const id2 = service.generateApiId('  ' + api1Url + '  ', '  ' + api1Base + '  ');
+      const key1 = service.getApiStorageKey(api1Url, api1Base);
+      const key2 = service.getApiStorageKey('  ' + api1Url + '  ', '  ' + api1Base + '  ');
+
+      expect(id1).toBe(id2);
+      expect(key1).toBe(key2);
+      expect(key1).toContain('ui_config_');
+    });
+
+    it('should generate different IDs for distinct APIs or base URLs', () => {
+      const id1 = service.generateApiId(api1Url, api1Base);
+      const id2 = service.generateApiId(api2Url);
+      const id3 = service.generateApiId(api1Url, 'https://staging.example.com/v1');
+
+      expect(id1).not.toBe(id2);
+      expect(id1).not.toBe(id3);
+    });
+
+    it('should save and retrieve UI configuration for a specific API', () => {
+      const uiConfig = {
+        title: 'Custom Dashboard',
+        pages: {
+          dashboard: {
+            title: 'Main Dashboard',
+            displayMode: 'dashboard',
+            metrics: [{ label: 'Total Sales', type: 'count_all' }]
+          }
+        },
+        resources: {
+          users: { label: 'Accounts', icon: 'people' }
+        }
+      };
+
+      const saved = service.saveApiUiConfiguration(api1Url, api1Base, uiConfig);
+      expect(saved).toBe(true);
+
+      const retrieved = service.getApiUiConfiguration(api1Url, api1Base);
+      expect(retrieved).not.toBeNull();
+      expect(retrieved?.title).toBe('Custom Dashboard');
+      expect(retrieved?.pages?.['dashboard']?.title).toBe('Main Dashboard');
+      expect(retrieved?.resources?.['users']?.label).toBe('Accounts');
+    });
+
+    it('should ensure complete isolation between different APIs', () => {
+      const config1 = { title: 'API One Config', resources: { users: { label: 'App Users' } } };
+      const config2 = { title: 'API Two Config', resources: { products: { label: 'Catalog' } } };
+
+      service.saveApiUiConfiguration(api1Url, api1Base, config1);
+      service.saveApiUiConfiguration(api2Url, undefined, config2);
+
+      const retrieved1 = service.getApiUiConfiguration(api1Url, api1Base);
+      const retrieved2 = service.getApiUiConfiguration(api2Url, undefined);
+
+      expect(retrieved1?.title).toBe('API One Config');
+      expect(retrieved1?.resources?.['users']?.label).toBe('App Users');
+      expect(retrieved1?.resources?.['products']).toBeUndefined();
+
+      expect(retrieved2?.title).toBe('API Two Config');
+      expect(retrieved2?.resources?.['products']?.label).toBe('Catalog');
+      expect(retrieved2?.resources?.['users']).toBeUndefined();
+    });
+
+    it('should remove and restore defaults for a specific API without affecting others', () => {
+      service.saveApiUiConfiguration(api1Url, api1Base, { title: 'API 1' });
+      service.saveApiUiConfiguration(api2Url, undefined, { title: 'API 2' });
+
+      service.restoreDefaultApiUiConfiguration(api1Url, api1Base);
+
+      expect(service.getApiUiConfiguration(api1Url, api1Base)).toBeNull();
+      expect(service.getApiUiConfiguration(api2Url, undefined)?.title).toBe('API 2');
+    });
+
+    it('should clear all stored API configurations with clearAllApiUiConfigurations', () => {
+      service.saveApiUiConfiguration(api1Url, api1Base, { title: 'API 1' });
+      service.saveApiUiConfiguration(api2Url, undefined, { title: 'API 2' });
+      service.updatePreferences({ theme: 'dark' });
+      service.addRecentApi({ openApiUrl: api1Url });
+
+      service.clearAllApiUiConfigurations();
+
+      expect(service.getApiUiConfiguration(api1Url, api1Base)).toBeNull();
+      expect(service.getApiUiConfiguration(api2Url, undefined)).toBeNull();
+      // Preferences and recent APIs must be preserved
+      expect(service.getPreferences().theme).toBe('dark');
+      expect(service.getRecentApis().length).toBe(1);
+    });
+  });
+
+  describe('Non-Sensitive Storage & Secret Sanitization', () => {
+    const apiUrl = 'https://api.secure-vault.com/openapi.json';
+
+    it('should strictly sanitize and strip sensitive credentials, tokens, api keys, secret headers, and payloads', () => {
+      const taintedConfig: any = {
+        title: 'Safe UI Title',
+        bearerToken: 'secret-bearer-token-12345',
+        apiKey: 'sk-live-abcdef123456789',
+        apiKeys: { scheme1: 'secret-key-val' },
+        password: 'super-secret-password',
+        auth: { authorizationHeader: 'Bearer 12345' },
+        executedPayload: { sensitiveCustomerData: '123-45-6789' },
+        requestBody: { creditCard: '4111-2222-3333-4444' },
+        resources: {
+          users: {
+            label: 'Users Page',
+            secretField: 'must-be-removed',
+            fields: {
+              email: { label: 'E-mail' },
+              passwordHash: { label: 'Password', secretToken: 'forbidden-token' }
+            }
+          }
+        },
+        pages: {
+          dashboard: {
+            title: 'Dashboard Page',
+            displayMode: 'dashboard',
+            rowActions: { viewDetails: true, edit: true, delete: false },
+            customActionOperations: ['op1'],
+            primaryCreateActionId: 'create_user',
+            primaryCreateLabel: 'Novo Usuário',
+            executedResponsePayload: { rawData: [1, 2, 3] }
+          }
+        }
+      };
+
+      service.saveApiUiConfiguration(apiUrl, undefined, taintedConfig);
+
+      // Verify raw localStorage entry
+      const storageKey = service.getApiStorageKey(apiUrl);
+      const rawStoredString = localStorage.getItem('apicanvas_' + storageKey);
+      expect(rawStoredString).not.toBeNull();
+
+      expect(rawStoredString).not.toContain('secret-bearer-token-12345');
+      expect(rawStoredString).not.toContain('sk-live-abcdef123456789');
+      expect(rawStoredString).not.toContain('super-secret-password');
+      expect(rawStoredString).not.toContain('4111-2222-3333-4444');
+      expect(rawStoredString).not.toContain('must-be-removed');
+      expect(rawStoredString).not.toContain('forbidden-token');
+
+      // Verify retrieved parsed config preserves legitimate UI properties
+      const retrieved = service.getApiUiConfiguration(apiUrl);
+      expect(retrieved).not.toBeNull();
+      expect(retrieved?.title).toBe('Safe UI Title');
+      expect(retrieved?.resources?.['users']?.label).toBe('Users Page');
+      expect(retrieved?.pages?.['dashboard']?.displayMode).toBe('dashboard');
+      expect((retrieved?.pages?.['dashboard'] as any)?.rowActions?.viewDetails).toBe(true);
+    });
+  });
+
+  describe('Version Migration & Corrupted Data Handling', () => {
+    const apiUrl = 'https://api.example.com/spec.json';
+
+    it('should migrate legacy configurations with older versions to current version', () => {
+      const legacyRaw = {
+        id: service.generateApiId(apiUrl),
+        openApiUrl: apiUrl,
+        version: 0,
+        updatedAt: Date.now(),
+        uiConfiguration: {
+          version: 0,
+          title: 'Legacy Title',
+          resources: {
+            items: { label: 'Legacy Items' }
+          }
+        }
+      };
+
+      const storageKey = service.getApiStorageKey(apiUrl);
+      localStorage.setItem('apicanvas_' + storageKey, JSON.stringify(legacyRaw));
+
+      const retrieved = service.getApiUiConfiguration(apiUrl);
+      expect(retrieved).not.toBeNull();
+      expect(retrieved?.version).toBe(1);
+      expect(retrieved?.title).toBe('Legacy Title');
+      expect(retrieved?.resources?.['items']?.label).toBe('Legacy Items');
+    });
+
+    it('should migrate unversioned direct configs to current version', () => {
+      const unversionedDirect = {
+        title: 'Unversioned Title',
+        resources: {
+          orders: { label: 'Orders List' }
+        }
+      };
+
+      const storageKey = service.getApiStorageKey(apiUrl);
+      localStorage.setItem('apicanvas_' + storageKey, JSON.stringify(unversionedDirect));
+
+      const retrieved = service.getApiUiConfiguration(apiUrl);
+      expect(retrieved).not.toBeNull();
+      expect(retrieved?.version).toBe(1);
+      expect(retrieved?.title).toBe('Unversioned Title');
+      expect(retrieved?.resources?.['orders']?.label).toBe('Orders List');
+    });
+
+    it('should return null gracefully for corrupted or non-JSON entries in localStorage', () => {
+      const storageKey = service.getApiStorageKey(apiUrl);
+
+      localStorage.setItem('apicanvas_' + storageKey, 'invalid-json{{[}');
+      expect(service.getApiUiConfiguration(apiUrl)).toBeNull();
+
+      localStorage.setItem('apicanvas_' + storageKey, JSON.stringify([1, 2, 3]));
+      expect(service.getApiUiConfiguration(apiUrl)).toBeNull();
+
+      localStorage.setItem('apicanvas_' + storageKey, JSON.stringify('string-value'));
+      expect(service.getApiUiConfiguration(apiUrl)).toBeNull();
+
+      localStorage.setItem('apicanvas_' + storageKey, JSON.stringify(null));
+      expect(service.getApiUiConfiguration(apiUrl)).toBeNull();
+    });
+  });
 });
+
