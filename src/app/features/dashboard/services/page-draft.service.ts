@@ -400,6 +400,117 @@ export class PageDraftService {
   }
 
   /**
+   * Checks whether a slug is already used by another page in the draft.
+   */
+  isSlugConflict(slug: string, excludePageId?: string): boolean {
+    if (!slug) return false;
+    const normalized = slug.trim().toLowerCase();
+    const pages = this.draftPages();
+    return pages.some((p) => {
+      const pId = p.id;
+      if (excludePageId && (pId === excludePageId || p.slug === excludePageId)) {
+        return false;
+      }
+      return (p.slug || '').trim().toLowerCase() === normalized;
+    });
+  }
+
+  /**
+   * Retrieves the page that is conflicting with the given slug, if any.
+   */
+  getConflictingPage(slug: string, excludePageId?: string): UiPageConfiguration | undefined {
+    if (!slug) return undefined;
+    const normalized = slug.trim().toLowerCase();
+    const pages = this.draftPages();
+    return pages.find((p) => {
+      const pId = p.id;
+      if (excludePageId && (pId === excludePageId || p.slug === excludePageId)) {
+        return false;
+      }
+      return (p.slug || '').trim().toLowerCase() === normalized;
+    });
+  }
+
+  /**
+   * Sets the explicit 1-based order position of a page in the sidebar and reindexes all pages cleanly.
+   */
+  setPagePosition(pageId: string, targetPosition: number): void {
+    const pages = [...this.draftPages()];
+    const index = pages.findIndex((p) => p.id === pageId || p.slug === pageId);
+    if (index === -1) return;
+
+    const clampedTarget = Math.max(1, Math.min(targetPosition, pages.length));
+    const targetIndex = clampedTarget - 1;
+    if (index === targetIndex) return;
+
+    const [moved] = pages.splice(index, 1);
+    pages.splice(targetIndex, 0, moved);
+
+    const updatedPages: Record<string, UiPageConfiguration> = {};
+    pages.forEach((p, idx) => {
+      const id = p.id!;
+      updatedPages[id] = {
+        ...p,
+        order: idx + 1
+      };
+    });
+
+    this._draftConfig.update((prev) => ({
+      ...prev,
+      pages: updatedPages
+    }));
+
+    this._isDirty.set(true);
+  }
+
+  /**
+   * Infers a contextual Material icon based on the resource name, label, or entity type.
+   */
+  inferIconFromResource(resourceNameOrLabel?: string): string {
+    if (!resourceNameOrLabel) return 'table_chart';
+    const lower = resourceNameOrLabel.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+
+    if (/order|pedido|sale|venda|compra|checkout|cart|carrinho/.test(lower)) {
+      return 'shopping_cart';
+    }
+    if (/customer|cliente|user|usuario|people|pessoa|client|lead|member|membro|contato/.test(lower)) {
+      return 'people';
+    }
+    if (/product|produto|item|inventory|estoque|catalog|catalogo|mercadoria/.test(lower)) {
+      return 'inventory_2';
+    }
+    if (/payment|pagamento|invoice|fatura|billing|cobranca|transacao|transaction/.test(lower)) {
+      return 'payments';
+    }
+    if (/shipping|entrega|frete|logistica|deliver|remessa|envio|transporte/.test(lower)) {
+      return 'local_shipping';
+    }
+    if (/report|relatorio|analytic|metrica|metric|statistic|estatistica|dash/.test(lower)) {
+      return 'assessment';
+    }
+    if (/bank|banco|finance|financeiro|account|conta|saldo|extrato/.test(lower)) {
+      return 'account_balance';
+    }
+    if (/category|categoria|tag|classificacao|grupo|group|department/.test(lower)) {
+      return 'category';
+    }
+    if (/article|artigo|post|noticia|news|blog|doc|documento|conteudo/.test(lower)) {
+      return 'article';
+    }
+    if (/task|tarefa|todo|atividade|chamado|ticket|issue/.test(lower)) {
+      return 'task_alt';
+    }
+    if (/store|loja|lojista|merchant|partner|parceiro|fornecedor|supplier/.test(lower)) {
+      return 'storefront';
+    }
+    if (/receipt|recibo|cupom|voucher/.test(lower)) {
+      return 'receipt_long';
+    }
+
+    return 'table_chart';
+  }
+
+  /**
    * Infers sensible initial configuration (title, slug, columns, metrics, operations)
    * for a new page given an OpenAPI resource.
    */
@@ -411,6 +522,7 @@ export class PageDraftService {
     const resourceLabel = resource?.label || resource?.name || this.formatLabel(resourceId);
     const slug = resourceId.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
     const id = `${slug}-page`;
+    const icon = this.inferIconFromResource(resourceId || resourceLabel);
 
     const def = this._apiDefinition();
     const resolvedPage = resource
@@ -494,7 +606,7 @@ export class PageDraftService {
       resourceId: resource?.id || resourceId,
       title: resourceLabel,
       slug,
-      icon: 'table_chart',
+      icon,
       description: `Gerenciamento operacional e visualização de ${resourceLabel.toLowerCase()}.`,
       isDefault: order === 1,
       order,

@@ -329,4 +329,98 @@ describe('PageDraftService', () => {
     expect(service.draftPages()[0].title).toBe('Pedidos');
     expect(service.activeMode()).toBe('manage');
   });
+
+  it('13. should infer semantic icons and context description based on resource entity name', () => {
+    expect(service.inferIconFromResource('orders')).toBe('shopping_cart');
+    expect(service.inferIconFromResource('pedidos')).toBe('shopping_cart');
+    expect(service.inferIconFromResource('customers')).toBe('people');
+    expect(service.inferIconFromResource('clientes')).toBe('people');
+    expect(service.inferIconFromResource('products')).toBe('inventory_2');
+    expect(service.inferIconFromResource('produtos')).toBe('inventory_2');
+    expect(service.inferIconFromResource('invoices')).toBe('payments');
+    expect(service.inferIconFromResource('pagamentos')).toBe('payments');
+    expect(service.inferIconFromResource('reports')).toBe('assessment');
+    expect(service.inferIconFromResource('relatorios')).toBe('assessment');
+    expect(service.inferIconFromResource('deliveries')).toBe('local_shipping');
+    expect(service.inferIconFromResource('desconhecido')).toBe('table_chart');
+
+    const created = service.inferPageDefaultsFromResource({
+      id: 'orders',
+      name: 'orders',
+      label: 'Pedidos',
+      operations: []
+    });
+    expect(created.icon).toBe('shopping_cart');
+    expect(created.title).toBe('Pedidos');
+    expect(created.slug).toBe('orders');
+    expect(created.description).toContain('pedidos');
+  });
+
+  it('14. should preserve stable internal page ID even when title and slug are modified', () => {
+    service.initDraft(initialPublishedConfig, mockApiDefinition, 'manage');
+
+    const originalId = service.draftPages()[0].id;
+    expect(originalId).toBe('orders-page');
+
+    // Update title and slug
+    service.updatePage('orders-page', {
+      title: 'Histórico Completo de Pedidos',
+      slug: 'historico-pedidos'
+    });
+
+    const pages = service.draftPages();
+    const updatedPage = pages.find((p) => p.slug === 'historico-pedidos');
+    expect(updatedPage).toBeDefined();
+    expect(updatedPage?.id).toBe('orders-page'); // ID is preserved!
+    expect(updatedPage?.title).toBe('Histórico Completo de Pedidos');
+  });
+
+  it('15. should detect slug conflicts with other pages in real time', () => {
+    const configWithPages: UiConfiguration = {
+      version: 1,
+      pages: {
+        page1: { id: 'page1', title: 'Pedidos', slug: 'pedidos' },
+        page2: { id: 'page2', title: 'Clientes', slug: 'clientes' },
+        page3: { id: 'page3', title: 'Produtos', slug: 'produtos' }
+      }
+    };
+    service.initDraft(configWithPages, mockApiDefinition, 'manage');
+
+    // Conflicting with page2
+    expect(service.isSlugConflict('clientes', 'page1')).toBe(true);
+    expect(service.getConflictingPage('clientes', 'page1')?.title).toBe('Clientes');
+
+    // Not conflicting with own slug
+    expect(service.isSlugConflict('pedidos', 'page1')).toBe(false);
+
+    // Not conflicting with unused slug
+    expect(service.isSlugConflict('novo-slug', 'page1')).toBe(false);
+    expect(service.getConflictingPage('novo-slug', 'page1')).toBeUndefined();
+  });
+
+  it('16. should set explicit position of a page in sidebar and reindex other pages cleanly', () => {
+    const configWithPages: UiConfiguration = {
+      version: 1,
+      pages: {
+        page1: { id: 'page1', title: 'A', order: 1 },
+        page2: { id: 'page2', title: 'B', order: 2 },
+        page3: { id: 'page3', title: 'C', order: 3 },
+        page4: { id: 'page4', title: 'D', order: 4 }
+      }
+    };
+    service.initDraft(configWithPages, mockApiDefinition, 'manage');
+
+    // Move page4 (position 4) directly to position 1 (top)
+    service.setPagePosition('page4', 1);
+
+    const pages = service.draftPages();
+    expect(pages.map((p) => p.id)).toEqual(['page4', 'page1', 'page2', 'page3']);
+    expect(pages.map((p) => p.order)).toEqual([1, 2, 3, 4]);
+
+    // Move page4 to position 3
+    service.setPagePosition('page4', 3);
+    const pages2 = service.draftPages();
+    expect(pages2.map((p) => p.id)).toEqual(['page1', 'page2', 'page4', 'page3']);
+    expect(pages2.map((p) => p.order)).toEqual([1, 2, 3, 4]);
+  });
 });

@@ -1,10 +1,13 @@
 import { Component, computed, effect, inject, output, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import {
+  AbstractControl,
   FormArray,
   FormBuilder,
   FormGroup,
   ReactiveFormsModule,
+  ValidationErrors,
+  ValidatorFn,
   Validators
 } from '@angular/forms';
 import { MatIconModule } from '@angular/material/icon';
@@ -112,9 +115,39 @@ export interface SchemaPropertyOption {
         <!-- ==================== ETAPA 1: GERAL & RECURSO ==================== -->
         @if (currentStep() === 1) {
           <section class="step-section" aria-label="Configurações gerais e recurso">
+            <!-- Navigation Item Preview -->
+            <div class="nav-preview-card" aria-label="Prévia visual do item na barra lateral">
+              <div class="nav-preview-header">
+                <span class="preview-title-badge">Prévia da Barra Lateral</span>
+                <span class="preview-subtitle">Como esta página será exibida na navegação do Dashboard</span>
+              </div>
+              <div class="nav-preview-row" [class.is-hidden-item]="form.get('hidden')?.value">
+                <div class="preview-icon-box">
+                  <mat-icon>{{ form.get('icon')?.value || 'table_chart' }}</mat-icon>
+                </div>
+                <div class="preview-info-col">
+                  <div class="preview-title-line">
+                    <span class="preview-page-title">{{ form.get('title')?.value || 'Página sem título' }}</span>
+                    @if (form.get('isDefault')?.value) {
+                      <span class="preview-badge badge-default" title="Página inicial ao abrir o Dashboard">Inicial</span>
+                    }
+                    @if (form.get('hidden')?.value) {
+                      <span class="preview-badge badge-hidden" title="Esta página não será exibida na lista do menu lateral">Oculta</span>
+                    }
+                  </div>
+                  <div class="preview-route-line font-mono">
+                    <span class="preview-route-path">/dashboard/{{ form.get('slug')?.value || '...' }}</span>
+                  </div>
+                </div>
+                <div class="preview-order-pill" title="Posição na ordem da barra lateral">
+                  <span>Posição #{{ form.get('order')?.value || 1 }}</span>
+                </div>
+              </div>
+            </div>
+
             <div class="section-lead">
               <h5 class="lead-title">Identificação da Página e Vínculo OpenAPI</h5>
-              <p class="lead-desc">Defina o recurso da API que alimentará os dados desta página e os dados de navegação.</p>
+              <p class="lead-desc">Defina o recurso da API que alimentará os dados desta página e configure sua rota e identidade visual.</p>
             </div>
 
             <div class="form-grid">
@@ -173,18 +206,40 @@ export interface SchemaPropertyOption {
                     formControlName="slug"
                     class="form-control font-mono"
                     placeholder="pedidos"
-                    (input)="markDirty()"
+                    (input)="onSlugInput()"
                   />
                 </div>
                 @if (form.get('slug')?.touched && form.get('slug')?.errors?.['required']) {
                   <span class="field-error">O slug é obrigatório.</span>
                 } @else if (form.get('slug')?.touched && form.get('slug')?.errors?.['pattern']) {
                   <span class="field-error">Use apenas letras minúsculas, números e hífens (ex: meus-pedidos).</span>
+                } @else if (form.get('slug')?.errors?.['slugConflict']) {
+                  <span class="field-error">
+                    Este slug já está em uso pela página "{{ form.get('slug')?.errors?.['slugConflict']?.conflictingTitle }}".
+                  </span>
                 }
               </div>
 
-              <!-- Icon Selector -->
+              <!-- Sidebar Position (Order) -->
               <div class="form-field">
+                <label for="field-order" class="field-label">
+                  Posição na Barra Lateral
+                </label>
+                <select
+                  id="field-order"
+                  formControlName="order"
+                  class="form-control"
+                  (change)="onOrderChanged()"
+                >
+                  @for (pos of availablePositions(); track pos) {
+                    <option [value]="pos">{{ pos }}ª posição {{ pos === 1 ? '(Topo)' : '' }}</option>
+                  }
+                </select>
+                <span class="field-hint">Posição de ordenação do item no menu lateral do Dashboard.</span>
+              </div>
+
+              <!-- Icon Selector -->
+              <div class="form-field full-width">
                 <label class="field-label">Ícone da Barra Lateral</label>
                 <div class="icon-selector-grid">
                   @for (icon of availableIcons; track icon) {
@@ -784,6 +839,139 @@ export interface SchemaPropertyOption {
       height: 16px;
       background: var(--canvas-border);
       flex-shrink: 0;
+    }
+
+    /* Navigation Item Preview */
+    .nav-preview-card {
+      background: var(--canvas-surface);
+      border: 1px solid var(--canvas-border);
+      border-radius: var(--radius-sm);
+      padding: 10px 12px;
+      margin-bottom: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+
+      .nav-preview-header {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+
+        .preview-title-badge {
+          font-size: 10px;
+          font-weight: 700;
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+          background: var(--canvas-surface-elevated);
+          color: var(--canvas-text-link);
+          border: 1px solid var(--canvas-border);
+          padding: 2px 6px;
+          border-radius: var(--radius-xs);
+        }
+
+        .preview-subtitle {
+          font-size: 11px;
+          color: var(--canvas-text-muted);
+        }
+      }
+
+      .nav-preview-row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 6px 10px;
+        background: var(--canvas-bg);
+        border: 1px solid var(--canvas-border-subtle);
+        border-radius: var(--radius-xs);
+        transition: opacity 0.15s ease, border-color 0.15s ease;
+
+        &.is-hidden-item {
+          opacity: 0.55;
+          border-style: dashed;
+        }
+
+        .preview-icon-box {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          width: 28px;
+          height: 28px;
+          background: var(--canvas-surface-elevated);
+          border-radius: var(--radius-xs);
+          color: var(--canvas-text-primary);
+          flex-shrink: 0;
+
+          mat-icon {
+            font-size: 18px !important;
+            width: 18px !important;
+            height: 18px !important;
+            line-height: 18px !important;
+          }
+        }
+
+        .preview-info-col {
+          display: flex;
+          flex-direction: column;
+          gap: 2px;
+          flex: 1;
+          min-width: 0;
+
+          .preview-title-line {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+
+            .preview-page-title {
+              font-size: 12px;
+              font-weight: 600;
+              color: var(--canvas-text-primary);
+              overflow: hidden;
+              text-overflow: ellipsis;
+              white-space: nowrap;
+            }
+
+            .preview-badge {
+              font-size: 10px;
+              font-weight: 600;
+              padding: 1px 5px;
+              border-radius: var(--radius-xs);
+              line-height: 1.2;
+
+              &.badge-default {
+                background: rgba(46, 160, 67, 0.18);
+                color: #3fb950;
+                border: 1px solid rgba(46, 160, 67, 0.35);
+              }
+
+              &.badge-hidden {
+                background: rgba(139, 148, 158, 0.15);
+                color: var(--canvas-text-muted);
+                border: 1px solid var(--canvas-border);
+              }
+            }
+          }
+
+          .preview-route-line {
+            font-size: 11px;
+            color: var(--canvas-text-muted);
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+          }
+        }
+
+        .preview-order-pill {
+          font-size: 10px;
+          font-family: var(--font-mono);
+          font-weight: 600;
+          color: var(--canvas-text-secondary);
+          background: var(--canvas-surface-elevated);
+          border: 1px solid var(--canvas-border-subtle);
+          padding: 2px 6px;
+          border-radius: var(--radius-xs);
+          flex-shrink: 0;
+        }
+      }
     }
 
     /* Section Lead */
@@ -1528,14 +1716,20 @@ export class PageWizardFormComponent {
     return this.draftService.apiDefinition()?.resources ?? [];
   });
 
+  readonly availablePositions = computed<number[]>(() => {
+    const total = Math.max(this.draftService.draftPages().length, 1);
+    return Array.from({ length: total }, (_, i) => i + 1);
+  });
+
   readonly currentValidation = this.draftService.validationResult;
 
   readonly form: FormGroup = this.fb.group({
     id: [''],
     resourceId: ['', Validators.required],
     title: ['', Validators.required],
-    slug: ['', [Validators.required, Validators.pattern(/^[a-z0-9]+(?:-[a-z0-9]+)*$/)]],
+    slug: ['', [this.slugValidator()]],
     icon: ['table_chart'],
+    order: [1],
     description: [''],
     isDefault: [false],
     hidden: [false],
@@ -1621,6 +1815,28 @@ export class PageWizardFormComponent {
     });
   }
 
+  private slugValidator(): ValidatorFn {
+    return (control: AbstractControl): ValidationErrors | null => {
+      const val = control.value;
+      if (!val || typeof val !== 'string' || val.trim() === '') {
+        return { required: true };
+      }
+      if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(val.trim())) {
+        return { pattern: true };
+      }
+      const editingId = this.draftService.editingPageId() || this.loadedPageId;
+      if (this.draftService.isSlugConflict(val, editingId || undefined)) {
+        const conflictPage = this.draftService.getConflictingPage(val, editingId || undefined);
+        return {
+          slugConflict: {
+            conflictingTitle: conflictPage?.title || conflictPage?.id || val
+          }
+        };
+      }
+      return null;
+    };
+  }
+
   goToStep(step: WizardStep): void {
     this.currentStep.set(step);
   }
@@ -1632,6 +1848,7 @@ export class PageWizardFormComponent {
       title: page.title || '',
       slug: page.slug || '',
       icon: page.icon || 'table_chart',
+      order: page.order ?? 1,
       description: page.description || '',
       isDefault: page.isDefault ?? page.default ?? false,
       hidden: page.hidden ?? false,
@@ -1645,6 +1862,8 @@ export class PageWizardFormComponent {
       actionDelete: page.actions?.rowActions?.delete !== false,
       searchFields: page.filters?.searchFields ? [...page.filters.searchFields] : []
     }, { emitEvent: false });
+
+    this.form.get('slug')?.updateValueAndValidity({ emitEvent: false });
 
     // Populate metrics array
     this.metricsArray.clear({ emitEvent: false });
@@ -1782,13 +2001,29 @@ export class PageWizardFormComponent {
     // If slug is empty or matches auto pattern, auto sync
     if (!currentSlug || currentSlug === this.slugify(titleVal.slice(0, -1))) {
       this.form.get('slug')?.setValue(this.slugify(titleVal));
+      this.form.get('slug')?.updateValueAndValidity();
     }
     this.markDirty();
+  }
+
+  onSlugInput(): void {
+    this.form.get('slug')?.updateValueAndValidity();
+    this.markDirty();
+  }
+
+  onOrderChanged(): void {
+    const pageId = this.draftService.editingPageId();
+    const newOrder = Number(this.form.get('order')?.value) || 1;
+    if (pageId) {
+      this.draftService.setPagePosition(pageId, newOrder);
+      this.markDirty();
+    }
   }
 
   autoGenerateSlug(): void {
     const title = this.form.get('title')?.value || this.form.get('resourceId')?.value || 'pagina';
     this.form.get('slug')?.setValue(this.slugify(title));
+    this.form.get('slug')?.updateValueAndValidity();
     this.markDirty();
   }
 
@@ -1797,12 +2032,21 @@ export class PageWizardFormComponent {
     const resource = this.availableResources().find((r) => r.id === resId || r.name === resId);
     if (!resource) return;
 
-    // Suggest defaults if title is empty or default
+    const resourceLabel = resource.label || resource.name;
+
+    // Suggest defaults for title and slug
     const titleCtrl = this.form.get('title');
-    if (!titleCtrl?.value || titleCtrl.value === 'Página') {
-      titleCtrl?.setValue(resource.label || resource.name);
-      this.autoGenerateSlug();
-    }
+    titleCtrl?.setValue(resourceLabel);
+    this.autoGenerateSlug();
+
+    // Suggest contextual icon from resource name
+    const iconCtrl = this.form.get('icon');
+    const inferredIcon = this.draftService.inferIconFromResource(resource.id || resource.name);
+    iconCtrl?.setValue(inferredIcon);
+
+    // Suggest contextual description
+    const descCtrl = this.form.get('description');
+    descCtrl?.setValue(`Gerenciamento operacional e visualização de ${resourceLabel.toLowerCase()}.`);
 
     // Re-infer columns and metrics from the newly selected resource
     const inferred = this.draftService.inferPageDefaultsFromResource(resource);
@@ -1860,6 +2104,7 @@ export class PageWizardFormComponent {
       title: val.title,
       slug: val.slug,
       icon: val.icon,
+      order: Number(val.order) || existing?.order || 1,
       description: val.description,
       isDefault: val.isDefault,
       default: val.isDefault,
