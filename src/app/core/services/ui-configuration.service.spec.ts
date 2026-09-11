@@ -613,4 +613,35 @@ describe('UiConfigurationService', () => {
       expect(page?.actions?.rowActions?.delete).toBe(true);
     });
   });
+
+  describe('Integrated Validation and Safe Resolution', () => {
+    it('should validate and sanitize configurations through UiConfigurationService delegation', () => {
+      const corruptConfig: UiConfiguration = {
+        pages: {
+          'bad-page': {
+            id: 'bad-page',
+            slug: 'invalid slug with spaces!',
+            operations: {
+              list: 'ghostOp'
+            }
+          }
+        }
+      };
+
+      const valResult = service.validateConfiguration(corruptConfig, null);
+      expect(valResult.valid).toBe(false);
+      expect(valResult.hasErrors).toBe(true);
+
+      const sanitized = service.sanitizeConfiguration(corruptConfig, null);
+      expect(sanitized?.pages?.['bad-page']?.slug).toBe('invalid-slug-with-spaces');
+    });
+
+    it('should resolve safe page configuration without runtime crashes even with empty/broken input', () => {
+      const resolved = service.getSafeResolvedPageConfig(null, null, null);
+      expect(resolved).toBeDefined();
+      expect(resolved.displayMode).toBe('dashboard');
+      expect(resolved.hidden).toBe(false);
+    });
+  });
 });
+

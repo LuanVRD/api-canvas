@@ -1,4 +1,4 @@
-import { Injectable } from '@angular/core';
+import { inject, Injectable } from '@angular/core';
 import {
   CURRENT_UI_CONFIGURATION_VERSION,
   UiConfiguration,
@@ -7,6 +7,9 @@ import {
   UiResourceConfiguration
 } from '../models/ui-configuration.model';
 import { ApiResource } from '../models/api-resource.model';
+import { ApiDefinition } from '../models/api-definition.model';
+import { UiValidationResult } from '../models/ui-validation.model';
+import { UiConfigurationValidatorService } from './ui-configuration-validator.service';
 import { FormFieldDescriptor } from '../../dynamic-ui/dynamic-form/form-field.model';
 import { TableColumnDescriptor } from '../../dynamic-ui/dynamic-table/table-schema.service';
 
@@ -14,6 +17,43 @@ import { TableColumnDescriptor } from '../../dynamic-ui/dynamic-table/table-sche
   providedIn: 'root'
 })
 export class UiConfigurationService {
+  private readonly validator = inject(UiConfigurationValidatorService);
+
+  /**
+   * Validates a UI configuration against active API definition, producing structured issues.
+   */
+  validateConfiguration(
+    config?: UiConfiguration | null,
+    apiDefinition?: ApiDefinition | null
+  ): UiValidationResult {
+    return this.validator.validate(config, apiDefinition);
+  }
+
+  /**
+   * Generates a safe, sanitized version of the configuration where broken references are cleansed.
+   */
+  sanitizeConfiguration(
+    config?: UiConfiguration | null,
+    apiDefinition?: ApiDefinition | null
+  ): UiConfiguration | null {
+    return this.validator.sanitizeConfiguration(config, apiDefinition);
+  }
+
+  /**
+   * Resolves a page configuration safely, applying sanitization and fallback defaults.
+   */
+  getSafeResolvedPageConfig(
+    pageConfig?: UiPageConfiguration | null,
+    resourceConfig?: UiResourceConfiguration | null,
+    apiDefinition?: ApiDefinition | null
+  ): UiPageConfiguration {
+    const rawResolved = this.resolvePageConfiguration(pageConfig, resourceConfig);
+    const sanitizedConfig = this.validator.sanitizeConfiguration(
+      { pages: { active: rawResolved } },
+      apiDefinition
+    );
+    return sanitizedConfig?.pages?.['active'] ?? rawResolved;
+  }
   /**
    * Normalizes a configuration object, ensuring valid defaults,
    * schema versioning, and backwards compatibility with older config shapes.
