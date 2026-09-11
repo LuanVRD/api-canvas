@@ -10,17 +10,24 @@ import {
   ValidatorFn,
   Validators
 } from '@angular/forms';
+import { Router } from '@angular/router';
 import { MatIconModule } from '@angular/material/icon';
 import { PageDraftService } from '../../services/page-draft.service';
 import {
+  UiActionInputMode,
+  UiActionStyle,
   UiColumnConfiguration,
+  UiCustomActionDescriptor,
   UiMetricConfiguration,
   UiPageConfiguration
 } from '../../../../core/models/ui-configuration.model';
 import { ApiResource } from '../../../../core/models/api-resource.model';
 import { ApiSchema } from '../../../../core/models/api-schema.model';
+import { ApiOperation } from '../../../../core/models/api-operation.model';
+import { ApiParameter } from '../../../../core/models/api-parameter.model';
+import { ResourceOperationMatcherService } from '../../../../core/services/resource-operation-matcher.service';
 
-export type WizardStep = 1 | 2 | 3 | 4;
+export type WizardStep = 1 | 2 | 3 | 4 | 5;
 
 export const AVAILABLE_PAGE_ICONS = [
   'table_chart',
@@ -39,6 +46,32 @@ export const AVAILABLE_PAGE_ICONS = [
   'view_list',
   'widgets',
   'layers'
+];
+
+export const ACTION_STYLE_OPTIONS: Array<{ value: UiActionStyle; label: string; color: string }> = [
+  { value: 'default', label: 'Padrão (Neutro)', color: '#8b949e' },
+  { value: 'primary', label: 'Primário (Azul)', color: '#58a6ff' },
+  { value: 'success', label: 'Sucesso (Verde)', color: '#3fb950' },
+  { value: 'warning', label: 'Atenção (Amarelo)', color: '#d29922' },
+  { value: 'danger', label: 'Destrutivo (Vermelho)', color: '#f85149' },
+  { value: 'info', label: 'Informativo (Ciano)', color: '#39c5cf' }
+];
+
+export const ACTION_ICON_OPTIONS = [
+  'bolt',
+  'edit_note',
+  'cancel',
+  'check_circle',
+  'send',
+  'refresh',
+  'published_with_changes',
+  'block',
+  'done',
+  'flag',
+  'play_arrow',
+  'archive',
+  'lock_open',
+  'local_shipping'
 ];
 
 export interface SchemaPropertyOption {
@@ -75,11 +108,10 @@ export interface SchemaPropertyOption {
           class="step-tab"
           [class.active]="currentStep() === 2"
           (click)="goToStep(2)"
-          aria-label="Etapa 2: Métricas operacionais"
+          aria-label="Etapa 2: Endpoints e CRUD"
         >
           <span class="step-badge">2</span>
-          <span class="step-label">Métricas (KPIs)</span>
-          <span class="step-count font-mono">{{ metricsArray.length }}</span>
+          <span class="step-label">Endpoints & CRUD</span>
         </button>
 
         <div class="step-divider"></div>
@@ -89,11 +121,10 @@ export interface SchemaPropertyOption {
           class="step-tab"
           [class.active]="currentStep() === 3"
           (click)="goToStep(3)"
-          aria-label="Etapa 3: Tabela e Colunas"
+          aria-label="Etapa 3: Métricas operacionais"
         >
           <span class="step-badge">3</span>
-          <span class="step-label">Tabela & Colunas</span>
-          <span class="step-count font-mono">{{ columnsArray.length }}</span>
+          <span class="step-label">Métricas (KPIs)</span>
         </button>
 
         <div class="step-divider"></div>
@@ -103,9 +134,22 @@ export interface SchemaPropertyOption {
           class="step-tab"
           [class.active]="currentStep() === 4"
           (click)="goToStep(4)"
-          aria-label="Etapa 4: Filtros e Ações"
+          aria-label="Etapa 4: Tabela e Colunas"
         >
           <span class="step-badge">4</span>
+          <span class="step-label">Tabela & Colunas</span>
+        </button>
+
+        <div class="step-divider"></div>
+
+        <button
+          type="button"
+          class="step-tab"
+          [class.active]="currentStep() === 5"
+          (click)="goToStep(5)"
+          aria-label="Etapa 5: Filtros e Ações"
+        >
+          <span class="step-badge">5</span>
           <span class="step-label">Filtros & Ações</span>
         </button>
       </nav>
@@ -248,7 +292,6 @@ export interface SchemaPropertyOption {
                       class="icon-choice-btn"
                       [class.selected]="form.get('icon')?.value === icon"
                       (click)="form.get('icon')?.setValue(icon); markDirty()"
-                      [title]="icon"
                       [attr.aria-label]="'Selecionar ícone ' + icon"
                     >
                       <mat-icon>{{ icon }}</mat-icon>
@@ -259,84 +302,429 @@ export interface SchemaPropertyOption {
 
               <!-- Description -->
               <div class="form-field full-width">
-                <label for="field-desc" class="field-label">Descrição Contextual (Opcional)</label>
+                <label for="field-description" class="field-label">Descrição da Página</label>
                 <textarea
-                  id="field-desc"
+                  id="field-description"
                   formControlName="description"
+                  class="form-control"
                   rows="2"
-                  class="form-control textarea-control"
-                  placeholder="Explicação sobre o propósito desta visão no dashboard..."
+                  placeholder="Breve descrição dos dados ou contexto desta página..."
                   (input)="markDirty()"
                 ></textarea>
               </div>
 
-              <!-- Checkbox Options -->
-              <div class="checkbox-row full-width">
-                <label class="checkbox-label">
-                  <input type="checkbox" formControlName="isDefault" (change)="markDirty()" />
-                  <span>Definir como página inicial do Dashboard</span>
-                </label>
-                <label class="checkbox-label">
-                  <input type="checkbox" formControlName="hidden" (change)="markDirty()" />
-                  <span>Ocultar esta página na barra lateral de navegação</span>
-                </label>
+              <!-- Boolean Flags -->
+              <div class="form-field full-width">
+                <div class="flags-row">
+                  <label class="checkbox-label">
+                    <input type="checkbox" formControlName="isDefault" (change)="markDirty()" />
+                    <span>Definir como página padrão inicial do Dashboard</span>
+                  </label>
+
+                  <label class="checkbox-label">
+                    <input type="checkbox" formControlName="hidden" (change)="markDirty()" />
+                    <span>Ocultar item na barra lateral (acessível apenas por link direto)</span>
+                  </label>
+                </div>
               </div>
             </div>
           </section>
         }
 
-        <!-- ==================== ETAPA 2: MÉTRICAS (KPIS) ==================== -->
+        <!-- ==================== ETAPA 2: ENDPOINTS & CRUD ==================== -->
         @if (currentStep() === 2) {
-          <section class="step-section" aria-label="Configuração de métricas">
+          <section class="step-section" aria-label="Mapeamento de endpoints e operações CRUD">
+            <div class="section-lead">
+              <h5 class="lead-title">Vínculo de Operações OpenAPI (CRUD)</h5>
+              <p class="lead-desc">
+                Selecione quais endpoints fornecem os dados e executam as ações desta página. O resolvedor automático sugere a melhor opção, identificada visualmente pelo selo <span class="badge-inline-suggested">Sugerido</span>.
+              </p>
+            </div>
+
+            <div class="operations-grid">
+              <!-- 1. List Operation (GET) -->
+              <div class="operation-card" [class.has-selection]="form.get('operationList')?.value">
+                <div class="operation-card-header">
+                  <div class="role-meta">
+                    <span class="method-badge method-get">GET</span>
+                    <strong class="role-title">Listagem Principal</strong>
+                  </div>
+                  @if (isSuggested('list', form.get('operationList')?.value)) {
+                    <span class="badge-suggested" title="Operação inferida automaticamente pelo resolvedor OpenAPI">
+                      <mat-icon class="badge-icon">auto_awesome</mat-icon> Sugerido
+                    </span>
+                  }
+                </div>
+
+                <div class="operation-card-body">
+                  <select
+                    formControlName="operationList"
+                    class="form-control op-select font-mono"
+                    (change)="onOperationChanged('list')"
+                  >
+                    <option value="">Nenhuma (Sem carregamento automático)</option>
+                    @for (op of compatibleListOperations(); track op.id) {
+                      <option [value]="op.operationId || op.id">
+                        [{{ op.method }}] {{ op.path }} {{ op.summary ? '— ' + op.summary : '' }}
+                      </option>
+                    }
+                  </select>
+
+                  @if (getOperationDetails(form.get('operationList')?.value); as op) {
+                    <div class="op-meta-panel">
+                      <div class="op-meta-row">
+                        <span class="op-path font-mono">{{ op.path }}</span>
+                        <button
+                          type="button"
+                          class="btn-inspect-explorer"
+                          (click)="openInExplorer(op.operationId || op.id, $event)"
+                          title="Inspecionar operação no API Explorer"
+                        >
+                          <mat-icon>open_in_new</mat-icon>
+                          <span>API Explorer</span>
+                        </button>
+                      </div>
+                      <div class="op-summary-text">{{ op.summary || op.description || 'Sem resumo fornecido' }}</div>
+                      @if (op.parameters && op.parameters.length > 0) {
+                        <div class="op-params-list">
+                          <span class="params-label">Parâmetros:</span>
+                          @for (param of op.parameters; track param.name) {
+                            <span class="param-pill font-mono" [class.required]="param.required">
+                              {{ param.name }} <small>({{ param.location }})</small>
+                            </span>
+                          }
+                        </div>
+                      }
+                    </div>
+                  }
+                </div>
+              </div>
+
+              <!-- 2. Create Operation (POST) -->
+              <div class="operation-card" [class.has-selection]="form.get('operationCreate')?.value">
+                <div class="operation-card-header">
+                  <div class="role-meta">
+                    <span class="method-badge method-post">POST</span>
+                    <strong class="role-title">Criação de Registro</strong>
+                  </div>
+                  @if (isSuggested('create', form.get('operationCreate')?.value)) {
+                    <span class="badge-suggested" title="Operação inferida automaticamente pelo resolvedor OpenAPI">
+                      <mat-icon class="badge-icon">auto_awesome</mat-icon> Sugerido
+                    </span>
+                  }
+                </div>
+
+                <div class="operation-card-body">
+                  <select
+                    formControlName="operationCreate"
+                    class="form-control op-select font-mono"
+                    (change)="onOperationChanged('create')"
+                  >
+                    <option value="">Nenhuma (Desabilitar criação)</option>
+                    @for (op of compatibleCreateOperations(); track op.id) {
+                      <option [value]="op.operationId || op.id">
+                        [{{ op.method }}] {{ op.path }} {{ op.summary ? '— ' + op.summary : '' }}
+                      </option>
+                    }
+                  </select>
+
+                  @if (getOperationDetails(form.get('operationCreate')?.value); as op) {
+                    <div class="op-meta-panel">
+                      <div class="op-meta-row">
+                        <span class="op-path font-mono">{{ op.path }}</span>
+                        <button
+                          type="button"
+                          class="btn-inspect-explorer"
+                          (click)="openInExplorer(op.operationId || op.id, $event)"
+                          title="Inspecionar operação no API Explorer"
+                        >
+                          <mat-icon>open_in_new</mat-icon>
+                          <span>API Explorer</span>
+                        </button>
+                      </div>
+                      <div class="op-summary-text">{{ op.summary || op.description || 'Sem resumo fornecido' }}</div>
+                      @if (op.parameters && op.parameters.length > 0) {
+                        <div class="op-params-list">
+                          <span class="params-label">Parâmetros:</span>
+                          @for (param of op.parameters; track param.name) {
+                            <span class="param-pill font-mono" [class.required]="param.required">
+                              {{ param.name }} <small>({{ param.location }})</small>
+                            </span>
+                          }
+                        </div>
+                      }
+                    </div>
+                  }
+                </div>
+              </div>
+
+              <!-- 3. Details Operation (GET with ID) -->
+              <div class="operation-card" [class.has-selection]="form.get('operationDetails')?.value">
+                <div class="operation-card-header">
+                  <div class="role-meta">
+                    <span class="method-badge method-get">GET</span>
+                    <strong class="role-title">Visualização de Detalhes</strong>
+                  </div>
+                  @if (isSuggested('details', form.get('operationDetails')?.value)) {
+                    <span class="badge-suggested" title="Operação inferida automaticamente pelo resolvedor OpenAPI">
+                      <mat-icon class="badge-icon">auto_awesome</mat-icon> Sugerido
+                    </span>
+                  }
+                </div>
+
+                <div class="operation-card-body">
+                  <select
+                    formControlName="operationDetails"
+                    class="form-control op-select font-mono"
+                    (change)="onOperationChanged('details')"
+                  >
+                    <option value="">Nenhuma (Exibir apenas dados locais da linha)</option>
+                    @for (op of compatibleDetailsOperations(); track op.id) {
+                      <option [value]="op.operationId || op.id">
+                        [{{ op.method }}] {{ op.path }} {{ op.summary ? '— ' + op.summary : '' }}
+                      </option>
+                    }
+                  </select>
+
+                  @if (getOperationDetails(form.get('operationDetails')?.value); as op) {
+                    <div class="op-meta-panel">
+                      <div class="op-meta-row">
+                        <span class="op-path font-mono">{{ op.path }}</span>
+                        <button
+                          type="button"
+                          class="btn-inspect-explorer"
+                          (click)="openInExplorer(op.operationId || op.id, $event)"
+                          title="Inspecionar operação no API Explorer"
+                        >
+                          <mat-icon>open_in_new</mat-icon>
+                          <span>API Explorer</span>
+                        </button>
+                      </div>
+                      <div class="op-summary-text">{{ op.summary || op.description || 'Sem resumo fornecido' }}</div>
+                      @if (checkParamInference(op); as check) {
+                        @if (!check.canInfer) {
+                          <div class="param-warning-box">
+                            <mat-icon class="warn-icon">warning_amber</mat-icon>
+                            <span class="warn-text">
+                              Aviso: Parâmetro(s) <strong>{{ formatMissingParams(check.missingParams) }}</strong> não foram encontrados nas colunas e podem requerer mapeamento.
+                            </span>
+                          </div>
+                        }
+                      }
+                      @if (op.parameters && op.parameters.length > 0) {
+                        <div class="op-params-list">
+                          <span class="params-label">Parâmetros:</span>
+                          @for (param of op.parameters; track param.name) {
+                            <span class="param-pill font-mono" [class.required]="param.required">
+                              {{ param.name }} <small>({{ param.location }})</small>
+                            </span>
+                          }
+                        </div>
+                      }
+                    </div>
+                  }
+                </div>
+              </div>
+
+              <!-- 4. Update Operation (PUT / PATCH) -->
+              <div class="operation-card" [class.has-selection]="form.get('operationUpdate')?.value">
+                <div class="operation-card-header">
+                  <div class="role-meta">
+                    <span class="method-badge method-put">PUT/PATCH</span>
+                    <strong class="role-title">Atualização de Registro</strong>
+                  </div>
+                  @if (isSuggested('update', form.get('operationUpdate')?.value)) {
+                    <span class="badge-suggested" title="Operação inferida automaticamente pelo resolvedor OpenAPI">
+                      <mat-icon class="badge-icon">auto_awesome</mat-icon> Sugerido
+                    </span>
+                  }
+                </div>
+
+                <div class="operation-card-body">
+                  <select
+                    formControlName="operationUpdate"
+                    class="form-control op-select font-mono"
+                    (change)="onOperationChanged('update')"
+                  >
+                    <option value="">Nenhuma (Desabilitar edição padrão)</option>
+                    @for (op of compatibleUpdateOperations(); track op.id) {
+                      <option [value]="op.operationId || op.id">
+                        [{{ op.method }}] {{ op.path }} {{ op.summary ? '— ' + op.summary : '' }}
+                      </option>
+                    }
+                  </select>
+
+                  @if (getOperationDetails(form.get('operationUpdate')?.value); as op) {
+                    <div class="op-meta-panel">
+                      <div class="op-meta-row">
+                        <span class="op-path font-mono">{{ op.path }}</span>
+                        <button
+                          type="button"
+                          class="btn-inspect-explorer"
+                          (click)="openInExplorer(op.operationId || op.id, $event)"
+                          title="Inspecionar operação no API Explorer"
+                        >
+                          <mat-icon>open_in_new</mat-icon>
+                          <span>API Explorer</span>
+                        </button>
+                      </div>
+                      <div class="op-summary-text">{{ op.summary || op.description || 'Sem resumo fornecido' }}</div>
+                      @if (checkParamInference(op); as check) {
+                        @if (!check.canInfer) {
+                          <div class="param-warning-box">
+                            <mat-icon class="warn-icon">warning_amber</mat-icon>
+                            <span class="warn-text">
+                              Aviso: Parâmetro(s) <strong>{{ formatMissingParams(check.missingParams) }}</strong> podem não ser inferidos a partir da linha.
+                            </span>
+                          </div>
+                        }
+                      }
+                      @if (op.parameters && op.parameters.length > 0) {
+                        <div class="op-params-list">
+                          <span class="params-label">Parâmetros:</span>
+                          @for (param of op.parameters; track param.name) {
+                            <span class="param-pill font-mono" [class.required]="param.required">
+                              {{ param.name }} <small>({{ param.location }})</small>
+                            </span>
+                          }
+                        </div>
+                      }
+                    </div>
+                  }
+                </div>
+              </div>
+
+              <!-- 5. Delete Operation (DELETE) -->
+              <div class="operation-card" [class.has-selection]="form.get('operationDelete')?.value">
+                <div class="operation-card-header">
+                  <div class="role-meta">
+                    <span class="method-badge method-delete">DELETE</span>
+                    <strong class="role-title">Exclusão de Registro</strong>
+                  </div>
+                  @if (isSuggested('delete', form.get('operationDelete')?.value)) {
+                    <span class="badge-suggested" title="Operação inferida automaticamente pelo resolvedor OpenAPI">
+                      <mat-icon class="badge-icon">auto_awesome</mat-icon> Sugerido
+                    </span>
+                  }
+                </div>
+
+                <div class="operation-card-body">
+                  <select
+                    formControlName="operationDelete"
+                    class="form-control op-select font-mono"
+                    (change)="onOperationChanged('delete')"
+                  >
+                    <option value="">Nenhuma (Desabilitar exclusão)</option>
+                    @for (op of compatibleDeleteOperations(); track op.id) {
+                      <option [value]="op.operationId || op.id">
+                        [{{ op.method }}] {{ op.path }} {{ op.summary ? '— ' + op.summary : '' }}
+                      </option>
+                    }
+                  </select>
+
+                  @if (getOperationDetails(form.get('operationDelete')?.value); as op) {
+                    <div class="op-meta-panel">
+                      <div class="op-meta-row">
+                        <span class="op-path font-mono">{{ op.path }}</span>
+                        <button
+                          type="button"
+                          class="btn-inspect-explorer"
+                          (click)="openInExplorer(op.operationId || op.id, $event)"
+                          title="Inspecionar operação no API Explorer"
+                        >
+                          <mat-icon>open_in_new</mat-icon>
+                          <span>API Explorer</span>
+                        </button>
+                      </div>
+                      <div class="op-summary-text">{{ op.summary || op.description || 'Sem resumo fornecido' }}</div>
+                      @if (checkParamInference(op); as check) {
+                        @if (!check.canInfer) {
+                          <div class="param-warning-box">
+                            <mat-icon class="warn-icon">warning_amber</mat-icon>
+                            <span class="warn-text">
+                              Aviso: Parâmetro(s) <strong>{{ formatMissingParams(check.missingParams) }}</strong> podem requerer atenção.
+                            </span>
+                          </div>
+                        }
+                      }
+                      @if (op.parameters && op.parameters.length > 0) {
+                        <div class="op-params-list">
+                          <span class="params-label">Parâmetros:</span>
+                          @for (param of op.parameters; track param.name) {
+                            <span class="param-pill font-mono" [class.required]="param.required">
+                              {{ param.name }} <small>({{ param.location }})</small>
+                            </span>
+                          }
+                        </div>
+                      }
+                    </div>
+                  }
+                </div>
+              </div>
+            </div>
+          </section>
+        }
+
+        <!-- ==================== ETAPA 3: MÉTRICAS (KPIS) ==================== -->
+        @if (currentStep() === 3) {
+          <section class="step-section" aria-label="Configuração de métricas operacionais">
             <div class="section-lead-row">
               <div class="section-lead">
-                <h5 class="lead-title">Cards de Métricas Operacionais (KPIs)</h5>
-                <p class="lead-desc">Configure até 6 cards resumidos com contagens ou agregações a serem exibidos no topo da página.</p>
+                <h5 class="lead-title">Cards de Métricas e Indicadores Operacionais</h5>
+                <p class="lead-desc">Configure até 6 cartões de KPIs calculados com base nos dados do recurso carregado.</p>
               </div>
               <button
                 type="button"
-                class="btn-secondary-action"
-                [disabled]="metricsArray.length >= 6"
+                class="btn-secondary-sm"
                 (click)="addMetric()"
-                aria-label="Adicionar novo card de métrica"
+                [disabled]="metricsArray.length >= 6"
               >
                 <mat-icon>add</mat-icon>
-                <span>Adicionar métrica</span>
+                <span>Adicionar Métrica</span>
               </button>
             </div>
 
-            @if (metricsArray.length > 0) {
-              <div class="metrics-list" formArrayName="metrics">
-                @for (metricCtrl of metricsArray.controls; track $index; let idx = $index; let isFirst = $first; let isLast = $last) {
-                  <div [formGroupName]="idx" class="metric-card-editor">
-                    <div class="metric-editor-header">
-                      <div class="metric-num-title">
-                        <span class="order-badge font-mono">#{{ idx + 1 }}</span>
-                        <span class="metric-preview-label">{{ metricCtrl.get('label')?.value || 'Nova Métrica' }}</span>
+            @if (metricsArray.length === 0) {
+              <div class="empty-placeholder">
+                <mat-icon class="empty-icon">assessment</mat-icon>
+                <span>Nenhuma métrica configurada para esta página.</span>
+                <button type="button" class="btn-text-action" (click)="addMetric()">
+                  + Adicionar primeiro card de indicador
+                </button>
+              </div>
+            } @else {
+              <div class="metrics-editor-list" formArrayName="metrics">
+                @for (mCtrl of metricsArray.controls; track mCtrl; let i = $index) {
+                  <div class="metric-editor-card" [formGroupName]="i">
+                    <div class="metric-card-header">
+                      <div class="metric-header-left">
+                        <span class="metric-num font-mono">#{{ i + 1 }}</span>
+                        <mat-icon class="metric-card-icon">{{ mCtrl.get('icon')?.value || 'tag' }}</mat-icon>
+                        <strong class="metric-title-display">{{ mCtrl.get('label')?.value || 'Métrica sem nome' }}</strong>
                       </div>
                       <div class="metric-header-actions">
                         <button
                           type="button"
                           class="btn-icon-sm"
-                          [disabled]="isFirst"
-                          (click)="moveMetric(idx, 'up')"
+                          [disabled]="i === 0"
+                          (click)="moveMetric(i, 'up')"
                           title="Mover para cima"
                         >
-                          <mat-icon>keyboard_arrow_up</mat-icon>
+                          <mat-icon>arrow_upward</mat-icon>
                         </button>
                         <button
                           type="button"
                           class="btn-icon-sm"
-                          [disabled]="isLast"
-                          (click)="moveMetric(idx, 'down')"
+                          [disabled]="i === metricsArray.length - 1"
+                          (click)="moveMetric(i, 'down')"
                           title="Mover para baixo"
                         >
-                          <mat-icon>keyboard_arrow_down</mat-icon>
+                          <mat-icon>arrow_downward</mat-icon>
                         </button>
                         <button
                           type="button"
                           class="btn-icon-sm btn-danger"
-                          (click)="removeMetric(idx)"
+                          (click)="removeMetric(i)"
                           title="Remover métrica"
                         >
                           <mat-icon>delete</mat-icon>
@@ -347,243 +735,193 @@ export interface SchemaPropertyOption {
                     <div class="metric-fields-grid">
                       <!-- Label -->
                       <div class="form-field">
-                        <label class="field-label">Rótulo <span class="required">*</span></label>
-                        <input
-                          type="text"
-                          formControlName="label"
-                          class="form-control"
-                          placeholder="Ex: Total, Pendentes, Faturamento"
-                          (input)="markDirty()"
-                        />
+                        <label class="field-label">Rótulo / Título <span class="required">*</span></label>
+                        <input type="text" formControlName="label" class="form-control" placeholder="Ex: Total de Pedidos" (input)="markDirty()" />
                       </div>
 
-                      <!-- Type -->
+                      <!-- Aggregation Type -->
                       <div class="form-field">
-                        <label class="field-label">Tipo de Agregação</label>
+                        <label class="field-label">Tipo de Cálculo</label>
                         <select formControlName="type" class="form-control" (change)="markDirty()">
-                          <option value="count_all">Contar todos os registros (count_all)</option>
-                          <option value="count_matching">Contar registros com valor correspondente (count_matching)</option>
-                          <option value="sum_field">Somar valores de um campo numérico (sum_field)</option>
+                          <option value="count_all">Contagem Total (count_all)</option>
+                          <option value="count_matching">Contagem Condicional (count_matching)</option>
+                          <option value="sum_field">Soma de Campo (sum_field)</option>
                         </select>
                       </div>
 
-                      <!-- Field (if count_matching or sum_field) -->
-                      @if (metricCtrl.get('type')?.value === 'count_matching' || metricCtrl.get('type')?.value === 'sum_field') {
-                        <div class="form-field">
-                          <label class="field-label">Campo do Registro <span class="required">*</span></label>
-                          <select formControlName="field" class="form-control font-mono" (change)="markDirty()">
-                            <option value="">Selecione um campo...</option>
-                            @for (prop of availableSchemaProperties(); track prop.key) {
-                              <option [value]="prop.key">{{ prop.key }} ({{ prop.label }} - {{ prop.type }})</option>
-                            }
-                          </select>
-                        </div>
-                      }
+                      <!-- Target Field -->
+                      <div class="form-field">
+                        <label class="field-label">Campo Alvo</label>
+                        <select formControlName="field" class="form-control font-mono" (change)="markDirty()">
+                          <option value="">Nenhum (usa contagem geral)</option>
+                          @for (prop of availablePropertyKeys(); track prop) {
+                            <option [value]="prop">{{ prop }}</option>
+                          }
+                        </select>
+                      </div>
 
-                      <!-- Matching Value (if count_matching) -->
-                      @if (metricCtrl.get('type')?.value === 'count_matching') {
+                      <!-- Matching Value (if conditional) -->
+                      @if (mCtrl.get('type')?.value === 'count_matching') {
                         <div class="form-field">
-                          <label class="field-label">Valor Esperado <span class="required">*</span></label>
-                          <input
-                            type="text"
-                            formControlName="matchingValue"
-                            class="form-control font-mono"
-                            placeholder="Ex: pending, completed, true"
-                            (input)="markDirty()"
-                          />
+                          <label class="field-label">Valor Esperado</label>
+                          <input type="text" formControlName="matchingValue" class="form-control" placeholder="Ex: pending, true, 1" (input)="markDirty()" />
                         </div>
                       }
 
                       <!-- Color Scheme -->
                       <div class="form-field">
-                        <label class="field-label">Cor Semântica</label>
+                        <label class="field-label">Cor do Card</label>
                         <select formControlName="colorScheme" class="form-control" (change)="markDirty()">
-                          <option value="default">Padrão (Neutro)</option>
-                          <option value="primary">Azul (Informativo)</option>
-                          <option value="warning">Âmbar (Atenção/Pendente)</option>
-                          <option value="info">Ciano/Azul (Processando)</option>
-                          <option value="success">Verde (Concluído/Sucesso)</option>
-                          <option value="danger">Vermelho (Alerta/Erro)</option>
+                          <option value="default">Padrão (Cinza)</option>
+                          <option value="primary">Primário (Azul)</option>
+                          <option value="warning">Alerta (Amarelo)</option>
+                          <option value="success">Sucesso (Verde)</option>
+                          <option value="danger">Crítico (Vermelho)</option>
+                          <option value="info">Informativo (Ciano)</option>
                         </select>
                       </div>
 
                       <!-- Format -->
                       <div class="form-field">
-                        <label class="field-label">Formato Numérico</label>
+                        <label class="field-label">Formato</label>
                         <select formControlName="format" class="form-control" (change)="markDirty()">
-                          <option value="number">Número Inteiro / Decimal</option>
-                          <option value="currency">Moeda (R$)</option>
-                          <option value="percent">Porcentagem (%)</option>
+                          <option value="number">Numérico (1.234)</option>
+                          <option value="currency">Moeda (R$ 1.234,00)</option>
+                          <option value="percent">Percentual (12%)</option>
                         </select>
                       </div>
                     </div>
                   </div>
                 }
               </div>
-            } @else {
-              <div class="empty-placeholder">
-                <mat-icon class="empty-icon">speed</mat-icon>
-                <span>Nenhum card de métrica configurado.</span>
-                <button type="button" class="btn-text-action" (click)="addMetric()">
-                  + Adicionar primeiro card de métrica
-                </button>
-              </div>
             }
           </section>
         }
 
-        <!-- ==================== ETAPA 3: TABELA & COLUNAS ==================== -->
-        @if (currentStep() === 3) {
-          <section class="step-section" aria-label="Configuração de colunas da tabela">
-            <!-- Datalist for autocomplete on column fields -->
-            <datalist id="schema-fields-list">
-              @for (prop of availableSchemaProperties(); track prop.key) {
-                <option [value]="prop.key">{{ prop.label }} ({{ prop.type }})</option>
-              }
-            </datalist>
-
+        <!-- ==================== ETAPA 4: TABELA & COLUNAS ==================== -->
+        @if (currentStep() === 4) {
+          <section class="step-section" aria-label="Configuração da tabela e colunas">
             <div class="section-lead-row">
               <div class="section-lead">
-                <h5 class="lead-title">Estrutura e Tipos de Colunas</h5>
-                <p class="lead-desc">Personalize os rótulos, tipos de renderização e ordenação das colunas exibidas na tabela de dados.</p>
+                <h5 class="lead-title">Estrutura de Colunas da Tabela</h5>
+                <p class="lead-desc">Configure a visibilidade, rótulos, tipos de renderização e ordem das colunas da listagem.</p>
               </div>
-              <div class="lead-actions">
-                @if (availableSchemaProperties().length > 0) {
-                  <button
-                    type="button"
-                    class="btn-secondary-action"
-                    (click)="restoreSchemaColumns()"
-                    title="Restaurar todas as colunas a partir do schema OpenAPI retornado pelo endpoint GET"
-                  >
-                    <mat-icon>refresh</mat-icon>
-                    <span>Restaurar do schema</span>
-                  </button>
-                }
+              <div class="section-header-actions">
                 <button
                   type="button"
-                  class="btn-secondary-action"
-                  (click)="addColumn()"
-                  aria-label="Adicionar coluna manual"
+                  class="btn-text-action"
+                  (click)="restoreSchemaColumns()"
+                  title="Restaurar colunas a partir do schema OpenAPI"
                 >
+                  <mat-icon>sync</mat-icon>
+                  <span>Auto-gerar do Schema</span>
+                </button>
+                <button type="button" class="btn-secondary-sm" (click)="addColumn()">
                   <mat-icon>add</mat-icon>
-                  <span>Adicionar coluna</span>
+                  <span>Nova Coluna</span>
                 </button>
               </div>
             </div>
 
-            <!-- Quick Add Unadded Schema Properties Banner -->
+            <!-- Add Schema Property Chips -->
             @if (unaddedSchemaProperties().length > 0) {
-              <div class="schema-suggestions-bar">
-                <span class="suggestion-label">Campos da API disponíveis para adicionar:</span>
-                <div class="suggestion-pills">
+              <div class="unadded-props-box">
+                <span class="unadded-label">Campos disponíveis no schema:</span>
+                <div class="props-chips-wrapper">
                   @for (prop of unaddedSchemaProperties(); track prop.key) {
                     <button
                       type="button"
-                      class="btn-add-schema-prop"
+                      class="prop-chip"
                       (click)="addSchemaPropertyAsColumn(prop)"
-                      [title]="'Adicionar campo ' + prop.key + ' à tabela'"
+                      [title]="'Adicionar coluna ' + prop.key + ' (' + prop.type + ')'"
                     >
-                      <mat-icon>add</mat-icon>
+                      <mat-icon class="chip-add-icon">add</mat-icon>
                       <span class="font-mono">{{ prop.key }}</span>
-                      <span class="prop-type">({{ prop.type }})</span>
                     </button>
                   }
                 </div>
               </div>
             }
 
-            <div class="columns-table-container" formArrayName="columns">
-              <table class="columns-editor-table">
+            <div class="columns-table-container">
+              <table class="columns-editor-table" formArrayName="columns">
                 <thead>
                   <tr>
-                    <th class="col-th-reorder" scope="col">Ordem</th>
-                    <th scope="col">Campo OpenAPI</th>
-                    <th scope="col">Rótulo da Coluna</th>
-                    <th scope="col">Tipo Visual</th>
-                    <th scope="col">Ordenável</th>
-                    <th class="col-th-actions" scope="col">Ação</th>
+                    <th class="col-th-reorder">#</th>
+                    <th>Campo no Registro (Key)</th>
+                    <th>Rótulo da Coluna</th>
+                    <th>Tipo de Exibição</th>
+                    <th>Ordenável</th>
+                    <th class="col-th-actions">Ações</th>
                   </tr>
                 </thead>
                 <tbody>
-                  @for (colCtrl of columnsArray.controls; track $index; let idx = $index; let isFirst = $first; let isLast = $last) {
-                    <tr [formGroupName]="idx">
-                      <!-- Reorder Buttons -->
-                      <td class="col-td-reorder">
-                        <div class="order-btns-col">
-                          <button
-                            type="button"
-                            class="btn-icon-micro"
-                            [disabled]="isFirst"
-                            (click)="moveColumn(idx, 'up')"
-                            title="Mover para cima"
-                          >
-                            <mat-icon>keyboard_arrow_up</mat-icon>
-                          </button>
-                          <button
-                            type="button"
-                            class="btn-icon-micro"
-                            [disabled]="isLast"
-                            (click)="moveColumn(idx, 'down')"
-                            title="Mover para baixo"
-                          >
-                            <mat-icon>keyboard_arrow_down</mat-icon>
-                          </button>
-                        </div>
-                      </td>
-
-                      <!-- Field Key (with autocomplete datalist) -->
+                  @for (cCtrl of columnsArray.controls; track cCtrl; let i = $index) {
+                    <tr [formGroupName]="i">
+                      <td class="col-td-reorder font-mono text-muted">{{ i + 1 }}</td>
                       <td>
                         <input
                           type="text"
                           formControlName="field"
-                          list="schema-fields-list"
-                          class="form-control font-mono table-input"
-                          placeholder="ex: id, name, status"
-                          (input)="onColumnFieldInput(idx)"
-                          (change)="onColumnFieldChanged(idx)"
+                          class="table-input font-mono"
+                          placeholder="nome_do_campo"
+                          (input)="onColumnFieldInput(i)"
+                          (change)="onColumnFieldChanged(i)"
                         />
                       </td>
-
-                      <!-- Label -->
                       <td>
                         <input
                           type="text"
                           formControlName="label"
-                          class="form-control table-input"
+                          class="table-input"
                           placeholder="Nome da Coluna"
                           (input)="markDirty()"
                         />
                       </td>
-
-                      <!-- Type -->
                       <td>
-                        <select formControlName="type" class="form-control table-select" (change)="markDirty()">
-                          <option value="text">Texto (Padrão)</option>
+                        <select formControlName="type" class="table-select" (change)="markDirty()">
+                          <option value="text">Texto</option>
                           <option value="number">Número</option>
                           <option value="currency">Moeda (R$)</option>
                           <option value="date">Data (DD/MM/AAAA)</option>
                           <option value="datetime">Data e Hora</option>
                           <option value="boolean">Booleano (Sim/Não)</option>
                           <option value="status_badge">Badge de Status</option>
-                          <option value="monospace">Código / ID Monospace</option>
+                          <option value="monospace">Código / ID (Mono)</option>
                         </select>
                       </td>
-
-                      <!-- Sortable -->
                       <td class="text-center">
                         <input type="checkbox" formControlName="sortable" (change)="markDirty()" />
                       </td>
-
-                      <!-- Remove -->
                       <td class="col-td-actions">
-                        <button
-                          type="button"
-                          class="btn-icon-action btn-danger"
-                          (click)="removeColumn(idx)"
-                          title="Remover coluna"
-                        >
-                          <mat-icon>delete</mat-icon>
-                        </button>
+                        <div class="table-row-actions">
+                          <button
+                            type="button"
+                            class="btn-icon-sm"
+                            [disabled]="i === 0"
+                            (click)="moveColumn(i, 'up')"
+                            title="Mover para cima"
+                          >
+                            <mat-icon>arrow_upward</mat-icon>
+                          </button>
+                          <button
+                            type="button"
+                            class="btn-icon-sm"
+                            [disabled]="i === columnsArray.length - 1"
+                            (click)="moveColumn(i, 'down')"
+                            title="Mover para baixo"
+                          >
+                            <mat-icon>arrow_downward</mat-icon>
+                          </button>
+                          <button
+                            type="button"
+                            class="btn-icon-sm btn-danger"
+                            (click)="removeColumn(i)"
+                            title="Remover coluna"
+                          >
+                            <mat-icon>delete</mat-icon>
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   }
@@ -591,31 +929,28 @@ export interface SchemaPropertyOption {
               </table>
             </div>
 
-            <!-- Table Pagination Settings -->
-            <div class="pagination-settings-card">
-              <h6 class="settings-card-title">Configurações de Paginação</h6>
-              <div class="form-grid">
-                <div class="form-field">
-                  <label class="field-label">Tamanho de Página Padrão</label>
-                  <select formControlName="pageSize" class="form-control" (change)="markDirty()">
-                    <option [value]="5">5 registros</option>
-                    <option [value]="10">10 registros (Recomendado)</option>
-                    <option [value]="25">25 registros</option>
-                    <option [value]="50">50 registros</option>
-                    <option [value]="100">100 registros</option>
-                  </select>
-                </div>
+            <!-- Page Size -->
+            <div class="form-grid" style="margin-top: 16px;">
+              <div class="form-field">
+                <label class="field-label">Itens por Página Padrão</label>
+                <select formControlName="pageSize" class="form-control" (change)="markDirty()">
+                  <option [value]="5">5 registros</option>
+                  <option [value]="10">10 registros</option>
+                  <option [value]="25">25 registros</option>
+                  <option [value]="50">50 registros</option>
+                  <option [value]="100">100 registros</option>
+                </select>
               </div>
             </div>
           </section>
         }
 
-        <!-- ==================== ETAPA 4: FILTROS & AÇÕES ==================== -->
-        @if (currentStep() === 4) {
+        <!-- ==================== ETAPA 5: FILTROS & AÇÕES ==================== -->
+        @if (currentStep() === 5) {
           <section class="step-section" aria-label="Configuração de filtros e ações">
             <div class="section-lead">
               <h5 class="lead-title">Filtros Rápidos e Ações Operacionais</h5>
-              <p class="lead-desc">Defina os controles de busca, filtros rápidos e quais ações de linha e inserção estarão ativas.</p>
+              <p class="lead-desc">Configure os controles de busca, filtros rápidos, ações padrão e ações customizadas da linha.</p>
             </div>
 
             <div class="form-grid">
@@ -644,7 +979,7 @@ export interface SchemaPropertyOption {
                   type="text"
                   formControlName="searchPlaceholder"
                   class="form-control"
-                  placeholder="Buscar pedidos, clientes..."
+                  placeholder="Buscar registros..."
                   (input)="markDirty()"
                 />
               </div>
@@ -667,14 +1002,14 @@ export interface SchemaPropertyOption {
                   type="text"
                   formControlName="primaryCreateLabel"
                   class="form-control"
-                  placeholder="+ Adicionar item"
+                  placeholder="+ Adicionar registro"
                   (input)="markDirty()"
                 />
               </div>
 
               <!-- Row Action Switches -->
               <div class="form-field full-width">
-                <label class="field-label">Ações Permitidas por Linha da Tabela</label>
+                <label class="field-label">Ações Padrão de Linha</label>
                 <div class="action-switches-grid">
                   <label class="checkbox-label card-switch">
                     <input type="checkbox" formControlName="actionViewDetails" (change)="markDirty()" />
@@ -701,6 +1036,192 @@ export interface SchemaPropertyOption {
                   </label>
                 </div>
               </div>
+            </div>
+
+            <!-- ==================== CUSTOM ACTIONS / RPC SECTION ==================== -->
+            <div class="custom-actions-container">
+              <div class="section-lead-row">
+                <div class="section-lead">
+                  <h5 class="lead-title">Ações Customizadas da Página (RPC / Operações Adicionais)</h5>
+                  <p class="lead-desc">
+                    Adicione ações específicas de negócio como <em>"Editar status"</em>, <em>"Cancelar pedido"</em>, <em>"Aprovar"</em> ou <em>"Reenviar"</em>.
+                  </p>
+                </div>
+                <button type="button" class="btn-secondary-sm" (click)="addCustomAction()">
+                  <mat-icon>add</mat-icon>
+                  <span>Adicionar Ação Customizada</span>
+                </button>
+              </div>
+
+              @if (customActionsArray.length === 0) {
+                <div class="empty-placeholder">
+                  <mat-icon class="empty-icon">bolt</mat-icon>
+                  <span>Nenhuma ação customizada configurada para esta página.</span>
+                  <button type="button" class="btn-text-action" (click)="addCustomAction()">
+                    + Criar primeira ação customizada
+                  </button>
+                </div>
+              } @else {
+                <div class="custom-actions-list" formArrayName="customActions">
+                  @for (caCtrl of customActionsArray.controls; track caCtrl; let i = $index) {
+                    <div class="custom-action-card" [formGroupName]="i">
+                      <div class="action-card-top-row">
+                        <div class="action-card-left">
+                          <mat-icon class="action-icon-pill" [style.color]="getActionStyleColor(caCtrl.get('style')?.value)">
+                            {{ caCtrl.get('icon')?.value || 'bolt' }}
+                          </mat-icon>
+                          <strong class="action-title-display">{{ caCtrl.get('label')?.value || 'Nova Ação' }}</strong>
+                          <span class="style-badge" [class]="'style-' + (caCtrl.get('style')?.value || 'default')">
+                            {{ caCtrl.get('style')?.value || 'default' }}
+                          </span>
+                        </div>
+                        <div class="action-card-actions">
+                          <button
+                            type="button"
+                            class="btn-icon-sm"
+                            [disabled]="i === 0"
+                            (click)="moveCustomAction(i, 'up')"
+                            title="Mover para cima"
+                          >
+                            <mat-icon>arrow_upward</mat-icon>
+                          </button>
+                          <button
+                            type="button"
+                            class="btn-icon-sm"
+                            [disabled]="i === customActionsArray.length - 1"
+                            (click)="moveCustomAction(i, 'down')"
+                            title="Mover para baixo"
+                          >
+                            <mat-icon>arrow_downward</mat-icon>
+                          </button>
+                          <button
+                            type="button"
+                            class="btn-icon-sm btn-danger"
+                            (click)="removeCustomAction(i)"
+                            title="Remover ação"
+                          >
+                            <mat-icon>delete</mat-icon>
+                          </button>
+                        </div>
+                      </div>
+
+                      <div class="action-fields-grid">
+                        <!-- Linked Operation -->
+                        <div class="form-field full-width">
+                          <label class="field-label">Operação OpenAPI Vinculada <span class="required">*</span></label>
+                          <select
+                            formControlName="operationId"
+                            class="form-control font-mono"
+                            (change)="onCustomActionOpSelected(i)"
+                          >
+                            <option value="" disabled>Selecione a operação da API...</option>
+                            @for (op of compatibleCustomOperations(); track op.id) {
+                              <option [value]="op.operationId || op.id">
+                                [{{ op.method }}] {{ op.path }} {{ op.summary ? '— ' + op.summary : '' }}
+                              </option>
+                            }
+                          </select>
+                        </div>
+
+                        <!-- Action Label -->
+                        <div class="form-field">
+                          <label class="field-label">Rótulo do Botão <span class="required">*</span></label>
+                          <input
+                            type="text"
+                            formControlName="label"
+                            class="form-control"
+                            placeholder="Ex: Cancelar Pedido, Editar status"
+                            (input)="markDirty()"
+                          />
+                        </div>
+
+                        <!-- Action Icon -->
+                        <div class="form-field">
+                          <label class="field-label">Ícone Material</label>
+                          <select formControlName="icon" class="form-control" (change)="markDirty()">
+                            @for (ic of actionIcons; track ic) {
+                              <option [value]="ic">{{ ic }}</option>
+                            }
+                          </select>
+                        </div>
+
+                        <!-- Action Style -->
+                        <div class="form-field">
+                          <label class="field-label">Estilo Visual</label>
+                          <select formControlName="style" class="form-control" (change)="markDirty()">
+                            @for (st of actionStyleOptions; track st.value) {
+                              <option [value]="st.value">{{ st.label }}</option>
+                            }
+                          </select>
+                        </div>
+
+                        <!-- Input Mode -->
+                        <div class="form-field">
+                          <label class="field-label">Modo de Entrada</label>
+                          <select formControlName="inputMode" class="form-control" (change)="markDirty()">
+                            <option value="auto">Automático (Detecta Body/Parâmetros)</option>
+                            <option value="dialog">Forçar Modal com Formulário</option>
+                            <option value="direct">Execução Direta (Sem modal se sem body)</option>
+                          </select>
+                        </div>
+
+                        <!-- Confirmation Toggle -->
+                        <div class="form-field full-width">
+                          <div class="flags-row">
+                            <label class="checkbox-label">
+                              <input type="checkbox" formControlName="confirmation" (change)="markDirty()" />
+                              <span>Exigir diálogo de confirmação antes de executar</span>
+                            </label>
+                            <label class="checkbox-label">
+                              <input type="checkbox" formControlName="danger" (change)="markDirty()" />
+                              <span>Marcar como ação destrutiva / irreversível</span>
+                            </label>
+                          </div>
+                        </div>
+                      </div>
+
+                      <!-- Operation Metadata & Parameter Warnings -->
+                      @if (getOperationDetails(caCtrl.get('operationId')?.value); as op) {
+                        <div class="op-meta-panel" style="margin-top: 10px;">
+                          <div class="op-meta-row">
+                            <span class="method-badge font-mono" [class]="'method-' + op.method.toLowerCase()">{{ op.method }}</span>
+                            <span class="op-path font-mono">{{ op.path }}</span>
+                            <button
+                              type="button"
+                              class="btn-inspect-explorer"
+                              (click)="openInExplorer(op.operationId || op.id, $event)"
+                              title="Inspecionar operação no API Explorer"
+                            >
+                              <mat-icon>open_in_new</mat-icon>
+                              <span>API Explorer</span>
+                            </button>
+                          </div>
+                          @if (checkParamInference(op); as check) {
+                            @if (!check.canInfer) {
+                              <div class="param-warning-box">
+                                <mat-icon class="warn-icon">warning_amber</mat-icon>
+                                <span class="warn-text">
+                                  Aviso: O(s) parâmetro(s) <strong>{{ formatMissingParams(check.missingParams) }}</strong> da rota não correspondem a nenhuma coluna da tabela e precisarão ser preenchidos pelo usuário ou contexto.
+                                </span>
+                              </div>
+                            }
+                          }
+                          @if (op.parameters && op.parameters.length > 0) {
+                            <div class="op-params-list">
+                              <span class="params-label">Parâmetros:</span>
+                              @for (param of op.parameters; track param.name) {
+                                <span class="param-pill font-mono" [class.required]="param.required">
+                                  {{ param.name }} <small>({{ param.location }})</small>
+                                </span>
+                              }
+                            </div>
+                          }
+                        </div>
+                      }
+                    </div>
+                  }
+                </div>
+              }
             </div>
           </section>
         }
@@ -752,30 +1273,28 @@ export interface SchemaPropertyOption {
       flex-direction: column;
       gap: 16px;
       width: 100%;
-      min-width: 0;
     }
 
-    /* Stepper Navigation */
+    /* Stepper Header */
     .stepper-nav {
       display: flex;
       align-items: center;
+      gap: 4px;
+      padding: 4px;
       background: var(--canvas-surface-elevated);
       border: 1px solid var(--canvas-border);
       border-radius: var(--radius-sm);
-      padding: 4px;
-      gap: 4px;
+      overflow: hidden;
       width: 100%;
-      min-width: 0;
+      box-sizing: border-box;
     }
 
     .step-tab {
       display: flex;
       align-items: center;
-      gap: 8px;
-      flex: 1;
-      min-width: 0;
-      height: 32px;
-      padding: 0 10px;
+      justify-content: center;
+      gap: 6px;
+      padding: 6px 10px;
       background: transparent;
       border: 1px solid transparent;
       border-radius: var(--radius-xs);
@@ -783,71 +1302,91 @@ export interface SchemaPropertyOption {
       font-size: 12px;
       font-weight: 500;
       cursor: pointer;
-      transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
-      outline: none;
+      white-space: nowrap;
+      flex: 1;
+      min-width: 0;
+      transition: all 0.15s ease;
 
-      &:hover {
-        color: var(--canvas-text-primary);
+      &:hover:not(.active) {
         background: rgba(255, 255, 255, 0.04);
+        color: var(--canvas-text-primary);
       }
 
       &.active {
         background: var(--canvas-surface);
         border-color: var(--canvas-border);
-        color: var(--canvas-text-link);
+        color: var(--canvas-text-primary);
         font-weight: 600;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
 
         .step-badge {
           background: var(--canvas-text-link);
-          color: #0d1117;
+          color: #ffffff;
         }
-      }
-
-      .step-badge {
-        width: 18px;
-        height: 18px;
-        border-radius: var(--radius-xs);
-        background: var(--canvas-surface);
-        border: 1px solid var(--canvas-border);
-        color: var(--canvas-text-muted);
-        font-size: 11px;
-        font-weight: 700;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        flex-shrink: 0;
-      }
-
-      .step-label {
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-      }
-
-      .step-count {
-        font-size: 10px;
-        background: var(--canvas-bg);
-        color: var(--canvas-text-muted);
-        padding: 1px 5px;
-        border-radius: var(--radius-xs);
-        margin-left: auto;
       }
     }
 
-    .step-divider {
-      width: 1px;
-      height: 16px;
-      background: var(--canvas-border);
+    .step-badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: var(--canvas-surface);
+      border: 1px solid var(--canvas-border-subtle);
+      font-size: 10px;
+      font-weight: 700;
+      color: var(--canvas-text-muted);
       flex-shrink: 0;
+    }
+
+    .step-divider {
+      display: none;
+    }
+
+    /* Section Lead */
+    .step-section {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      width: 100%;
+    }
+
+    .section-lead-row {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .section-lead {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .lead-title {
+      margin: 0;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--canvas-text-primary);
+    }
+
+    .lead-desc {
+      margin: 0;
+      font-size: 12px;
+      color: var(--canvas-text-secondary);
+      line-height: 1.4;
     }
 
     /* Navigation Item Preview */
     .nav-preview-card {
+      padding: 10px 14px;
       background: var(--canvas-surface);
       border: 1px solid var(--canvas-border);
       border-radius: var(--radius-sm);
-      padding: 10px 12px;
-      margin-bottom: 12px;
       display: flex;
       flex-direction: column;
       gap: 8px;
@@ -856,214 +1395,103 @@ export interface SchemaPropertyOption {
         display: flex;
         align-items: center;
         gap: 8px;
+      }
 
-        .preview-title-badge {
-          font-size: 10px;
-          font-weight: 700;
-          text-transform: uppercase;
-          letter-spacing: 0.5px;
-          background: var(--canvas-surface-elevated);
-          color: var(--canvas-text-link);
-          border: 1px solid var(--canvas-border);
-          padding: 2px 6px;
-          border-radius: var(--radius-xs);
-        }
+      .preview-title-badge {
+        font-size: 10px;
+        text-transform: uppercase;
+        font-weight: 700;
+        letter-spacing: 0.5px;
+        color: var(--canvas-text-muted);
+      }
 
-        .preview-subtitle {
-          font-size: 11px;
-          color: var(--canvas-text-muted);
-        }
+      .preview-subtitle {
+        font-size: 11px;
+        color: var(--canvas-text-muted);
       }
 
       .nav-preview-row {
         display: flex;
         align-items: center;
-        gap: 10px;
-        padding: 6px 10px;
-        background: var(--canvas-bg);
+        gap: 12px;
+        padding: 8px 12px;
+        background: var(--canvas-surface-elevated);
         border: 1px solid var(--canvas-border-subtle);
         border-radius: var(--radius-xs);
-        transition: opacity 0.15s ease, border-color 0.15s ease;
 
         &.is-hidden-item {
-          opacity: 0.55;
+          opacity: 0.6;
           border-style: dashed;
         }
+      }
 
-        .preview-icon-box {
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          width: 28px;
-          height: 28px;
-          background: var(--canvas-surface-elevated);
-          border-radius: var(--radius-xs);
-          color: var(--canvas-text-primary);
-          flex-shrink: 0;
+      .preview-icon-box {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 32px;
+        height: 32px;
+        background: rgba(88, 166, 255, 0.12);
+        color: var(--canvas-text-link);
+        border-radius: var(--radius-xs);
 
-          mat-icon {
-            font-size: 18px !important;
-            width: 18px !important;
-            height: 18px !important;
-            line-height: 18px !important;
-          }
-        }
-
-        .preview-info-col {
-          display: flex;
-          flex-direction: column;
-          gap: 2px;
-          flex: 1;
-          min-width: 0;
-
-          .preview-title-line {
-            display: flex;
-            align-items: center;
-            gap: 6px;
-
-            .preview-page-title {
-              font-size: 12px;
-              font-weight: 600;
-              color: var(--canvas-text-primary);
-              overflow: hidden;
-              text-overflow: ellipsis;
-              white-space: nowrap;
-            }
-
-            .preview-badge {
-              font-size: 10px;
-              font-weight: 600;
-              padding: 1px 5px;
-              border-radius: var(--radius-xs);
-              line-height: 1.2;
-
-              &.badge-default {
-                background: rgba(46, 160, 67, 0.18);
-                color: #3fb950;
-                border: 1px solid rgba(46, 160, 67, 0.35);
-              }
-
-              &.badge-hidden {
-                background: rgba(139, 148, 158, 0.15);
-                color: var(--canvas-text-muted);
-                border: 1px solid var(--canvas-border);
-              }
-            }
-          }
-
-          .preview-route-line {
-            font-size: 11px;
-            color: var(--canvas-text-muted);
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-          }
-        }
-
-        .preview-order-pill {
-          font-size: 10px;
-          font-family: var(--font-mono);
-          font-weight: 600;
-          color: var(--canvas-text-secondary);
-          background: var(--canvas-surface-elevated);
-          border: 1px solid var(--canvas-border-subtle);
-          padding: 2px 6px;
-          border-radius: var(--radius-xs);
-          flex-shrink: 0;
+        mat-icon {
+          font-size: 18px;
+          width: 18px;
+          height: 18px;
         }
       }
-    }
 
-    /* Section Lead */
-    .section-lead {
-      margin-bottom: 8px;
+      .preview-info-col {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        flex: 1;
+      }
 
-      .lead-title {
-        margin: 0 0 4px;
+      .preview-title-line {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+
+      .preview-page-title {
         font-size: 13px;
         font-weight: 600;
         color: var(--canvas-text-primary);
       }
 
-      .lead-desc {
-        margin: 0;
-        font-size: 12px;
-        color: var(--canvas-text-secondary);
-        line-height: 1.4;
-      }
-    }
-
-    .section-lead-row {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      margin-bottom: 12px;
-      gap: 12px;
-
-      .lead-actions {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-      }
-    }
-
-    /* Schema Suggestions Bar */
-    .schema-suggestions-bar {
-      padding: 8px 10px;
-      background: var(--canvas-surface);
-      border: 1px solid var(--canvas-border-subtle);
-      border-radius: var(--radius-sm);
-      margin-bottom: 10px;
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-
-      .suggestion-label {
-        font-size: 11px;
+      .preview-badge {
+        font-size: 10px;
+        padding: 1px 6px;
+        border-radius: 10px;
         font-weight: 600;
-        color: var(--canvas-text-secondary);
+
+        &.badge-default {
+          background: rgba(63, 185, 80, 0.15);
+          color: var(--color-success);
+          border: 1px solid rgba(63, 185, 80, 0.3);
+        }
+
+        &.badge-hidden {
+          background: rgba(139, 148, 158, 0.15);
+          color: var(--canvas-text-secondary);
+          border: 1px solid var(--canvas-border-subtle);
+        }
       }
 
-      .suggestion-pills {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 6px;
+      .preview-route-path {
+        font-size: 11px;
+        color: var(--canvas-text-link);
+      }
 
-        .btn-add-schema-prop {
-          display: inline-flex;
-          align-items: center;
-          gap: 4px;
-          height: 22px;
-          padding: 0 8px;
-          background: var(--canvas-surface-elevated);
-          border: 1px solid var(--canvas-border);
-          border-radius: var(--radius-xs);
-          color: var(--canvas-text-primary);
-          font-size: 11px;
-          cursor: pointer;
-          transition: background 0.1s ease, border-color 0.1s ease, color 0.1s ease;
-
-          &:hover {
-            background: rgba(88, 166, 255, 0.15);
-            border-color: var(--canvas-text-link);
-            color: var(--canvas-text-link);
-          }
-
-          mat-icon {
-            font-size: 13px !important;
-            width: 13px !important;
-            height: 13px !important;
-            line-height: 13px !important;
-            display: inline-flex !important;
-            align-items: center !important;
-            justify-content: center !important;
-          }
-
-          .prop-type {
-            color: var(--canvas-text-muted);
-            font-size: 10px;
-          }
-        }
+      .preview-order-pill {
+        font-size: 11px;
+        padding: 3px 8px;
+        background: var(--canvas-surface);
+        border: 1px solid var(--canvas-border-subtle);
+        border-radius: 12px;
+        color: var(--canvas-text-secondary);
       }
     }
 
@@ -1073,11 +1501,6 @@ export interface SchemaPropertyOption {
       grid-template-columns: repeat(2, minmax(0, 1fr));
       gap: 12px 16px;
       width: 100%;
-      min-width: 0;
-
-      .full-width {
-        grid-column: 1 / -1;
-      }
     }
 
     .form-field {
@@ -1085,52 +1508,47 @@ export interface SchemaPropertyOption {
       flex-direction: column;
       gap: 4px;
       min-width: 0;
-      width: 100%;
 
-      .field-label {
-        font-size: 11px;
-        font-weight: 600;
-        color: var(--canvas-text-secondary);
-
-        .required {
-          color: var(--color-danger);
-        }
+      &.full-width {
+        grid-column: 1 / -1;
       }
+    }
 
-      .field-header-row {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-      }
+    .field-label {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--canvas-text-secondary);
 
-      .field-hint {
-        font-size: 11px;
-        color: var(--canvas-text-muted);
-      }
-
-      .field-error {
-        font-size: 11px;
+      .required {
         color: var(--color-danger);
       }
     }
 
+    .field-hint {
+      font-size: 11px;
+      color: var(--canvas-text-muted);
+      line-height: 1.3;
+    }
+
+    .field-error {
+      font-size: 11px;
+      color: var(--color-danger);
+    }
+
     .form-control {
-      width: 100%;
-      max-width: 100%;
-      box-sizing: border-box;
-      height: 28px;
-      padding: 0 8px;
+      height: 32px;
+      padding: 0 10px;
       background: var(--canvas-surface);
       border: 1px solid var(--canvas-border);
-      border-radius: var(--radius-sm);
+      border-radius: var(--radius-xs);
       color: var(--canvas-text-primary);
       font-size: 12px;
       outline: none;
-      transition: border-color 0.12s ease;
-      text-overflow: ellipsis;
+      transition: border-color 0.15s ease, box-shadow 0.15s ease;
 
       &:focus {
         border-color: var(--canvas-text-link);
+        box-shadow: 0 0 0 2px rgba(88, 166, 255, 0.15);
       }
 
       &::placeholder {
@@ -1138,11 +1556,10 @@ export interface SchemaPropertyOption {
       }
     }
 
-    .textarea-control {
+    textarea.form-control {
       height: auto;
-      padding: 6px 8px;
+      padding: 6px 10px;
       resize: vertical;
-      font-family: inherit;
     }
 
     .slug-input-wrapper {
@@ -1150,61 +1567,74 @@ export interface SchemaPropertyOption {
       align-items: center;
       background: var(--canvas-surface);
       border: 1px solid var(--canvas-border);
-      border-radius: var(--radius-sm);
+      border-radius: var(--radius-xs);
       overflow: hidden;
-      width: 100%;
-      box-sizing: border-box;
-
-      &:focus-within {
-        border-color: var(--canvas-text-link);
-      }
 
       .slug-prefix {
-        padding: 0 6px 0 8px;
-        font-size: 11px;
-        color: var(--canvas-text-muted);
+        padding: 0 8px;
         background: var(--canvas-surface-elevated);
-        border-right: 1px solid var(--canvas-border);
-        height: 28px;
+        color: var(--canvas-text-muted);
+        font-size: 11px;
+        height: 30px;
         display: flex;
         align-items: center;
+        border-right: 1px solid var(--canvas-border-subtle);
         user-select: none;
-        flex-shrink: 0;
       }
 
-      input {
-        flex: 1;
-        min-width: 0;
+      .form-control {
         border: none;
-        background: transparent;
-        height: 28px;
-        padding: 0 8px;
-        outline: none;
-        color: var(--canvas-text-primary);
-        font-size: 12px;
+        box-shadow: none;
+        flex: 1;
+        height: 30px;
+      }
+    }
+
+    .field-header-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .btn-text-action {
+      background: none;
+      border: none;
+      padding: 0;
+      color: var(--canvas-text-link);
+      font-size: 11px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+
+      &:hover {
+        text-decoration: underline;
       }
     }
 
     .icon-selector-grid {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 4px;
+      display: grid;
+      grid-template-columns: repeat(8, 1fr);
+      gap: 6px;
+      padding: 6px;
+      background: var(--canvas-surface);
+      border: 1px solid var(--canvas-border);
+      border-radius: var(--radius-xs);
 
       .icon-choice-btn {
-        width: 28px;
-        height: 28px;
-        display: flex;
+        display: inline-flex;
         align-items: center;
         justify-content: center;
-        background: var(--canvas-surface);
+        height: 32px;
+        background: var(--canvas-surface-elevated);
         border: 1px solid var(--canvas-border-subtle);
-        border-radius: var(--radius-sm);
+        border-radius: var(--radius-xs);
         color: var(--canvas-text-secondary);
         cursor: pointer;
-        transition: background 0.1s ease, color 0.1s ease, border-color 0.1s ease;
+        transition: all 0.15s ease;
 
         &:hover {
-          background: var(--canvas-surface-elevated);
+          background: #30363d;
           color: var(--canvas-text-primary);
         }
 
@@ -1215,68 +1645,351 @@ export interface SchemaPropertyOption {
         }
 
         mat-icon {
-          font-size: 16px !important;
-          width: 16px !important;
-          height: 16px !important;
-          line-height: 16px !important;
-          display: inline-flex !important;
-          align-items: center !important;
-          justify-content: center !important;
+          font-size: 18px;
+          width: 18px;
+          height: 18px;
         }
       }
     }
 
-    .checkbox-row {
+    .flags-row {
       display: flex;
-      align-items: center;
-      gap: 20px;
-      margin-top: 4px;
+      flex-direction: column;
+      gap: 8px;
+      padding: 10px 12px;
+      background: var(--canvas-surface);
+      border: 1px solid var(--canvas-border);
+      border-radius: var(--radius-xs);
     }
 
     .checkbox-label {
       display: inline-flex;
       align-items: center;
-      gap: 6px;
+      gap: 8px;
       font-size: 12px;
-      color: var(--canvas-text-primary);
+      color: var(--canvas-text-secondary);
       cursor: pointer;
-      user-select: none;
 
       input[type="checkbox"] {
+        cursor: pointer;
         accent-color: var(--canvas-text-link);
       }
     }
 
-    .btn-text-action {
-      background: transparent;
-      border: none;
-      padding: 0;
-      color: var(--canvas-text-link);
-      font-size: 11px;
-      cursor: pointer;
+    /* ==================== ETAPA 2: ENDPOINTS & CRUD STYLES ==================== */
+    .operations-grid {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      width: 100%;
+    }
 
-      &:hover {
-        text-decoration: underline;
+    .operation-card {
+      background: var(--canvas-surface);
+      border: 1px solid var(--canvas-border);
+      border-radius: var(--radius-sm);
+      padding: 12px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      transition: border-color 0.15s ease;
+
+      &.has-selection {
+        border-color: var(--canvas-border-active, #388bfd44);
       }
     }
 
-    .btn-secondary-action {
+    .operation-card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+
+      .role-meta {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .role-title {
+        font-size: 12px;
+        color: var(--canvas-text-primary);
+      }
+    }
+
+    .method-badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 1px 6px;
+      border-radius: var(--radius-xs);
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.3px;
+      text-transform: uppercase;
+
+      &.method-get {
+        background: rgba(63, 185, 80, 0.15);
+        color: #3fb950;
+        border: 1px solid rgba(63, 185, 80, 0.3);
+      }
+
+      &.method-post {
+        background: rgba(88, 166, 255, 0.15);
+        color: #58a6ff;
+        border: 1px solid rgba(88, 166, 255, 0.3);
+      }
+
+      &.method-put, &.method-patch {
+        background: rgba(210, 153, 34, 0.15);
+        color: #d29922;
+        border: 1px solid rgba(210, 153, 34, 0.3);
+      }
+
+      &.method-delete {
+        background: rgba(248, 81, 73, 0.15);
+        color: #f85149;
+        border: 1px solid rgba(248, 81, 73, 0.3);
+      }
+    }
+
+    .badge-suggested, .badge-inline-suggested {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      padding: 1px 6px;
+      background: rgba(56, 189, 248, 0.15);
+      border: 1px solid rgba(56, 189, 248, 0.35);
+      border-radius: 10px;
+      font-size: 10px;
+      font-weight: 600;
+      color: #38bdf8;
+
+      .badge-icon {
+        font-size: 12px;
+        width: 12px;
+        height: 12px;
+      }
+    }
+
+    .operation-card-body {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+
+      .op-select {
+        font-size: 11px;
+      }
+    }
+
+    .op-meta-panel {
+      padding: 8px 10px;
+      background: var(--canvas-surface-elevated);
+      border: 1px solid var(--canvas-border-subtle);
+      border-radius: var(--radius-xs);
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+
+      .op-meta-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+
+      .op-path {
+        font-size: 11px;
+        color: var(--canvas-text-link);
+        font-weight: 600;
+      }
+
+      .op-summary-text {
+        font-size: 11px;
+        color: var(--canvas-text-secondary);
+        line-height: 1.3;
+      }
+
+      .op-params-list {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 4px;
+        font-size: 11px;
+
+        .params-label {
+          color: var(--canvas-text-muted);
+          font-size: 10px;
+          margin-right: 2px;
+        }
+
+        .param-pill {
+          padding: 1px 5px;
+          background: var(--canvas-surface);
+          border: 1px solid var(--canvas-border-subtle);
+          border-radius: var(--radius-xs);
+          font-size: 10px;
+          color: var(--canvas-text-secondary);
+
+          &.required {
+            border-color: rgba(248, 81, 73, 0.4);
+            color: var(--color-danger);
+          }
+
+          small {
+            color: var(--canvas-text-muted);
+          }
+        }
+      }
+    }
+
+    .btn-inspect-explorer {
       display: inline-flex;
       align-items: center;
       gap: 4px;
-      height: 26px;
-      padding: 0 8px;
-      background: var(--canvas-surface-elevated);
+      padding: 2px 6px;
+      background: var(--canvas-surface);
+      border: 1px solid var(--canvas-border);
+      border-radius: var(--radius-xs);
+      color: var(--canvas-text-secondary);
+      font-size: 10px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+
+      &:hover {
+        background: #30363d;
+        color: var(--canvas-text-primary);
+        border-color: var(--canvas-text-link);
+      }
+
+      mat-icon {
+        font-size: 12px;
+        width: 12px;
+        height: 12px;
+      }
+    }
+
+    .param-warning-box {
+      display: flex;
+      align-items: flex-start;
+      gap: 6px;
+      padding: 6px 8px;
+      background: rgba(210, 153, 34, 0.12);
+      border: 1px solid rgba(210, 153, 34, 0.3);
+      border-radius: var(--radius-xs);
+      font-size: 11px;
+      color: var(--color-warning);
+
+      .warn-icon {
+        font-size: 14px;
+        width: 14px;
+        height: 14px;
+        color: var(--color-warning);
+        flex-shrink: 0;
+        margin-top: 1px;
+      }
+
+      .warn-text {
+        line-height: 1.3;
+      }
+    }
+
+    /* ==================== CUSTOM ACTIONS SECTION STYLES ==================== */
+    .custom-actions-container {
+      margin-top: 16px;
+      padding-top: 16px;
+      border-top: 1px solid var(--canvas-border);
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .custom-actions-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .custom-action-card {
+      padding: 12px 14px;
+      background: var(--canvas-surface);
       border: 1px solid var(--canvas-border);
       border-radius: var(--radius-sm);
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+
+      .action-card-top-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+      }
+
+      .action-card-left {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .action-icon-pill {
+        font-size: 18px;
+        width: 18px;
+        height: 18px;
+      }
+
+      .action-title-display {
+        font-size: 13px;
+        color: var(--canvas-text-primary);
+      }
+
+      .style-badge {
+        font-size: 10px;
+        padding: 1px 6px;
+        border-radius: 10px;
+        text-transform: uppercase;
+        font-weight: 600;
+
+        &.style-default { background: rgba(139, 148, 158, 0.15); color: #8b949e; }
+        &.style-primary { background: rgba(88, 166, 255, 0.15); color: #58a6ff; }
+        &.style-success { background: rgba(63, 185, 80, 0.15); color: #3fb950; }
+        &.style-warning { background: rgba(210, 153, 34, 0.15); color: #d29922; }
+        &.style-danger { background: rgba(248, 81, 73, 0.15); color: #f85149; }
+        &.style-info { background: rgba(57, 197, 207, 0.15); color: #39c5cf; }
+      }
+
+      .action-card-actions {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+      }
+
+      .action-fields-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 8px 12px;
+      }
+    }
+
+    /* Metrics & Columns Styles */
+    .btn-secondary-sm {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 4px 10px;
+      background: var(--canvas-surface-elevated);
+      border: 1px solid var(--canvas-border);
+      border-radius: var(--radius-xs);
       color: var(--canvas-text-primary);
-      font-size: 11px;
+      font-size: 12px;
       font-weight: 500;
       cursor: pointer;
-      transition: background 0.12s ease;
+      transition: all 0.15s ease;
 
       &:hover:not(:disabled) {
-        background: var(--action-hover-surface);
+        background: #30363d;
+        border-color: #8b949e;
       }
 
       &:disabled {
@@ -1285,64 +1998,53 @@ export interface SchemaPropertyOption {
       }
 
       mat-icon {
-        font-size: 14px !important;
-        width: 14px !important;
-        height: 14px !important;
-        line-height: 14px !important;
-        display: inline-flex !important;
-        align-items: center !important;
-        justify-content: center !important;
+        font-size: 14px;
+        width: 14px;
+        height: 14px;
       }
     }
 
-    /* Metrics List */
-    .metrics-list {
+    .metrics-editor-list {
       display: flex;
       flex-direction: column;
       gap: 10px;
-      max-height: 380px;
-      overflow-y: auto;
-      padding-right: 4px;
       width: 100%;
-      min-width: 0;
     }
 
-    .metric-card-editor {
+    .metric-editor-card {
+      padding: 10px 12px;
       background: var(--canvas-surface);
       border: 1px solid var(--canvas-border);
       border-radius: var(--radius-sm);
-      padding: 10px 12px;
       display: flex;
       flex-direction: column;
       gap: 8px;
-      width: 100%;
-      box-sizing: border-box;
-      min-width: 0;
-    }
 
-    .metric-editor-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      border-bottom: 1px solid var(--canvas-border-subtle);
-      padding-bottom: 6px;
-
-      .metric-num-title {
+      .metric-card-header {
         display: flex;
         align-items: center;
-        gap: 6px;
+        justify-content: space-between;
+      }
 
-        .order-badge {
-          font-size: 10px;
-          background: var(--canvas-surface-elevated);
-          padding: 1px 4px;
-          border-radius: var(--radius-xs);
+      .metric-header-left {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+
+        .metric-num {
+          font-size: 11px;
           color: var(--canvas-text-muted);
         }
 
-        .metric-preview-label {
+        .metric-card-icon {
+          font-size: 16px;
+          width: 16px;
+          height: 16px;
+          color: var(--canvas-text-link);
+        }
+
+        .metric-title-display {
           font-size: 12px;
-          font-weight: 600;
           color: var(--canvas-text-primary);
         }
       }
@@ -1434,7 +2136,7 @@ export interface SchemaPropertyOption {
         text-align: left;
 
         &.col-th-reorder { width: 36px; text-align: center; }
-        &.col-th-actions { width: 44px; text-align: right; }
+        &.col-th-actions { width: 92px; text-align: right; }
       }
 
       td {
@@ -1449,104 +2151,83 @@ export interface SchemaPropertyOption {
       .table-input, .table-select {
         width: 100%;
         height: 26px;
-        font-size: 11px;
-      }
-
-      .order-btns-col {
-        display: flex;
-        flex-direction: column;
-        gap: 1px;
-        align-items: center;
-      }
-
-      .btn-icon-micro {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        width: 20px;
-        height: 16px;
-        padding: 0;
-        background: transparent;
-        border: 1px solid transparent;
+        padding: 0 6px;
+        background: var(--canvas-surface);
+        border: 1px solid var(--canvas-border);
         border-radius: var(--radius-xs);
-        color: var(--canvas-text-muted);
-        cursor: pointer;
+        color: var(--canvas-text-primary);
+        font-size: 11px;
+        outline: none;
 
-        &:hover:not(:disabled) {
-          background: var(--canvas-surface-elevated);
-          border-color: var(--canvas-border);
-          color: var(--canvas-text-primary);
-        }
-
-        &:disabled {
-          opacity: 0.25;
-          cursor: not-allowed;
-        }
-
-        mat-icon {
-          font-size: 14px !important;
-          width: 14px !important;
-          height: 14px !important;
-          line-height: 14px !important;
-          display: inline-flex !important;
-          align-items: center !important;
-          justify-content: center !important;
+        &:focus {
+          border-color: var(--canvas-text-link);
         }
       }
+    }
 
-      .btn-icon-action {
+    .table-row-actions {
+      display: inline-flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 4px;
+    }
+
+    .unadded-props-box {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      padding: 8px 10px;
+      background: var(--canvas-surface);
+      border: 1px dashed var(--canvas-border);
+      border-radius: var(--radius-xs);
+
+      .unadded-label {
+        font-size: 10px;
+        text-transform: uppercase;
+        font-weight: 700;
+        color: var(--canvas-text-muted);
+        letter-spacing: 0.5px;
+      }
+
+      .props-chips-wrapper {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+      }
+
+      .prop-chip {
         display: inline-flex;
         align-items: center;
-        justify-content: center;
-        width: 26px;
-        height: 26px;
-        background: transparent;
-        border: 1px solid transparent;
-        border-radius: var(--radius-sm);
-        color: var(--canvas-text-muted);
+        gap: 4px;
+        padding: 2px 8px;
+        background: var(--canvas-surface-elevated);
+        border: 1px solid var(--canvas-border-subtle);
+        border-radius: var(--radius-xs);
+        color: var(--canvas-text-secondary);
+        font-size: 11px;
         cursor: pointer;
-        transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+        transition: all 0.15s ease;
 
-        &:hover:not(:disabled) {
-          background: var(--canvas-surface-elevated);
-          border-color: var(--canvas-border);
-          color: var(--canvas-text-primary);
+        &:hover {
+          background: #30363d;
+          border-color: var(--canvas-text-link);
+          color: var(--canvas-text-link);
         }
 
-        &.btn-danger:hover:not(:disabled) {
-          background: rgba(248, 81, 73, 0.15);
-          border-color: rgba(248, 81, 73, 0.35);
-          color: var(--color-danger);
-        }
-
-        mat-icon {
-          font-size: 16px !important;
-          width: 16px !important;
-          height: 16px !important;
-          line-height: 16px !important;
-          display: inline-flex !important;
-          align-items: center !important;
-          justify-content: center !important;
+        .chip-add-icon {
+          font-size: 13px;
+          width: 13px;
+          height: 13px;
         }
       }
     }
 
-    .pagination-settings-card {
-      margin-top: 12px;
-      padding: 10px 12px;
-      background: var(--canvas-surface);
-      border: 1px solid var(--canvas-border-subtle);
-      border-radius: var(--radius-sm);
-
-      .settings-card-title {
-        margin: 0 0 8px;
-        font-size: 12px;
-        font-weight: 600;
-        color: var(--canvas-text-primary);
-      }
+    .section-header-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
     }
 
-    /* Filters & Actions */
     .search-fields-pills {
       display: flex;
       flex-wrap: wrap;
@@ -1703,9 +2384,14 @@ export interface SchemaPropertyOption {
 })
 export class PageWizardFormComponent {
   private readonly fb = inject(FormBuilder);
+  private readonly router = inject(Router, { optional: true });
   readonly draftService = inject(PageDraftService);
+  readonly matcher = inject(ResourceOperationMatcherService);
 
   readonly availableIcons = AVAILABLE_PAGE_ICONS;
+  readonly actionStyleOptions = ACTION_STYLE_OPTIONS;
+  readonly actionIcons = ACTION_ICON_OPTIONS;
+
   readonly currentStep = signal<WizardStep>(1);
 
   readonly formChange = output<Partial<UiPageConfiguration>>();
@@ -1741,9 +2427,15 @@ export class PageWizardFormComponent {
     actionViewDetails: [true],
     actionEdit: [true],
     actionDelete: [true],
+    operationList: [''],
+    operationCreate: [''],
+    operationDetails: [''],
+    operationUpdate: [''],
+    operationDelete: [''],
     searchFields: [[] as string[]],
     metrics: this.fb.array([]),
-    columns: this.fb.array([])
+    columns: this.fb.array([]),
+    customActions: this.fb.array([])
   });
 
   get metricsArray(): FormArray {
@@ -1754,6 +2446,58 @@ export class PageWizardFormComponent {
     return this.form.get('columns') as FormArray;
   }
 
+  get customActionsArray(): FormArray {
+    return this.form.get('customActions') as FormArray;
+  }
+
+  readonly currentResource = computed<ApiResource | null>(() => {
+    const resId = this.form.get('resourceId')?.value;
+    if (!resId) return null;
+    return this.availableResources().find((r) => r.id === resId || r.name === resId) ?? null;
+  });
+
+  /**
+   * Compatible operations lists for each CRUD role.
+   */
+  readonly compatibleListOperations = computed<ApiOperation[]>(() => {
+    const res = this.currentResource();
+    return res ? this.matcher.getCompatibleOperationsForRole(res, 'list') : [];
+  });
+
+  readonly compatibleCreateOperations = computed<ApiOperation[]>(() => {
+    const res = this.currentResource();
+    return res ? this.matcher.getCompatibleOperationsForRole(res, 'create') : [];
+  });
+
+  readonly compatibleDetailsOperations = computed<ApiOperation[]>(() => {
+    const res = this.currentResource();
+    return res ? this.matcher.getCompatibleOperationsForRole(res, 'details') : [];
+  });
+
+  readonly compatibleUpdateOperations = computed<ApiOperation[]>(() => {
+    const res = this.currentResource();
+    return res ? this.matcher.getCompatibleOperationsForRole(res, 'update') : [];
+  });
+
+  readonly compatibleDeleteOperations = computed<ApiOperation[]>(() => {
+    const res = this.currentResource();
+    return res ? this.matcher.getCompatibleOperationsForRole(res, 'delete') : [];
+  });
+
+  readonly compatibleCustomOperations = computed<ApiOperation[]>(() => {
+    const res = this.currentResource();
+    const apiDef = this.draftService.apiDefinition();
+    if (!res) {
+      // If no specific resource, return all action-capable operations from the entire API
+      const allOps: ApiOperation[] = [];
+      apiDef?.resources?.forEach((r) => {
+        allOps.push(...this.matcher.getCompatibleOperationsForRole(r, 'custom'));
+      });
+      return allOps;
+    }
+    return this.matcher.getCompatibleOperationsForRole(res, 'custom');
+  });
+
   /**
    * Computed list of all properties defined in the OpenAPI schema of the active resource.
    */
@@ -1763,7 +2507,9 @@ export class PageWizardFormComponent {
     const resource = this.availableResources().find((r) => r.id === resId || r.name === resId);
     if (!resource) return [];
 
-    const listOp = resource.operations.find((o) => o.method === 'GET' && !o.path.includes('{')) || resource.operations.find((o) => o.method === 'GET');
+    const listOp =
+      resource.operations.find((o) => o.method === 'GET' && !o.path.includes('{')) ||
+      resource.operations.find((o) => o.method === 'GET');
     const rawSchema = listOp?.responses?.[0]?.schema;
     const properties = this.draftService.extractSchemaProperties(rawSchema);
     if (!properties || Object.keys(properties).length === 0) return [];
@@ -1842,26 +2588,50 @@ export class PageWizardFormComponent {
   }
 
   populateForm(page: UiPageConfiguration): void {
-    this.form.patchValue({
-      id: page.id || '',
-      resourceId: page.resourceId || '',
-      title: page.title || '',
-      slug: page.slug || '',
-      icon: page.icon || 'table_chart',
-      order: page.order ?? 1,
-      description: page.description || '',
-      isDefault: page.isDefault ?? page.default ?? false,
-      hidden: page.hidden ?? false,
-      pageSize: page.table?.pageSize ?? 10,
-      searchPlaceholder: page.filters?.searchPlaceholder || '',
-      statusField: page.filters?.statusField || '',
-      dateField: page.filters?.dateField || '',
-      primaryCreateLabel: page.actions?.primaryCreateLabel || '',
-      actionViewDetails: page.actions?.rowActions?.viewDetails !== false,
-      actionEdit: page.actions?.rowActions?.edit !== false,
-      actionDelete: page.actions?.rowActions?.delete !== false,
-      searchFields: page.filters?.searchFields ? [...page.filters.searchFields] : []
-    }, { emitEvent: false });
+    const resId = page.resourceId || '';
+    const resource = this.availableResources().find((r) => r.id === resId || r.name === resId);
+
+    // If explicit operations aren't set in page, calculate suggested defaults
+    const suggestedList = resource ? this.matcher.getSuggestedOperationForRole(resource, 'list') : null;
+    const suggestedCreate = resource ? this.matcher.getSuggestedOperationForRole(resource, 'create') : null;
+    const suggestedDetails = resource ? this.matcher.getSuggestedOperationForRole(resource, 'details') : null;
+    const suggestedUpdate = resource ? this.matcher.getSuggestedOperationForRole(resource, 'update') : null;
+    const suggestedDelete = resource ? this.matcher.getSuggestedOperationForRole(resource, 'delete') : null;
+
+    const opList = page.operations?.list ?? (suggestedList?.operationId || suggestedList?.id || '');
+    const opCreate = page.operations?.create ?? (suggestedCreate?.operationId || suggestedCreate?.id || '');
+    const opDetails = page.operations?.details ?? (suggestedDetails?.operationId || suggestedDetails?.id || '');
+    const opUpdate = page.operations?.update ?? (suggestedUpdate?.operationId || suggestedUpdate?.id || '');
+    const opDelete = page.operations?.delete ?? (suggestedDelete?.operationId || suggestedDelete?.id || '');
+
+    this.form.patchValue(
+      {
+        id: page.id || '',
+        resourceId: resId,
+        title: page.title || '',
+        slug: page.slug || '',
+        icon: page.icon || 'table_chart',
+        order: page.order ?? 1,
+        description: page.description || '',
+        isDefault: page.isDefault ?? page.default ?? false,
+        hidden: page.hidden ?? false,
+        pageSize: page.table?.pageSize ?? 10,
+        searchPlaceholder: page.filters?.searchPlaceholder || '',
+        statusField: page.filters?.statusField || '',
+        dateField: page.filters?.dateField || '',
+        primaryCreateLabel: page.actions?.primaryCreateLabel || '',
+        actionViewDetails: page.actions?.rowActions?.viewDetails !== false,
+        actionEdit: page.actions?.rowActions?.edit !== false,
+        actionDelete: page.actions?.rowActions?.delete !== false,
+        operationList: opList,
+        operationCreate: opCreate,
+        operationDetails: opDetails,
+        operationUpdate: opUpdate,
+        operationDelete: opDelete,
+        searchFields: page.filters?.searchFields ? [...page.filters.searchFields] : []
+      },
+      { emitEvent: false }
+    );
 
     this.form.get('slug')?.updateValueAndValidity({ emitEvent: false });
 
@@ -1880,6 +2650,62 @@ export class PageWizardFormComponent {
         this.columnsArray.push(this.createColumnGroup(c), { emitEvent: false });
       }
     }
+
+    // Populate custom actions array
+    this.customActionsArray.clear({ emitEvent: false });
+    const actionsSource =
+      page.actions?.rowActions?.customActions ||
+      page.actions?.rowActions?.actions ||
+      [];
+    if (actionsSource && actionsSource.length > 0) {
+      for (const a of actionsSource) {
+        this.customActionsArray.push(this.createCustomActionGroup(a), { emitEvent: false });
+      }
+    }
+  }
+
+  isSuggested(role: 'list' | 'create' | 'details' | 'update' | 'delete', currentOpId: string): boolean {
+    const res = this.currentResource();
+    if (!res || !currentOpId) return false;
+    return this.matcher.isRoleOperationSuggested(undefined, role, currentOpId, res);
+  }
+
+  getOperationDetails(operationId: string): ApiOperation | null {
+    if (!operationId) return null;
+    const res = this.currentResource();
+    const apiDef = this.draftService.apiDefinition();
+    return this.matcher.findOperationInResourceOrApi(operationId, res, apiDef);
+  }
+
+  checkParamInference(operation: ApiOperation): {
+    canInfer: boolean;
+    missingParams: ApiParameter[];
+    inferredParams: Record<string, string>;
+  } {
+    const availableFields = this.getAvailableColumnNames();
+    return this.matcher.checkParamInferenceForOperation(operation, availableFields);
+  }
+
+  formatMissingParams(params: ApiParameter[]): string {
+    return params.map((p) => p.name).join(', ');
+  }
+
+  openInExplorer(operationId: string, event?: Event): void {
+    if (event) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+    if (!operationId) return;
+
+    if (this.router) {
+      this.router.navigate(['/operation', operationId]);
+    } else {
+      window.open(`/operation/${encodeURIComponent(operationId)}`, '_blank');
+    }
+  }
+
+  onOperationChanged(role: 'list' | 'create' | 'details' | 'update' | 'delete'): void {
+    this.markDirty();
   }
 
   private createMetricGroup(m?: UiMetricConfiguration): FormGroup {
@@ -1904,6 +2730,20 @@ export class PageWizardFormComponent {
     });
   }
 
+  private createCustomActionGroup(a?: UiCustomActionDescriptor): FormGroup {
+    return this.fb.group({
+      id: [a?.id || `action-${Date.now()}`],
+      operationId: [a?.operationId || '', Validators.required],
+      label: [a?.label || '', Validators.required],
+      icon: [a?.icon || 'bolt'],
+      tooltip: [a?.tooltip || ''],
+      style: [a?.style || 'default'],
+      danger: [a?.danger ?? false],
+      confirmation: [Boolean(a?.confirmation)],
+      inputMode: [a?.inputMode || 'auto']
+    });
+  }
+
   addMetric(): void {
     if (this.metricsArray.length >= 6) return;
     this.metricsArray.push(this.createMetricGroup());
@@ -1925,22 +2765,26 @@ export class PageWizardFormComponent {
   }
 
   addColumn(): void {
-    this.columnsArray.push(this.createColumnGroup({
-      field: '',
-      label: '',
-      type: 'text',
-      sortable: true
-    }));
+    this.columnsArray.push(
+      this.createColumnGroup({
+        field: '',
+        label: '',
+        type: 'text',
+        sortable: true
+      })
+    );
     this.markDirty();
   }
 
   addSchemaPropertyAsColumn(prop: SchemaPropertyOption): void {
-    this.columnsArray.push(this.createColumnGroup({
-      field: prop.key,
-      label: prop.label,
-      type: this.inferColumnTypeFromSchema(prop.key, prop.schema),
-      sortable: true
-    }));
+    this.columnsArray.push(
+      this.createColumnGroup({
+        field: prop.key,
+        label: prop.label,
+        type: this.inferColumnTypeFromSchema(prop.key, prop.schema),
+        sortable: true
+      })
+    );
     this.markDirty();
   }
 
@@ -1973,6 +2817,74 @@ export class PageWizardFormComponent {
     this.markDirty();
   }
 
+  addCustomAction(): void {
+    const compatible = this.compatibleCustomOperations();
+    const firstOp =
+      compatible.find(
+        (o) =>
+          o.type === 'action' ||
+          o.path.includes('/cancel') ||
+          o.path.includes('/status') ||
+          o.method === 'POST'
+      ) || compatible[0];
+
+    const isCancel = firstOp?.path.toLowerCase().includes('cancel');
+    const newGroup = this.createCustomActionGroup({
+      id: `action-${Date.now()}`,
+      operationId: firstOp ? (firstOp.operationId || firstOp.id) : '',
+      label: firstOp ? (firstOp.summary || this.formatLabel(firstOp.operationId || firstOp.id)) : 'Nova Ação',
+      icon: isCancel ? 'cancel' : 'bolt',
+      style: isCancel ? 'danger' : 'default',
+      danger: isCancel,
+      confirmation: false,
+      inputMode: 'auto'
+    });
+
+    this.customActionsArray.push(newGroup);
+    this.markDirty();
+  }
+
+  removeCustomAction(index: number): void {
+    this.customActionsArray.removeAt(index);
+    this.markDirty();
+  }
+
+  moveCustomAction(index: number, direction: 'up' | 'down'): void {
+    const target = direction === 'up' ? index - 1 : index + 1;
+    if (target < 0 || target >= this.customActionsArray.length) return;
+    const item = this.customActionsArray.at(index);
+    this.customActionsArray.removeAt(index);
+    this.customActionsArray.insert(target, item);
+    this.markDirty();
+  }
+
+  onCustomActionOpSelected(index: number): void {
+    const group = this.customActionsArray.at(index);
+    const opId = group.get('operationId')?.value;
+    const op = this.getOperationDetails(opId);
+    if (op) {
+      group.get('label')?.setValue(op.summary || this.formatLabel(op.operationId || op.id));
+      const lower = (op.path + ' ' + (op.summary || '') + ' ' + (op.operationId || '')).toLowerCase();
+      if (lower.includes('cancel') || lower.includes('cancelar')) {
+        group.get('icon')?.setValue('cancel');
+        group.get('style')?.setValue('danger');
+        group.get('danger')?.setValue(true);
+      } else if (lower.includes('status') || lower.includes('state') || lower.includes('situacao')) {
+        group.get('icon')?.setValue('edit_note');
+        group.get('style')?.setValue('primary');
+      } else if (lower.includes('approve') || lower.includes('aprovar') || lower.includes('check')) {
+        group.get('icon')?.setValue('check_circle');
+        group.get('style')?.setValue('success');
+      }
+    }
+    this.markDirty();
+  }
+
+  getActionStyleColor(style?: string): string {
+    const match = this.actionStyleOptions.find((s) => s.value === style);
+    return match ? match.color : '#8b949e';
+  }
+
   onColumnFieldInput(index: number): void {
     this.markDirty();
   }
@@ -1998,7 +2910,6 @@ export class PageWizardFormComponent {
   onTitleInput(): void {
     const titleVal = this.form.get('title')?.value;
     const currentSlug = this.form.get('slug')?.value;
-    // If slug is empty or matches auto pattern, auto sync
     if (!currentSlug || currentSlug === this.slugify(titleVal.slice(0, -1))) {
       this.form.get('slug')?.setValue(this.slugify(titleVal));
       this.form.get('slug')?.updateValueAndValidity();
@@ -2047,6 +2958,24 @@ export class PageWizardFormComponent {
     // Suggest contextual description
     const descCtrl = this.form.get('description');
     descCtrl?.setValue(`Gerenciamento operacional e visualização de ${resourceLabel.toLowerCase()}.`);
+
+    // Auto-suggest operations from resolved suite
+    const suggestedList = this.matcher.getSuggestedOperationForRole(resource, 'list');
+    const suggestedCreate = this.matcher.getSuggestedOperationForRole(resource, 'create');
+    const suggestedDetails = this.matcher.getSuggestedOperationForRole(resource, 'details');
+    const suggestedUpdate = this.matcher.getSuggestedOperationForRole(resource, 'update');
+    const suggestedDelete = this.matcher.getSuggestedOperationForRole(resource, 'delete');
+
+    this.form.patchValue(
+      {
+        operationList: suggestedList?.operationId || suggestedList?.id || '',
+        operationCreate: suggestedCreate?.operationId || suggestedCreate?.id || '',
+        operationDetails: suggestedDetails?.operationId || suggestedDetails?.id || '',
+        operationUpdate: suggestedUpdate?.operationId || suggestedUpdate?.id || '',
+        operationDelete: suggestedDelete?.operationId || suggestedDelete?.id || ''
+      },
+      { emitEvent: false }
+    );
 
     // Re-infer columns and metrics from the newly selected resource
     const inferred = this.draftService.inferPageDefaultsFromResource(resource);
@@ -2110,6 +3039,14 @@ export class PageWizardFormComponent {
       default: val.isDefault,
       hidden: val.hidden,
       resourceId: val.resourceId,
+      operations: {
+        ...(existing?.operations || {}),
+        list: val.operationList || undefined,
+        create: val.operationCreate || undefined,
+        details: val.operationDetails || undefined,
+        update: val.operationUpdate || undefined,
+        delete: val.operationDelete || undefined
+      },
       metrics: (val.metrics || []).map((m: any) => ({
         id: m.id,
         label: m.label,
@@ -2139,12 +3076,24 @@ export class PageWizardFormComponent {
       },
       actions: {
         ...(existing?.actions || {}),
+        primaryCreateActionId: val.operationCreate || existing?.actions?.primaryCreateActionId,
         primaryCreateLabel: val.primaryCreateLabel || undefined,
         rowActions: {
           ...(existing?.actions?.rowActions || {}),
           viewDetails: val.actionViewDetails,
           edit: val.actionEdit,
-          delete: val.actionDelete
+          delete: val.actionDelete,
+          customActions: (val.customActions || []).map((a: any) => ({
+            id: a.id,
+            operationId: a.operationId,
+            label: a.label,
+            icon: a.icon || 'bolt',
+            tooltip: a.tooltip || undefined,
+            style: a.style || 'default',
+            danger: Boolean(a.danger),
+            confirmation: Boolean(a.confirmation),
+            inputMode: a.inputMode || 'auto'
+          }))
         }
       }
     };
@@ -2161,7 +3110,13 @@ export class PageWizardFormComponent {
     if (lower.includes('status') || lower.includes('state')) {
       return 'status_badge';
     }
-    if (lower.includes('price') || lower.includes('amount') || lower.includes('total') || lower.includes('cost') || lower.includes('valor')) {
+    if (
+      lower.includes('price') ||
+      lower.includes('amount') ||
+      lower.includes('total') ||
+      lower.includes('cost') ||
+      lower.includes('valor')
+    ) {
       return 'currency';
     }
     if (schema?.type === 'integer' || schema?.type === 'number') {

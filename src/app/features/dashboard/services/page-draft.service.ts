@@ -592,7 +592,7 @@ export class PageDraftService {
       }
     }
 
-    // 3. Infer operations from resolved suite
+    // 3. Infer operations and custom actions from resolved suite
     const operations = {
       list: resolvedPage?.list?.operationId || resolvedPage?.list?.id,
       create: resolvedPage?.create?.operationId || resolvedPage?.create?.id,
@@ -600,6 +600,18 @@ export class PageDraftService {
       update: resolvedPage?.update?.operationId || resolvedPage?.update?.id,
       delete: resolvedPage?.delete?.operationId || resolvedPage?.delete?.id
     };
+
+    const customActions =
+      resolvedPage?.customActions?.map((ca) => ({
+        id: ca.id,
+        operationId: ca.operation.operationId || ca.operation.id,
+        label: ca.label,
+        icon: ca.icon || 'bolt',
+        style: ca.style || 'default',
+        danger: ca.danger || false,
+        confirmation: ca.confirmation ?? false,
+        inputMode: ca.inputMode || 'auto'
+      })) || [];
 
     return {
       id,
@@ -631,7 +643,8 @@ export class PageDraftService {
         rowActions: {
           viewDetails: Boolean(operations.details),
           edit: Boolean(operations.update),
-          delete: Boolean(operations.delete)
+          delete: Boolean(operations.delete),
+          customActions
         }
       }
     };

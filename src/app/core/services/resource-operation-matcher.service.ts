@@ -951,8 +951,13 @@ export class ResourceOperationMatcherService {
 
     // 3. Match variations based on parameter name
     const allPathParams = operation.parameters.filter((p) => p.location === 'path');
-    const isTargetItemParam =
-      allPathParams.length > 0 && allPathParams[allPathParams.length - 1].name === paramName;
+    const paramNameLower = paramName.toLowerCase();
+    const isExplicitId = paramNameLower === 'id' || paramNameLower === '_id';
+
+    const entityName = this.findParentSegmentForParam(operation.path, paramName) || this.extractTargetSegmentName(operation.path);
+    const isEntityIdParam =
+      isExplicitId ||
+      (entityName && (paramNameLower === `${entityName}id` || paramNameLower === `${entityName}_id` || paramNameLower === `${entityName}uuid`));
 
     const candidateKeysToTry: string[] = [
       paramName,
@@ -960,15 +965,21 @@ export class ResourceOperationMatcherService {
       `${paramName}Id`
     ];
 
-    if (isTargetItemParam || paramName.toLowerCase() === 'id') {
-      const resourceNameFromPath = this.extractTargetSegmentName(operation.path);
-      candidateKeysToTry.push('id', '_id');
-      if (resourceNameFromPath) {
+    if (paramNameLower.endsWith('id') && paramName.length > 2) {
+      candidateKeysToTry.push(paramName.slice(0, -2)); // e.g. reasonId -> reason
+    }
+    if (paramNameLower.endsWith('_id') && paramName.length > 3) {
+      candidateKeysToTry.push(paramName.slice(0, -3)); // e.g. reason_id -> reason
+    }
+
+    if (isEntityIdParam) {
+      candidateKeysToTry.push('id', '_id', 'uuid', 'guid', 'code');
+      if (entityName) {
         candidateKeysToTry.push(
-          `${resourceNameFromPath}Id`,
-          `${resourceNameFromPath}_id`,
-          `${resourceNameFromPath}_uuid`,
-          `${resourceNameFromPath}Uuid`
+          `${entityName}Id`,
+          `${entityName}_id`,
+          `${entityName}_uuid`,
+          `${entityName}Uuid`
         );
       }
     }
@@ -983,8 +994,8 @@ export class ResourceOperationMatcherService {
       }
     }
 
-    // 4. Primary key fallback: only if this is the target item parameter or only 1 path param
-    if (isTargetItemParam && allPathParams.length === 1) {
+    // 4. Primary key fallback: only if only 1 path param in total and no candidate matched yet
+    if (allPathParams.length === 1) {
       for (const commonKey of this.COMMON_ID_KEYS) {
         const normalizedCommonKey = this.normalizeKey(commonKey);
         for (const [key, val] of Object.entries(record)) {
@@ -997,6 +1008,19 @@ export class ResourceOperationMatcherService {
     }
 
     return undefined;
+  }
+
+  private findParentSegmentForParam(path: string, paramName: string): string {
+    const segments = path.split('?')[0].split('/').filter(Boolean);
+    const paramHolder = `{${paramName}}`;
+    const idx = segments.findIndex((s) => s.toLowerCase() === paramHolder.toLowerCase());
+    if (idx > 0) {
+      const prev = segments[idx - 1];
+      if (!this.isPathParam(prev)) {
+        return prev.endsWith('s') && prev.length > 3 ? prev.slice(0, -1) : prev;
+      }
+    }
+    return '';
   }
 
   /**
@@ -1040,4 +1064,142 @@ export class ResourceOperationMatcherService {
     }
     return common;
   }
+
+  /**
+   * Returns only operations that are technically compatible with a specific CRUD role or custom action.
+   */
+  getCompatibleOperationsForRole(
+    resource: ApiResource,
+    role: 'list' | 'create' | 'details' | 'update' | 'delete' | 'custom'
+  ): ApiOperation[] {
+    if (!resource || !resource.operations || resource.operations.length === 0) {
+      return [];
+    }
+
+    switch (role) {
+      case 'list':
+        // Compatible: GET operations. Prioritize collections (without path param), but include all GET operations.
+        return resource.operations
+          .filter((op) => op.method === 'GET')
+          .sort((a, b) => {
+            const aHasParam = this.hasPathParamInOperation(a);
+            const bHasParam = this.hasPathParamInOperation(b);
+            if (!aHasParam && bHasParam) return -1;
+            if (aHasParam && !bHasParam) return 1;
+            return a.path.length - b.path.length;
+          });
+
+      case 'create':
+        // Compatible: POST operations (and PUT operations without path params if used for creation)
+        return resource.operations.filter(
+          (op) => op.method === 'POST' || (op.method === 'PUT' && !this.hasPathParamInOperation(op))
+        );
+
+      case 'details':
+        // Compatible: GET operations with path parameter (or any GET operation)
+        return resource.operations
+          .filter((op) => op.method === 'GET')
+          .sort((a, b) => {
+            const aHasParam = this.hasPathParamInOperation(a);
+            const bHasParam = this.hasPathParamInOperation(b);
+            if (aHasParam && !bHasParam) return -1;
+            if (!aHasParam && bHasParam) return 1;
+            return a.path.localeCompare(b.path);
+          });
+
+      case 'update':
+        // Compatible: PUT and PATCH operations
+        return resource.operations.filter(
+          (op) => op.method === 'PUT' || op.method === 'PATCH'
+        );
+
+      case 'delete':
+        // Compatible: DELETE operations
+        return resource.operations.filter((op) => op.method === 'DELETE');
+
+      case 'custom':
+        // Compatible: any non-standard or action-oriented operation (POST/PATCH/PUT/DELETE/GET)
+        return resource.operations.filter(
+          (op) =>
+            op.method === 'POST' ||
+            op.method === 'PATCH' ||
+            op.method === 'PUT' ||
+            op.method === 'DELETE' ||
+            (op.method === 'GET' && this.hasPathParamInOperation(op))
+        );
+
+      default:
+        return resource.operations;
+    }
+  }
+
+  /**
+   * Returns the automatic heuristic suggestion for a given CRUD role.
+   */
+  getSuggestedOperationForRole(
+    resource: ApiResource,
+    role: 'list' | 'create' | 'details' | 'update' | 'delete'
+  ): ApiOperation | null {
+    if (!resource || !resource.operations || resource.operations.length === 0) {
+      return null;
+    }
+
+    const listOp = this.findCompatibleListOperation(resource);
+
+    switch (role) {
+      case 'list':
+        return listOp;
+      case 'create':
+        return this.findCompatibleCreateOperation(resource, listOp);
+      case 'details':
+        return this.findCompatibleDetailsOperation(resource, listOp);
+      case 'update':
+        return this.findCompatibleUpdateOperation(resource, listOp);
+      case 'delete':
+        return this.findCompatibleDeleteOperation(resource, listOp);
+      default:
+        return null;
+    }
+  }
+
+  /**
+   * Checks whether the currently configured operation corresponds to the automatic auto-resolver suggestion.
+   */
+  isRoleOperationSuggested(
+    pageConfig: UiPageConfiguration | undefined,
+    role: 'list' | 'create' | 'details' | 'update' | 'delete',
+    currentOpId: string,
+    resource: ApiResource
+  ): boolean {
+    if (!currentOpId || !resource) return false;
+    const suggested = this.getSuggestedOperationForRole(resource, role);
+    if (!suggested) return false;
+    return (
+      suggested.id === currentOpId ||
+      suggested.operationId === currentOpId ||
+      suggested.id.toLowerCase() === currentOpId.toLowerCase()
+    );
+  }
+
+  /**
+   * Evaluates if all required path/query parameters of an operation can be inferred automatically
+   * from the available entity field names of a table row.
+   */
+  checkParamInferenceForOperation(
+    operation: ApiOperation,
+    availableFieldNames: string[] = []
+  ): { canInfer: boolean; missingParams: ApiParameter[]; inferredParams: Record<string, string> } {
+    const mockRecord: Record<string, unknown> = {};
+    for (const name of availableFieldNames) {
+      mockRecord[name] = 'mock-value';
+    }
+
+    const result = this.resolveParameters(operation, mockRecord);
+    return {
+      canInfer: result.canAutoResolve,
+      missingParams: result.missingParams,
+      inferredParams: result.resolvedParams
+    };
+  }
 }
+

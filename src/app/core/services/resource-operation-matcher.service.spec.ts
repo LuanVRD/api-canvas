@@ -769,4 +769,145 @@ describe('ResourceOperationMatcherService', () => {
       expect(resolution.missingParams.length).toBe(0);
     });
   });
+
+  describe('Guided Role Compatibility, Suggestions and Parameter Inference', () => {
+    const listOp: ApiOperation = {
+      id: 'get_orders',
+      operationId: 'listOrders',
+      method: 'GET',
+      path: '/api/v1/orders',
+      type: 'list',
+      parameters: [],
+      responses: []
+    };
+
+    const detailsOp: ApiOperation = {
+      id: 'get_order_by_id',
+      operationId: 'getOrderById',
+      method: 'GET',
+      path: '/api/v1/orders/{orderId}',
+      type: 'details',
+      parameters: [{ name: 'orderId', location: 'path', required: true, schema: { type: 'string' } }],
+      responses: []
+    };
+
+    const postCreateOp: ApiOperation = {
+      id: 'post_order',
+      operationId: 'createOrder',
+      method: 'POST',
+      path: '/api/v1/orders',
+      type: 'create',
+      parameters: [],
+      responses: []
+    };
+
+    const putUpdateOp: ApiOperation = {
+      id: 'put_order',
+      operationId: 'replaceOrder',
+      method: 'PUT',
+      path: '/api/v1/orders/{orderId}',
+      type: 'update',
+      parameters: [{ name: 'orderId', location: 'path', required: true, schema: { type: 'string' } }],
+      responses: []
+    };
+
+    const patchUpdateOp: ApiOperation = {
+      id: 'patch_order',
+      operationId: 'updateOrderStatus',
+      method: 'PATCH',
+      path: '/api/v1/orders/{orderId}',
+      type: 'update',
+      parameters: [{ name: 'orderId', location: 'path', required: true, schema: { type: 'string' } }],
+      responses: []
+    };
+
+    const deleteOp: ApiOperation = {
+      id: 'delete_order',
+      operationId: 'deleteOrder',
+      method: 'DELETE',
+      path: '/api/v1/orders/{orderId}',
+      type: 'delete',
+      parameters: [{ name: 'orderId', location: 'path', required: true, schema: { type: 'string' } }],
+      responses: []
+    };
+
+    const cancelRpcOp: ApiOperation = {
+      id: 'post_cancel_order',
+      operationId: 'cancelOrder',
+      method: 'POST',
+      path: '/api/v1/orders/{orderId}/cancel',
+      type: 'action',
+      summary: 'Cancela um pedido existente',
+      parameters: [
+        { name: 'orderId', location: 'path', required: true, schema: { type: 'string' } },
+        { name: 'reasonId', location: 'path', required: true, schema: { type: 'string' } }
+      ],
+      responses: []
+    };
+
+    const resource: ApiResource = {
+      id: 'orders',
+      name: 'orders',
+      label: 'Orders',
+      operations: [listOp, detailsOp, postCreateOp, putUpdateOp, patchUpdateOp, deleteOp, cancelRpcOp]
+    };
+
+    it('should list only compatible operations for each role', () => {
+      const listOps = service.getCompatibleOperationsForRole(resource, 'list');
+      expect(listOps.every((op) => op.method === 'GET')).toBe(true);
+      expect(listOps.length).toBe(2); // listOp and detailsOp
+
+      const createOps = service.getCompatibleOperationsForRole(resource, 'create');
+      expect(createOps.every((op) => op.method === 'POST' || op.method === 'PUT')).toBe(true);
+      expect(createOps).toContain(postCreateOp);
+
+      const updateOps = service.getCompatibleOperationsForRole(resource, 'update');
+      expect(updateOps.every((op) => op.method === 'PUT' || op.method === 'PATCH')).toBe(true);
+      expect(updateOps).toContain(putUpdateOp);
+      expect(updateOps).toContain(patchUpdateOp);
+
+      const deleteOps = service.getCompatibleOperationsForRole(resource, 'delete');
+      expect(deleteOps.every((op) => op.method === 'DELETE')).toBe(true);
+      expect(deleteOps).toEqual([deleteOp]);
+
+      const customOps = service.getCompatibleOperationsForRole(resource, 'custom');
+      expect(customOps).toContain(cancelRpcOp);
+      expect(customOps).toContain(patchUpdateOp);
+    });
+
+    it('should return automatic suggestions for CRUD roles', () => {
+      expect(service.getSuggestedOperationForRole(resource, 'list')).toBe(listOp);
+      expect(service.getSuggestedOperationForRole(resource, 'create')).toBe(postCreateOp);
+      expect(service.getSuggestedOperationForRole(resource, 'details')).toBe(detailsOp);
+      expect(service.getSuggestedOperationForRole(resource, 'update')).toBe(putUpdateOp);
+      expect(service.getSuggestedOperationForRole(resource, 'delete')).toBe(deleteOp);
+    });
+
+    it('should identify whether an operation is the auto-suggested one', () => {
+      expect(service.isRoleOperationSuggested(undefined, 'list', 'listOrders', resource)).toBe(true);
+      expect(service.isRoleOperationSuggested(undefined, 'list', 'get_orders', resource)).toBe(true);
+      expect(service.isRoleOperationSuggested(undefined, 'list', 'getOrderById', resource)).toBe(false);
+
+      expect(service.isRoleOperationSuggested(undefined, 'update', 'replaceOrder', resource)).toBe(true);
+      expect(service.isRoleOperationSuggested(undefined, 'update', 'updateOrderStatus', resource)).toBe(false);
+    });
+
+    it('should check parameter inference from row field names and report missing parameters', () => {
+      // 1. Single orderId matched by orderId or id column
+      const checkDetailsWithId = service.checkParamInferenceForOperation(detailsOp, ['orderId', 'status', 'total']);
+      expect(checkDetailsWithId.canInfer).toBe(true);
+      expect(checkDetailsWithId.missingParams.length).toBe(0);
+
+      // 2. Cancel operation requires orderId AND reasonId
+      const checkCancelMissing = service.checkParamInferenceForOperation(cancelRpcOp, ['id', 'status', 'total']);
+      expect(checkCancelMissing.canInfer).toBe(false);
+      expect(checkCancelMissing.missingParams.map((p) => p.name)).toContain('reasonId');
+
+      // 3. When reasonId is present in available field names
+      const checkCancelComplete = service.checkParamInferenceForOperation(cancelRpcOp, ['orderId', 'reasonId', 'status']);
+      expect(checkCancelComplete.canInfer).toBe(true);
+      expect(checkCancelComplete.missingParams.length).toBe(0);
+    });
+  });
 });
+

@@ -132,7 +132,7 @@ import { ApiDefinition } from '../../../../core/models/api-definition.model';
                   </button>
                 }
 
-                @if (step < 4) {
+                @if (step < 5) {
                   <button
                     type="button"
                     class="btn-secondary"
@@ -196,10 +196,10 @@ import { ApiDefinition } from '../../../../core/models/api-definition.model';
     }
 
     .modal-panel {
-      width: min(880px, 96vw);
-      max-width: 880px;
+      width: min(980px, 96vw);
+      max-width: 980px;
       height: 90vh;
-      max-height: 740px;
+      max-height: 800px;
       background: var(--canvas-surface);
       border: 1px solid var(--canvas-border);
       border-radius: var(--radius-md);
@@ -530,7 +530,7 @@ export class PageConfigDialogComponent implements OnInit {
 
   goToNextStep(): void {
     const current = this.wizardComponent?.currentStep() ?? 1;
-    if (current < 4) {
+    if (current < 5) {
       this.wizardComponent?.goToStep((current + 1) as any);
     }
   }
