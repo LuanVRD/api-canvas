@@ -1,7 +1,9 @@
 import { Injectable } from '@angular/core';
 import {
+  CURRENT_UI_CONFIGURATION_VERSION,
   UiConfiguration,
   UiFieldConfiguration,
+  UiPageConfiguration,
   UiResourceConfiguration
 } from '../models/ui-configuration.model';
 import { ApiResource } from '../models/api-resource.model';
@@ -12,6 +14,26 @@ import { TableColumnDescriptor } from '../../dynamic-ui/dynamic-table/table-sche
   providedIn: 'root'
 })
 export class UiConfigurationService {
+  /**
+   * Normalizes a configuration object, ensuring valid defaults,
+   * schema versioning, and backwards compatibility with older config shapes.
+   */
+  normalizeConfiguration(
+    config?: UiConfiguration | null
+  ): UiConfiguration | null {
+    if (!config) {
+      return null;
+    }
+
+    return {
+      version: config.version ?? CURRENT_UI_CONFIGURATION_VERSION,
+      title: config.title,
+      fields: config.fields ? { ...config.fields } : undefined,
+      resources: config.resources ? { ...config.resources } : undefined,
+      pages: config.pages ? { ...config.pages } : undefined
+    };
+  }
+
   /**
    * Finds the UiResourceConfiguration matching a resource by ID or name (case-insensitive fallback).
    */
@@ -54,6 +76,135 @@ export class UiConfigurationService {
     }
 
     return null;
+  }
+
+  /**
+   * Finds the UiPageConfiguration by stable ID, dictionary key, or slug (case-insensitive).
+   */
+  getPageConfig(
+    config?: UiConfiguration | null,
+    pageIdOrSlug?: string
+  ): UiPageConfiguration | null {
+    if (!config || !pageIdOrSlug) {
+      return null;
+    }
+
+    const target = pageIdOrSlug.toLowerCase().trim();
+
+    // 1. Search in top-level pages dictionary
+    if (config.pages) {
+      // Direct or case-insensitive key match
+      for (const [key, page] of Object.entries(config.pages)) {
+        if (
+          key.toLowerCase() === target ||
+          page.id?.toLowerCase() === target ||
+          page.slug?.toLowerCase() === target
+        ) {
+          return page;
+        }
+      }
+    }
+
+    // 2. Search in resource-embedded page configurations
+    if (config.resources) {
+      for (const [resKey, resConfig] of Object.entries(config.resources)) {
+        if (resConfig.page) {
+          if (
+            resKey.toLowerCase() === target ||
+            resConfig.slug?.toLowerCase() === target ||
+            resConfig.page.id?.toLowerCase() === target ||
+            resConfig.page.slug?.toLowerCase() === target
+          ) {
+            return resConfig.page;
+          }
+        }
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * Finds the page configuration associated with a specific resource, checking either
+   * the resource's embedded `.page` or top-level `.pages` referencing `resourceId`.
+   */
+  getResourcePageConfig(
+    config?: UiConfiguration | null,
+    resourceIdOrName?: string
+  ): UiPageConfiguration | null {
+    if (!config || !resourceIdOrName) {
+      return null;
+    }
+
+    const resConfig = this.getResourceConfig(config, resourceIdOrName);
+    if (resConfig?.page) {
+      return resConfig.page;
+    }
+
+    if (config.pages) {
+      const target = resourceIdOrName.toLowerCase().trim();
+      for (const page of Object.values(config.pages)) {
+        if (page.resourceId?.toLowerCase() === target) {
+          return page;
+        }
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * Resolves a full UiPageConfiguration by combining page-specific overrides with resource-level defaults.
+   */
+  resolvePageConfiguration(
+    pageConfig?: UiPageConfiguration | null,
+    resourceConfig?: UiResourceConfiguration | null
+  ): UiPageConfiguration {
+    const base: UiPageConfiguration = {
+      title: pageConfig?.title || resourceConfig?.label,
+      icon: pageConfig?.icon || resourceConfig?.icon,
+      slug: pageConfig?.slug || resourceConfig?.slug,
+      order: pageConfig?.order ?? resourceConfig?.order,
+      hidden: pageConfig?.hidden ?? resourceConfig?.hidden ?? false,
+      displayMode: pageConfig?.displayMode || 'dashboard',
+      operations: {
+        ...(resourceConfig?.operations || {}),
+        ...(pageConfig?.operations || {})
+      },
+      metrics: pageConfig?.metrics ? [...pageConfig.metrics] : [],
+      filters: pageConfig?.filters ? { ...pageConfig.filters } : undefined,
+      table: {
+        ...(pageConfig?.table || {}),
+        columns: pageConfig?.table?.columns
+          ? [...pageConfig.table.columns]
+          : resourceConfig?.list?.columns
+            ? resourceConfig.list.columns.map((colKey) => ({
+                field: colKey,
+                label: this.formatLabel(colKey),
+                type: 'text'
+              }))
+            : []
+      },
+      pagination: {
+        ...(pageConfig?.pagination || {}),
+        ...(pageConfig?.table?.pagination || {})
+      },
+      actions: {
+        ...(pageConfig?.actions || {})
+      }
+    };
+
+    if (pageConfig?.id) {
+      base.id = pageConfig.id;
+    }
+    if (pageConfig?.resourceId) {
+      base.resourceId = pageConfig.resourceId;
+    }
+    if (pageConfig?.description) {
+      base.description = pageConfig.description;
+    }
+
+    return base;
   }
 
   /**
@@ -282,18 +433,84 @@ export class UiConfigurationService {
           fields: {
             ...(existing.fields || {}),
             ...(resOverride.fields || {})
-          }
+          },
+          operations: {
+            ...(existing.operations || {}),
+            ...(resOverride.operations || {})
+          },
+          page: this.mergePageConfigs(existing.page, resOverride.page)
         };
       }
     }
 
+    const mergedPages: Record<string, UiPageConfiguration> = {
+      ...(base.pages || {})
+    };
+
+    if (override.pages) {
+      for (const [pageKey, pageOverride] of Object.entries(override.pages)) {
+        const existingPage = mergedPages[pageKey];
+        mergedPages[pageKey] = this.mergePageConfigs(existingPage, pageOverride)!;
+      }
+    }
+
     return {
+      version: override.version ?? base.version ?? CURRENT_UI_CONFIGURATION_VERSION,
       title: override.title || base.title,
       fields: {
         ...(base.fields || {}),
         ...(override.fields || {})
       },
-      resources: mergedResources
+      resources: Object.keys(mergedResources).length > 0 ? mergedResources : undefined,
+      pages: Object.keys(mergedPages).length > 0 ? mergedPages : undefined
+    };
+  }
+
+  private mergePageConfigs(
+    base?: UiPageConfiguration | null,
+    override?: UiPageConfiguration | null
+  ): UiPageConfiguration | undefined {
+    if (!base && !override) return undefined;
+    if (!base) return override ? { ...override } : undefined;
+    if (!override) return { ...base };
+
+    return {
+      ...base,
+      ...override,
+      operations: {
+        ...(base.operations || {}),
+        ...(override.operations || {})
+      },
+      metrics: override.metrics ? [...override.metrics] : base.metrics ? [...base.metrics] : undefined,
+      filters: {
+        ...(base.filters || {}),
+        ...(override.filters || {})
+      },
+      table: {
+        ...(base.table || {}),
+        ...(override.table || {}),
+        columns: override.table?.columns
+          ? [...override.table.columns]
+          : base.table?.columns
+            ? [...base.table.columns]
+            : undefined,
+        pagination: {
+          ...(base.table?.pagination || {}),
+          ...(override.table?.pagination || {})
+        }
+      },
+      pagination: {
+        ...(base.pagination || {}),
+        ...(override.pagination || {})
+      },
+      actions: {
+        ...(base.actions || {}),
+        ...(override.actions || {}),
+        rowActions: {
+          ...(base.actions?.rowActions || {}),
+          ...(override.actions?.rowActions || {})
+        }
+      }
     };
   }
 

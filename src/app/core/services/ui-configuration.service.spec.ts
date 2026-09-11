@@ -1,6 +1,11 @@
 import { TestBed } from '@angular/core/testing';
 import { UiConfigurationService } from './ui-configuration.service';
-import { UiConfiguration } from '../models/ui-configuration.model';
+import {
+  CURRENT_UI_CONFIGURATION_VERSION,
+  UiConfiguration,
+  UiPageConfiguration,
+  UiResourceConfiguration
+} from '../models/ui-configuration.model';
 import { ApiResource } from '../models/api-resource.model';
 import { FormFieldDescriptor } from '../../dynamic-ui/dynamic-form/form-field.model';
 import { TableColumnDescriptor } from '../../dynamic-ui/dynamic-table/table-schema.service';
@@ -13,6 +18,38 @@ describe('UiConfigurationService', () => {
       providers: [UiConfigurationService]
     });
     service = TestBed.inject(UiConfigurationService);
+  });
+
+  describe('normalizeConfiguration and Versioning', () => {
+    it('should return null when config is missing', () => {
+      expect(service.normalizeConfiguration(undefined)).toBeNull();
+      expect(service.normalizeConfiguration(null)).toBeNull();
+    });
+
+    it('should assign current version when version is omitted (backward compatibility)', () => {
+      const legacyConfig: UiConfiguration = {
+        title: 'Legacy API Workspace',
+        resources: {
+          products: { label: 'Store Products' }
+        }
+      };
+
+      const normalized = service.normalizeConfiguration(legacyConfig);
+      expect(normalized).toBeDefined();
+      expect(normalized?.version).toBe(CURRENT_UI_CONFIGURATION_VERSION);
+      expect(normalized?.title).toBe('Legacy API Workspace');
+      expect(normalized?.resources?.['products']?.label).toBe('Store Products');
+    });
+
+    it('should preserve explicit schema version when provided', () => {
+      const customConfig: UiConfiguration = {
+        version: 2,
+        title: 'Custom API Workspace'
+      };
+
+      const normalized = service.normalizeConfiguration(customConfig);
+      expect(normalized?.version).toBe(2);
+    });
   });
 
   describe('getResourceConfig', () => {
@@ -48,6 +85,107 @@ describe('UiConfigurationService', () => {
 
     it('should return null for non-existent resource', () => {
       expect(service.getResourceConfig(sampleConfig, 'users')).toBeNull();
+    });
+  });
+
+  describe('getPageConfig and getResourcePageConfig', () => {
+    const configWithPages: UiConfiguration = {
+      pages: {
+        'orders-page': {
+          id: 'orders-page',
+          resourceId: 'orders',
+          slug: 'pedidos',
+          title: 'Pedidos',
+          icon: 'receipt_long',
+          displayMode: 'dashboard'
+        }
+      },
+      resources: {
+        customers: {
+          label: 'Clientes',
+          slug: 'clientes',
+          page: {
+            id: 'customers-page',
+            title: 'Gestão de Clientes',
+            slug: 'clientes',
+            displayMode: 'crud'
+          }
+        }
+      }
+    };
+
+    it('should return null if config or search term is missing', () => {
+      expect(service.getPageConfig(undefined, 'orders-page')).toBeNull();
+      expect(service.getPageConfig(configWithPages, '')).toBeNull();
+      expect(service.getResourcePageConfig(undefined, 'orders')).toBeNull();
+      expect(service.getResourcePageConfig(configWithPages, '')).toBeNull();
+    });
+
+    it('should find page in top-level pages by key, id, or slug (case-insensitive)', () => {
+      expect(service.getPageConfig(configWithPages, 'orders-page')?.title).toBe('Pedidos');
+      expect(service.getPageConfig(configWithPages, 'ORDERS-PAGE')?.title).toBe('Pedidos');
+      expect(service.getPageConfig(configWithPages, 'pedidos')?.title).toBe('Pedidos');
+    });
+
+    it('should find page from resource embedded page by resource key or slug', () => {
+      expect(service.getPageConfig(configWithPages, 'customers')?.title).toBe('Gestão de Clientes');
+      expect(service.getPageConfig(configWithPages, 'customers-page')?.title).toBe('Gestão de Clientes');
+      expect(service.getPageConfig(configWithPages, 'clientes')?.title).toBe('Gestão de Clientes');
+    });
+
+    it('should find resource page using getResourcePageConfig', () => {
+      // From embedded page
+      expect(service.getResourcePageConfig(configWithPages, 'customers')?.title).toBe('Gestão de Clientes');
+      // From top-level pages referencing resourceId
+      expect(service.getResourcePageConfig(configWithPages, 'orders')?.title).toBe('Pedidos');
+    });
+  });
+
+  describe('resolvePageConfiguration', () => {
+    it('should combine page config with resource-level fallbacks', () => {
+      const resourceConfig: UiResourceConfiguration = {
+        label: 'Orders Resource',
+        icon: 'shopping_bag',
+        slug: 'orders',
+        order: 1,
+        operations: {
+          list: 'getOrders',
+          create: 'createOrder',
+          details: 'getOrderById'
+        },
+        list: {
+          columns: ['id', 'clientName', 'total']
+        }
+      };
+
+      const pageConfig: UiPageConfiguration = {
+        id: 'orders-dashboard',
+        title: 'Painel de Pedidos',
+        operations: {
+          update: 'updateOrder'
+        },
+        metrics: [
+          {
+            id: 'total',
+            label: 'Total de Pedidos',
+            type: 'count_all',
+            colorScheme: 'default'
+          }
+        ]
+      };
+
+      const resolved = service.resolvePageConfiguration(pageConfig, resourceConfig);
+      expect(resolved.id).toBe('orders-dashboard');
+      expect(resolved.title).toBe('Painel de Pedidos');
+      expect(resolved.icon).toBe('shopping_bag');
+      expect(resolved.slug).toBe('orders');
+      expect(resolved.order).toBe(1);
+      expect(resolved.operations?.list).toBe('getOrders');
+      expect(resolved.operations?.update).toBe('updateOrder');
+      expect(resolved.metrics?.length).toBe(1);
+      expect(resolved.table?.columns?.length).toBe(3);
+      expect(resolved.table?.columns?.[0].field).toBe('id');
+      expect(resolved.table?.columns?.[0].label).toBe('ID');
     });
   });
 
@@ -239,6 +377,7 @@ describe('UiConfigurationService', () => {
 
     it('should merge global fields and resource configs deeply', () => {
       const base: UiConfiguration = {
+        version: 1,
         fields: {
           title: { label: 'Base Title' },
           desc: { label: 'Base Desc' }
@@ -260,7 +399,8 @@ describe('UiConfigurationService', () => {
         resources: {
           products: {
             label: 'Store Catalog',
-            list: { columns: ['price', 'title'] }
+            list: { columns: ['price', 'title'] },
+            operations: { list: 'listProducts' }
           },
           orders: {
             label: 'Purchases'
@@ -269,6 +409,7 @@ describe('UiConfigurationService', () => {
       };
 
       const merged = service.mergeConfigurations(base, overrides)!;
+      expect(merged.version).toBe(1);
       expect(merged.fields?.['title']?.label).toBe('Base Title');
       expect(merged.fields?.['desc']?.label).toBe('Overridden Desc');
       expect(merged.fields?.['desc']?.control).toBe('textarea');
@@ -276,7 +417,200 @@ describe('UiConfigurationService', () => {
       expect(merged.resources?.['products']?.label).toBe('Store Catalog');
       expect(merged.resources?.['products']?.fields?.['price']?.label).toBe('Cost');
       expect(merged.resources?.['products']?.list?.columns).toEqual(['price', 'title']);
+      expect(merged.resources?.['products']?.operations?.list).toBe('listProducts');
       expect(merged.resources?.['orders']?.label).toBe('Purchases');
+    });
+
+    it('should deeply merge page configurations, metrics, filters, and actions', () => {
+      const base: UiConfiguration = {
+        pages: {
+          'orders-page': {
+            id: 'orders-page',
+            title: 'Base Orders',
+            filters: {
+              searchFields: ['id', 'clientName']
+            },
+            table: {
+              pageSize: 10,
+              columns: [
+                { field: 'id', label: 'ID', type: 'monospace' }
+              ]
+            },
+            actions: {
+              rowActions: {
+                viewDetails: true,
+                edit: false
+              }
+            }
+          }
+        }
+      };
+
+      const overrides: UiConfiguration = {
+        pages: {
+          'orders-page': {
+            title: 'Custom Orders Dashboard',
+            filters: {
+              statusField: 'status'
+            },
+            table: {
+              pageSize: 25,
+              columns: [
+                { field: 'id', label: 'ID', type: 'monospace' },
+                { field: 'status', label: 'Status', type: 'status_badge' }
+              ]
+            },
+            actions: {
+              primaryCreateLabel: '+ Novo Pedido',
+              rowActions: {
+                edit: true,
+                delete: true
+              }
+            },
+            metrics: [
+              {
+                id: 'total',
+                label: 'Total',
+                type: 'count_all',
+                colorScheme: 'default'
+              }
+            ]
+          }
+        }
+      };
+
+      const merged = service.mergeConfigurations(base, overrides)!;
+      const mergedPage = merged.pages?.['orders-page'];
+
+      expect(mergedPage).toBeDefined();
+      expect(mergedPage?.title).toBe('Custom Orders Dashboard');
+      expect(mergedPage?.filters?.searchFields).toEqual(['id', 'clientName']);
+      expect(mergedPage?.filters?.statusField).toBe('status');
+      expect(mergedPage?.table?.pageSize).toBe(25);
+      expect(mergedPage?.table?.columns?.length).toBe(2);
+      expect(mergedPage?.actions?.primaryCreateLabel).toBe('+ Novo Pedido');
+      expect(mergedPage?.actions?.rowActions?.viewDetails).toBe(true);
+      expect(mergedPage?.actions?.rowActions?.edit).toBe(true);
+      expect(mergedPage?.actions?.rowActions?.delete).toBe(true);
+      expect(mergedPage?.metrics?.length).toBe(1);
+    });
+  });
+
+  describe('Dashboard Model Representation (Generic & Agnostic)', () => {
+    it('should fully represent a rich dashboard page without API-specific hardcoding', () => {
+      const fullDashboardConfig: UiConfiguration = {
+        version: 1,
+        title: 'Enterprise Management Canvas',
+        pages: {
+          'orders-page': {
+            id: 'orders-page',
+            resourceId: 'orders',
+            slug: 'pedidos',
+            title: 'Pedidos',
+            description: 'Painel de acompanhamento e gestão de pedidos',
+            icon: 'receipt_long',
+            order: 1,
+            displayMode: 'dashboard',
+            operations: {
+              list: 'getOrders',
+              create: 'createOrder',
+              details: 'getOrderById',
+              update: 'updateOrder',
+              delete: 'deleteOrder',
+              custom: ['cancelOrder', 'approveOrder']
+            },
+            metrics: [
+              {
+                id: 'total',
+                label: 'Total',
+                icon: 'receipt_long',
+                type: 'count_all',
+                colorScheme: 'default'
+              },
+              {
+                id: 'pending',
+                label: 'Pendentes',
+                icon: 'hourglass_empty',
+                type: 'count_matching',
+                field: 'status',
+                matchingValue: 'pending',
+                colorScheme: 'warning'
+              },
+              {
+                id: 'processing',
+                label: 'Em processamento',
+                icon: 'sync',
+                type: 'count_matching',
+                field: 'status',
+                matchingValue: 'processing',
+                colorScheme: 'info'
+              },
+              {
+                id: 'completed',
+                label: 'Concluídos hoje',
+                icon: 'check_circle',
+                type: 'count_matching',
+                field: 'status',
+                matchingValue: 'completed',
+                colorScheme: 'success'
+              }
+            ],
+            filters: {
+              searchFields: ['id', 'clientName', 'email'],
+              searchPlaceholder: 'Buscar por ID, cliente ou email...',
+              statusField: 'status',
+              dateField: 'createdAt'
+            },
+            table: {
+              pageSize: 10,
+              pageSizeOptions: [10, 25, 50, 100],
+              defaultSortField: 'createdAt',
+              defaultSortOrder: 'desc',
+              columns: [
+                { field: 'id', label: 'ID', type: 'monospace', sortable: true },
+                { field: 'clientName', label: 'Cliente', type: 'text', sortable: true },
+                { field: 'totalAmount', label: 'Valor Total', type: 'currency', sortable: true },
+                {
+                  field: 'status',
+                  label: 'Status',
+                  type: 'status_badge',
+                  sortable: true,
+                  statusBadgeMap: {
+                    pending: { label: 'Pendente', color: 'warning', icon: 'hourglass_empty' },
+                    processing: { label: 'Em processamento', color: 'info', icon: 'sync' },
+                    completed: { label: 'Concluído', color: 'success', icon: 'check_circle' },
+                    cancelled: { label: 'Cancelado', color: 'danger', icon: 'cancel' }
+                  }
+                },
+                { field: 'createdAt', label: 'Criado em', type: 'date', sortable: true }
+              ]
+            },
+            actions: {
+              primaryCreateActionId: 'createOrder',
+              primaryCreateLabel: '+ Adicionar pedido',
+              rowActions: {
+                viewDetails: true,
+                edit: true,
+                delete: true,
+                customActionOperations: ['cancelOrder']
+              }
+            }
+          }
+        }
+      };
+
+      const normalized = service.normalizeConfiguration(fullDashboardConfig);
+      expect(normalized).toBeDefined();
+      expect(normalized?.version).toBe(1);
+
+      const page = service.getPageConfig(normalized, 'pedidos');
+      expect(page).toBeDefined();
+      expect(page?.id).toBe('orders-page');
+      expect(page?.metrics?.length).toBe(4);
+      expect(page?.table?.columns?.length).toBe(5);
+      expect(page?.table?.columns?.[3].statusBadgeMap?.['completed'].label).toBe('Concluído');
+      expect(page?.actions?.primaryCreateLabel).toBe('+ Adicionar pedido');
+      expect(page?.actions?.rowActions?.delete).toBe(true);
     });
   });
 });
