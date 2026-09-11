@@ -37,6 +37,12 @@ export const routes: Routes = [
       import('./features/dashboard/dashboard.page').then(m => m.DashboardPage)
   },
   {
+    path: 'dashboard/:pageId',
+    canActivate: [apiSessionGuard],
+    loadComponent: () =>
+      import('./features/dashboard/dashboard.page').then(m => m.DashboardPage)
+  },
+  {
     path: '**',
     redirectTo: 'connect'
   }

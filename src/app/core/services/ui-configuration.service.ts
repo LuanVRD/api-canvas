@@ -165,6 +165,92 @@ export class UiConfigurationService {
   }
 
   /**
+   * Retrieves all active custom page configurations, normalizing IDs, titles, and icons,
+   * filtering out hidden pages, and ordering them by order field and title.
+   */
+  getCustomPages(
+    config?: UiConfiguration | null,
+    resources?: ApiResource[]
+  ): UiPageConfiguration[] {
+    if (!config) {
+      return [];
+    }
+
+    const pagesMap = new Map<string, UiPageConfiguration>();
+
+    // 1. Ingest resource-embedded pages
+    if (config.resources) {
+      for (const [resKey, resConfig] of Object.entries(config.resources)) {
+        if (resConfig.hidden === true || resConfig.page?.hidden === true) {
+          continue;
+        }
+        if (resConfig.page) {
+          const id = resConfig.page.id || resKey;
+          const resourceMatch = resources?.find((r) => r.id === resKey || r.name === resKey);
+          const resolvedTitle =
+            resConfig.page.title ||
+            resConfig.label ||
+            resourceMatch?.label ||
+            this.formatLabel(resKey);
+
+          pagesMap.set(id, {
+            ...resConfig.page,
+            id,
+            resourceId: resConfig.page.resourceId || resKey,
+            title: resolvedTitle,
+            icon: resConfig.page.icon || resConfig.icon || 'table_chart',
+            order: resConfig.page.order ?? resConfig.order
+          });
+        }
+      }
+    }
+
+    // 2. Ingest top-level pages (takes precedence over resource-embedded defaults)
+    if (config.pages) {
+      for (const [pageKey, pageConfig] of Object.entries(config.pages)) {
+        if (pageConfig.hidden === true) {
+          pagesMap.delete(pageConfig.id || pageKey);
+          continue;
+        }
+
+        const id = pageConfig.id || pageKey;
+        const resConfig = pageConfig.resourceId
+          ? this.getResourceConfig(config, pageConfig.resourceId)
+          : null;
+        const resourceMatch = pageConfig.resourceId
+          ? resources?.find((r) => r.id === pageConfig.resourceId || r.name === pageConfig.resourceId)
+          : null;
+
+        const resolvedTitle =
+          pageConfig.title ||
+          resConfig?.label ||
+          resourceMatch?.label ||
+          this.formatLabel(id);
+
+        const existing = pagesMap.get(id);
+        pagesMap.set(id, {
+          ...(existing || {}),
+          ...pageConfig,
+          id,
+          title: resolvedTitle,
+          icon: pageConfig.icon || resConfig?.icon || existing?.icon || 'table_chart',
+          order: pageConfig.order ?? resConfig?.order ?? existing?.order
+        });
+      }
+    }
+
+    // 3. Sort by order ascending, then alphabetically by title
+    return Array.from(pagesMap.values()).sort((a, b) => {
+      const orderA = a.order ?? 999;
+      const orderB = b.order ?? 999;
+      if (orderA !== orderB) {
+        return orderA - orderB;
+      }
+      return (a.title || '').localeCompare(b.title || '');
+    });
+  }
+
+  /**
    * Finds the page configuration associated with a specific resource, checking either
    * the resource's embedded `.page` or top-level `.pages` referencing `resourceId`.
    */

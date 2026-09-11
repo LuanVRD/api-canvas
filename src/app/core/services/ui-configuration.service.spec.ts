@@ -643,5 +643,67 @@ describe('UiConfigurationService', () => {
       expect(resolved.hidden).toBe(false);
     });
   });
+
+  describe('getCustomPages', () => {
+    it('should return empty array when configuration is null or undefined', () => {
+      expect(service.getCustomPages(null)).toEqual([]);
+      expect(service.getCustomPages(undefined)).toEqual([]);
+    });
+
+    it('should extract and sort custom pages from top-level pages and resource pages', () => {
+      const config: UiConfiguration = {
+        resources: {
+          products: {
+            label: 'Produtos',
+            order: 3,
+            page: {
+              id: 'products-page',
+              title: 'Catálogo de Produtos',
+              order: 3
+            }
+          },
+          archived: {
+            hidden: true,
+            page: {
+              id: 'archived-page',
+              title: 'Arquivo'
+            }
+          }
+        },
+        pages: {
+          'orders-page': {
+            id: 'orders-page',
+            title: 'Pedidos CRUD',
+            order: 1,
+            slug: 'pedidos'
+          },
+          'customers-page': {
+            id: 'customers-page',
+            title: 'Clientes',
+            order: 2,
+            slug: 'clientes'
+          },
+          'hidden-page': {
+            id: 'hidden-page',
+            title: 'Oculta',
+            hidden: true
+          }
+        }
+      };
+
+      const pages = service.getCustomPages(config);
+      expect(pages.length).toBe(3);
+
+      expect(pages[0].id).toBe('orders-page');
+      expect(pages[0].title).toBe('Pedidos CRUD');
+
+      expect(pages[1].id).toBe('customers-page');
+      expect(pages[1].title).toBe('Clientes');
+
+      expect(pages[2].id).toBe('products-page');
+      expect(pages[2].title).toBe('Catálogo de Produtos');
+    });
+  });
 });
+
 
