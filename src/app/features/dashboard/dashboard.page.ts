@@ -21,6 +21,8 @@ import { RecordDetailsDrawerComponent } from '../../dynamic-ui/object-details/re
 import { EditRecordDialogComponent } from '../../dynamic-ui/edit-dialog/edit-record-dialog.component';
 import { DeleteConfirmDialogComponent } from '../../dynamic-ui/delete-dialog/delete-confirm-dialog.component';
 import { CustomActionDialogComponent } from '../../dynamic-ui/custom-action-dialog/custom-action-dialog.component';
+import { PageConfigDialogComponent } from './components/page-config/page-config-dialog.component';
+import { PageConfigMode } from './services/page-draft.service';
 import { ApiExecutionResult } from '../../core/models/api-execution-result.model';
 import { ApiOperation } from '../../core/models/api-operation.model';
 import { ApiParameter } from '../../core/models/api-parameter.model';
@@ -50,7 +52,8 @@ import { ApiExecutorService } from '../../core/services/api-executor.service';
     RecordDetailsDrawerComponent,
     EditRecordDialogComponent,
     DeleteConfirmDialogComponent,
-    CustomActionDialogComponent
+    CustomActionDialogComponent,
+    PageConfigDialogComponent
   ],
   providers: [ResourcePageFacadeService],
   template: `
@@ -175,7 +178,7 @@ import { ApiExecutorService } from '../../core/services/api-executor.service';
               [hasActiveFilters]="facade.hasActiveFilters()"
               (refresh)="onRefresh()"
               (retry)="onRetry()"
-              (editPage)="onConfigurePages()"
+              (editPage)="onEditCurrentPage()"
               (createItem)="onCreateItem()"
               (openExplorer)="onOpenExplorer()"
               (searchChange)="onSearchChange($event)"
@@ -263,6 +266,18 @@ import { ApiExecutorService } from '../../core/services/api-executor.service';
           [missingParams]="customModal.missingParams || []"
           (executed)="onCustomActionExecuted(customModal.action, $event)"
           (close)="onCloseCustomAction()"
+        />
+      }
+
+      <!-- Page Configuration Dialog Modal -->
+      @if (isPageConfigDialogOpen()) {
+        <app-page-config-dialog
+          [initialMode]="pageConfigDialogMode()"
+          [initialPageId]="pageConfigTargetPageId()"
+          [publishedConfiguration]="sessionService.uiConfiguration()"
+          [apiDefinition]="sessionService.apiDefinition()"
+          (save)="onSavePageConfiguration($event)"
+          (close)="isPageConfigDialogOpen.set(false)"
         />
       }
     </div>
@@ -454,7 +469,7 @@ import { ApiExecutorService } from '../../core/services/api-executor.service';
   `]
 })
 export class DashboardPage implements OnInit, OnDestroy {
-  private readonly sessionService = inject(ApiSessionService);
+  readonly sessionService = inject(ApiSessionService);
   private readonly uiConfigService = inject(UiConfigurationService);
   private readonly tableSchemaService = inject(TableSchemaService);
   private readonly matcher = inject(ResourceOperationMatcherService);
@@ -468,6 +483,9 @@ export class DashboardPage implements OnInit, OnDestroy {
 
   readonly isAuthDialogOpen = signal<boolean>(false);
   readonly isCreateDialogOpen = signal<boolean>(false);
+  readonly isPageConfigDialogOpen = signal<boolean>(false);
+  readonly pageConfigDialogMode = signal<PageConfigMode>('manage');
+  readonly pageConfigTargetPageId = signal<string | undefined>(undefined);
   readonly requestedSlug = signal<string | null>(null);
 
   readonly activeDetailsInspection = signal<{
@@ -694,69 +712,43 @@ export class DashboardPage implements OnInit, OnDestroy {
   }
 
   onCreatePage(): void {
-    const resources = this.sessionService.resources();
-    if (resources.length === 0) {
-      this.router.navigate(['/workspace']);
-      return;
-    }
-
-    const currentConfig = this.sessionService.uiConfiguration() || {};
-    const existingPages = { ...(currentConfig.pages || {}) };
-
-    // Find first unmapped resource or generate default pages for all discovered resources
-    const unmappedResource = resources.find(
-      (r) => !Object.values(existingPages).some((p) => p.resourceId === r.id || p.id === r.id)
-    );
-
-    let targetSlug: string | undefined;
-
-    if (unmappedResource) {
-      const id = `${unmappedResource.id}-page`;
-      const slug = unmappedResource.id.toLowerCase();
-      existingPages[id] = {
-        id,
-        resourceId: unmappedResource.id,
-        title: unmappedResource.label || unmappedResource.name,
-        slug,
-        isDefault: Object.keys(existingPages).length === 0,
-        icon: 'table_chart',
-        order: Object.keys(existingPages).length + 1
-      };
-      targetSlug = slug;
-    } else {
-      resources.forEach((r, idx) => {
-        const id = `${r.id}-page`;
-        const slug = r.id.toLowerCase();
-        existingPages[id] = {
-          id,
-          resourceId: r.id,
-          title: r.label || r.name,
-          slug,
-          isDefault: idx === 0,
-          icon: 'table_chart',
-          order: idx + 1
-        };
-        if (idx === 0) {
-          targetSlug = slug;
-        }
-      });
-    }
-
-    const newConfig: UiConfiguration = {
-      ...currentConfig,
-      pages: existingPages
-    };
-
-    this.sessionService.replaceUiConfiguration(newConfig);
-
-    if (targetSlug) {
-      this.requestedSlug.set(targetSlug);
-      this.router.navigate(['/dashboard', targetSlug]);
-    }
+    this.pageConfigDialogMode.set('create');
+    this.pageConfigTargetPageId.set(undefined);
+    this.isPageConfigDialogOpen.set(true);
   }
 
   onConfigurePages(): void {
-    // Stub for page management / edit configuration workflow
+    this.pageConfigDialogMode.set('manage');
+    this.pageConfigTargetPageId.set(undefined);
+    this.isPageConfigDialogOpen.set(true);
+  }
+
+  onEditCurrentPage(): void {
+    const page = this.selectedPage();
+    if (page?.id) {
+      this.pageConfigDialogMode.set('edit');
+      this.pageConfigTargetPageId.set(page.id);
+      this.isPageConfigDialogOpen.set(true);
+    } else {
+      this.onConfigurePages();
+    }
+  }
+
+  onSavePageConfiguration(newConfig: UiConfiguration): void {
+    this.sessionService.replaceUiConfiguration(newConfig);
+    this.isPageConfigDialogOpen.set(false);
+
+    // If current selected page was deleted or renamed, redirect if needed
+    const currentSlug = this.requestedSlug();
+    const updatedPages = this.pages();
+    if (currentSlug && !updatedPages.some((p) => p.slug === currentSlug || p.id === currentSlug)) {
+      const def = this.defaultPage();
+      const targetSlug = def?.slug || def?.id;
+      if (targetSlug) {
+        this.requestedSlug.set(targetSlug);
+        this.router.navigate(['/dashboard', targetSlug]);
+      }
+    }
   }
 
   onCreateItem(): void {

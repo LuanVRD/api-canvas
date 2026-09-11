@@ -109,6 +109,15 @@ code, pre, .font-mono {
   background: #484f58;
 }
 
+// Global mat-icon display normalization for crisp glyph rendering
+mat-icon {
+  user-select: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  vertical-align: middle;
+}
+
 // Overrides for Material Components to match Developer Tool aesthetic
 .mat-mdc-card {
   --mdc-elevated-card-container-color: var(--canvas-surface) !important;

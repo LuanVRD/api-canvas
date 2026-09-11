@@ -264,13 +264,13 @@ describe('DashboardPage', () => {
       expect(router.navigate).toHaveBeenCalledWith(['/workspace']);
     });
 
-    it('should generate pages from connected resources and navigate when clicking Criar primeira página', () => {
+    it('should open page configuration dialog in create mode when clicking Criar primeira página', () => {
       sessionService.setUiConfiguration(null);
       fixture.detectChanges();
 
       component.onCreatePage();
-      expect(component.pages().length).toBeGreaterThan(0);
-      expect(router.navigate).toHaveBeenCalledWith(['/dashboard', 'orders']);
+      expect(component.isPageConfigDialogOpen()).toBe(true);
+      expect(component.pageConfigDialogMode()).toBe('create');
     });
   });
 
@@ -856,6 +856,78 @@ describe('DashboardPage', () => {
       expect(mutationSpy).toHaveBeenCalledWith('orders', 'cancelOrder', mockResult);
       expect(refreshSpy).toHaveBeenCalled();
       expect(component.activeCustomAction()).toBeNull();
+    });
+  });
+
+  describe('Page Configuration Dialog Integration', () => {
+    beforeEach(() => {
+      sessionService.setSession(mockApiDefinition);
+      sessionService.setUiConfiguration({
+        pages: {
+          'orders-page': {
+            id: 'orders-page',
+            resourceId: 'orders',
+            title: 'Pedidos',
+            slug: 'pedidos'
+          }
+        }
+      });
+      paramMapSubject.next(convertToParamMap({ pageSlug: 'pedidos' }));
+      fixture.detectChanges();
+    });
+
+    it('should open page configuration dialog in create mode when onCreatePage is called', () => {
+      expect(component.isPageConfigDialogOpen()).toBe(false);
+
+      component.onCreatePage();
+
+      expect(component.isPageConfigDialogOpen()).toBe(true);
+      expect(component.pageConfigDialogMode()).toBe('create');
+      expect(component.pageConfigTargetPageId()).toBeUndefined();
+    });
+
+    it('should open page configuration dialog in manage mode when onConfigurePages is called', () => {
+      expect(component.isPageConfigDialogOpen()).toBe(false);
+
+      component.onConfigurePages();
+
+      expect(component.isPageConfigDialogOpen()).toBe(true);
+      expect(component.pageConfigDialogMode()).toBe('manage');
+      expect(component.pageConfigTargetPageId()).toBeUndefined();
+    });
+
+    it('should open page configuration dialog in edit mode for current selected page', () => {
+      expect(component.selectedPage()?.id).toBe('orders-page');
+
+      component.onEditCurrentPage();
+
+      expect(component.isPageConfigDialogOpen()).toBe(true);
+      expect(component.pageConfigDialogMode()).toBe('edit');
+      expect(component.pageConfigTargetPageId()).toBe('orders-page');
+    });
+
+    it('should save and apply updated UI configuration and close dialog', () => {
+      component.onConfigurePages();
+      expect(component.isPageConfigDialogOpen()).toBe(true);
+
+      const replaceSpy = vi.spyOn(sessionService, 'replaceUiConfiguration');
+
+      const newConfig: UiConfiguration = {
+        version: 1,
+        pages: {
+          'orders-page': {
+            id: 'orders-page',
+            resourceId: 'orders',
+            title: 'Pedidos Atualizados',
+            slug: 'pedidos'
+          }
+        }
+      };
+
+      component.onSavePageConfiguration(newConfig);
+
+      expect(replaceSpy).toHaveBeenCalledWith(newConfig);
+      expect(component.isPageConfigDialogOpen()).toBe(false);
     });
   });
 });
