@@ -3,7 +3,8 @@ import { ApiDefinition, ApiSecurityScheme } from '../models/api-definition.model
 import { ApiOperation } from '../models/api-operation.model';
 import { ApiResource } from '../models/api-resource.model';
 import { ApiExecutionResult } from '../models/api-execution-result.model';
-import { UiConfiguration } from '../models/ui-configuration.model';
+import { UiConfiguration, UiPageConfiguration } from '../models/ui-configuration.model';
+import { ResolvedResourcePage } from '../models/resolved-resource-page.model';
 import { ResourceOperationMatcherService } from './resource-operation-matcher.service';
 import { UiConfigurationService } from './ui-configuration.service';
 import { StorageService } from './storage.service';
@@ -507,18 +508,23 @@ export class ApiSessionService {
     const resource = def.resources.find((r) => r.id === resourceId);
     if (!resource) return null;
 
-    // 1. First priority: explicit 'list' type operation
-    const listOp = resource.operations.find((op) => op.type === 'list');
-    if (listOp) return listOp;
+    return this.matcher.findCompatibleListOperation(resource, undefined, def);
+  }
 
-    // 2. Second priority: GET operation without path parameters
-    const getCollectionOp = resource.operations.find(
-      (op) => op.method === 'GET' && !op.parameters.some((p) => p.location === 'path')
-    );
-    if (getCollectionOp) return getCollectionOp;
+  /**
+   * Finds a compatible create (POST) operation for the specified resource.
+   */
+  getCompatibleCreateOperation(
+    resourceId: string,
+    sourceListOperation?: ApiOperation | null
+  ): ApiOperation | null {
+    const def = this._apiDefinition();
+    if (!def || !resourceId) return null;
 
-    // 3. Fallback: Any GET operation in resource
-    return resource.operations.find((op) => op.method === 'GET') ?? null;
+    const resource = def.resources.find((r) => r.id === resourceId);
+    if (!resource) return null;
+
+    return this.matcher.findCompatibleCreateOperation(resource, sourceListOperation, undefined, def);
   }
 
   /**
@@ -551,6 +557,48 @@ export class ApiSessionService {
     if (!resource) return null;
 
     return this.matcher.findCompatibleDeleteOperation(resource, sourceOperation);
+  }
+
+  /**
+   * Finds compatible update operations (PUT/PATCH) for the specified resource.
+   */
+  getCompatibleUpdateOperations(
+    resourceId: string,
+    sourceOperation?: ApiOperation | null
+  ): ApiOperation[] {
+    const def = this._apiDefinition();
+    if (!def || !resourceId) return [];
+
+    const resource = def.resources.find((r) => r.id === resourceId);
+    if (!resource) return [];
+
+    return this.matcher.findCompatibleUpdateOperations(resource, sourceOperation);
+  }
+
+  /**
+   * Resolves the full canonical operation suite (list, create, details, update, delete, customActions, warnings)
+   * for a specified resource using active UI configuration and OpenAPI heuristics.
+   */
+  resolveResourcePage(
+    resourceId: string,
+    pageConfigOverride?: UiPageConfiguration | null
+  ): ResolvedResourcePage | null {
+    const def = this._apiDefinition();
+    if (!def || !resourceId) return null;
+
+    const resource = def.resources.find((r) => r.id === resourceId);
+    if (!resource) return null;
+
+    const uiConfig = this._uiConfiguration();
+    const pageConfig = pageConfigOverride ?? this.uiConfigService.getResourcePageConfig(uiConfig, resourceId);
+    const resourceConfig = this.uiConfigService.getResourceConfig(uiConfig, resourceId);
+
+    return this.matcher.resolveResourcePage({
+      resource,
+      pageConfig,
+      resourceConfig,
+      apiDefinition: def
+    });
   }
 
   /**

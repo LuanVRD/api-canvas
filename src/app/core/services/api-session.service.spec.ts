@@ -505,6 +505,35 @@ describe('ApiSessionService', () => {
       expect(service.resources()[0].label).toBe('Products');
       expect(storageService.getApiUiConfiguration(testApiUrl, mockApiDefinition.baseUrl)).toBeNull();
     });
+
+    it('should resolve resource page through resolveResourcePage method', () => {
+      service.setSession(mockApiDefinition, { openApiUrl: testApiUrl });
+      service.setUiConfiguration({
+        pages: {
+          productsPage: {
+            resourceId: 'products',
+            title: 'Produtos Custom',
+            operations: {
+              list: 'get_products'
+            }
+          }
+        }
+      });
+
+      const resolved = service.resolveResourcePage('products');
+      expect(resolved).toBeTruthy();
+      expect(resolved?.resourceId).toBe('products');
+      expect(resolved?.list?.id).toBe('get_products');
+      expect(resolved?.explicitOverrides.list).toBe(true);
+    });
+
+    it('should return null when calling resolveResourcePage without active session or non-existent resource', () => {
+      service.clearSession();
+      expect(service.resolveResourcePage('products')).toBeNull();
+
+      service.setSession(mockApiDefinition);
+      expect(service.resolveResourcePage('unknown_res')).toBeNull();
+    });
   });
 });
 

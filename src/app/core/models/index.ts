@@ -10,3 +10,4 @@ export * from './built-api-request.model';
 export * from './ui-configuration.model';
 export * from './ui-validation.model';
 export * from './storage.model';
+export * from './resolved-resource-page.model';
