@@ -15,6 +15,8 @@ import { ResourcePageFacadeService } from './services/resource-page-facade.servi
 import { TableActionConfig } from '../../dynamic-ui/dynamic-table/dynamic-table.component';
 import { TableSchemaService, TableColumnDescriptor } from '../../dynamic-ui/dynamic-table/table-schema.service';
 import { ResourcePageContentComponent } from './components/resource-page-content/resource-page-content.component';
+import { CreateRecordDialogComponent } from '../../dynamic-ui/create-dialog/create-record-dialog.component';
+import { ApiExecutionResult } from '../../core/models/api-execution-result.model';
 
 /**
  * Dashboard feature page — operational view for custom resource pages.
@@ -34,7 +36,8 @@ import { ResourcePageContentComponent } from './components/resource-page-content
     EmptyStateComponent,
     DashboardSidebarComponent,
     AuthConfigDialogComponent,
-    ResourcePageContentComponent
+    ResourcePageContentComponent,
+    CreateRecordDialogComponent
   ],
   providers: [ResourcePageFacadeService],
   template: `
@@ -175,6 +178,15 @@ import { ResourcePageContentComponent } from './components/resource-page-content
       <!-- Auth Dialog Modal -->
       @if (isAuthDialogOpen()) {
         <app-auth-config-dialog (close)="isAuthDialogOpen.set(false)" />
+      }
+
+      <!-- Create Record Dialog Modal -->
+      @if (isCreateDialogOpen() && facade.resolvedPage()?.create; as createOp) {
+        <app-create-record-dialog
+          [operation]="createOp"
+          (close)="isCreateDialogOpen.set(false)"
+          (created)="onCreateSuccess($event)"
+        />
       }
     </div>
   `,
@@ -376,6 +388,7 @@ export class DashboardPage implements OnInit, OnDestroy {
   private routeSub?: Subscription;
 
   readonly isAuthDialogOpen = signal<boolean>(false);
+  readonly isCreateDialogOpen = signal<boolean>(false);
   readonly requestedSlug = signal<string | null>(null);
 
   /**
@@ -626,7 +639,15 @@ export class DashboardPage implements OnInit, OnDestroy {
   }
 
   onCreateItem(): void {
-    // Stub for adding a new item / modal trigger
+    const resolved = this.facade.resolvedPage();
+    if (resolved?.create) {
+      this.isCreateDialogOpen.set(true);
+    }
+  }
+
+  onCreateSuccess(_result: ApiExecutionResult): void {
+    this.isCreateDialogOpen.set(false);
+    this.facade.refresh();
   }
 
   onSearchChange(searchTerm: string): void {

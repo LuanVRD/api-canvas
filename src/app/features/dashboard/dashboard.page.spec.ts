@@ -35,6 +35,15 @@ describe('DashboardPage', () => {
             type: 'list',
             parameters: [],
             responses: []
+          },
+          {
+            id: 'createOrder',
+            operationId: 'createOrder',
+            method: 'POST',
+            path: '/orders',
+            type: 'create',
+            parameters: [],
+            responses: []
           }
         ]
       },
@@ -298,6 +307,43 @@ describe('DashboardPage', () => {
     it('should navigate to /connect when Change API is triggered', () => {
       component.onReconnect();
       expect(router.navigate).toHaveBeenCalledWith(['/connect']);
+    });
+  });
+
+  describe('Criação de Registros (Create Record Dialog)', () => {
+    it('should open create dialog when onCreateItem is called and resolved page has create operation', () => {
+      sessionService.setUiConfiguration(mockUiConfig);
+      paramMapSubject.next(convertToParamMap({ pageSlug: 'pedidos' }));
+      fixture.detectChanges();
+
+      expect(component.isCreateDialogOpen()).toBe(false);
+      component.onCreateItem();
+      expect(component.isCreateDialogOpen()).toBe(true);
+
+      fixture.detectChanges();
+      const el: HTMLElement = fixture.nativeElement;
+      expect(el.querySelector('app-create-record-dialog')).toBeTruthy();
+    });
+
+    it('should close create dialog and trigger facade refresh on create success', () => {
+      sessionService.setUiConfiguration(mockUiConfig);
+      paramMapSubject.next(convertToParamMap({ pageSlug: 'pedidos' }));
+      fixture.detectChanges();
+
+      component.isCreateDialogOpen.set(true);
+      const refreshSpy = vi.spyOn(component.facade, 'refresh');
+
+      component.onCreateSuccess({
+        status: 201,
+        statusText: 'Created',
+        data: { id: 1, customer: 'Test' },
+        duration: 10,
+        durationMs: 10,
+        isSuccess: true
+      });
+
+      expect(component.isCreateDialogOpen()).toBe(false);
+      expect(refreshSpy).toHaveBeenCalled();
     });
   });
 });

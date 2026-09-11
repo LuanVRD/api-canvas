@@ -89,15 +89,17 @@ import {
             <span>{{ isRefreshing() ? 'Recarregando...' : 'Recarregar' }}</span>
           </button>
 
-          <button
-            type="button"
-            class="btn-action-primary"
-            (click)="createItem.emit()"
-            [attr.aria-label]="createButtonLabel()"
-          >
-            <mat-icon class="action-btn-icon">add</mat-icon>
-            <span>{{ createButtonLabel() }}</span>
-          </button>
+          @if (canCreate()) {
+            <button
+              type="button"
+              class="btn-action-primary"
+              (click)="createItem.emit()"
+              [attr.aria-label]="createButtonLabel()"
+            >
+              <mat-icon class="action-btn-icon">add</mat-icon>
+              <span>{{ createButtonLabel() }}</span>
+            </button>
+          }
         </div>
       </header>
 
@@ -211,15 +213,17 @@ import {
               description="Não há dados cadastrados para este recurso ou nenhum registro correspondeu à busca."
             >
               <div class="empty-action-row">
-                <button
-                  type="button"
-                  class="btn-action-primary"
-                  (click)="createItem.emit()"
-                  aria-label="Adicionar registro"
-                >
-                  <mat-icon class="action-btn-icon">add</mat-icon>
-                  <span>{{ createButtonLabel() }}</span>
-                </button>
+                @if (canCreate()) {
+                  <button
+                    type="button"
+                    class="btn-action-primary"
+                    (click)="createItem.emit()"
+                    aria-label="Adicionar registro"
+                  >
+                    <mat-icon class="action-btn-icon">add</mat-icon>
+                    <span>{{ createButtonLabel() }}</span>
+                  </button>
+                }
                 <button
                   type="button"
                   class="btn-action-secondary"
@@ -738,6 +742,10 @@ export class ResourcePageContentComponent {
       this.items(),
       this.totalCount()
     );
+  });
+
+  readonly canCreate = computed<boolean>(() => {
+    return Boolean(this.resolvedPage()?.create);
   });
 
   onSearchInput(value: string): void {

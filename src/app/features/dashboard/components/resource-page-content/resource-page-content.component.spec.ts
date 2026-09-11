@@ -53,6 +53,21 @@ describe('ResourcePageContentComponent', () => {
     { id: '#1047', client: 'Ana Costa', status: 'Concluído' }
   ];
 
+  const mockResolvedPage = {
+    resourceId: 'orders',
+    resource: null,
+    pageConfig: mockPage,
+    list: { id: 'list_orders', operationId: 'listOrders', method: 'GET', path: '/api/v1/orders', type: 'list', parameters: [], responses: [] } as any,
+    create: { id: 'create_order', operationId: 'createOrder', method: 'POST', path: '/api/v1/orders', type: 'create', parameters: [], responses: [] } as any,
+    details: null,
+    update: null,
+    delete: null,
+    updateOperations: [],
+    customActions: [],
+    warnings: [],
+    explicitOverrides: {}
+  };
+
   beforeEach(async () => {
     await TestBed.configureTestingModule({
       imports: [ResourcePageContentComponent],
@@ -70,8 +85,9 @@ describe('ResourcePageContentComponent', () => {
   });
 
   describe('Header e Ações', () => {
-    it('should render title, description, resource badge and action buttons', () => {
+    it('should render title, description, resource badge and action buttons when canCreate is true', () => {
       fixture.componentRef.setInput('page', mockPage);
+      fixture.componentRef.setInput('resolvedPage', mockResolvedPage);
       fixture.detectChanges();
 
       const el: HTMLElement = fixture.nativeElement;
@@ -86,8 +102,20 @@ describe('ResourcePageContentComponent', () => {
       expect(buttonTexts).toContain('Adicionar pedido');
     });
 
+    it('should hide create button when resolvedPage has no create operation', () => {
+      fixture.componentRef.setInput('page', mockPage);
+      fixture.componentRef.setInput('resolvedPage', { ...mockResolvedPage, create: null });
+      fixture.detectChanges();
+
+      const el: HTMLElement = fixture.nativeElement;
+      const buttons = el.querySelectorAll('button');
+      const buttonTexts = Array.from(buttons).map((b) => b.querySelector('span')?.textContent?.trim() || b.textContent?.trim());
+      expect(buttonTexts).not.toContain('Adicionar pedido');
+    });
+
     it('should emit editPage, refresh and createItem events when buttons are clicked', () => {
       fixture.componentRef.setInput('page', mockPage);
+      fixture.componentRef.setInput('resolvedPage', mockResolvedPage);
       fixture.detectChanges();
 
       const editSpy = vi.fn();
