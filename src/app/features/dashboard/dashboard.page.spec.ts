@@ -1,16 +1,19 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { DashboardPage } from './dashboard.page';
 import { ApiSessionService } from '../../core/services/api-session.service';
+import { ApiExecutorService } from '../../core/services/api-executor.service';
 import { ApiDefinition } from '../../core/models/api-definition.model';
 import { UiConfiguration } from '../../core/models/ui-configuration.model';
 import { ActivatedRoute, Router, convertToParamMap } from '@angular/router';
 import { provideAnimationsAsync } from '@angular/platform-browser/animations/async';
-import { BehaviorSubject } from 'rxjs';
+import { BehaviorSubject, of } from 'rxjs';
+import { ResourcePageFacadeService } from './services/resource-page-facade.service';
 
 describe('DashboardPage', () => {
   let component: DashboardPage;
   let fixture: ComponentFixture<DashboardPage>;
   let sessionService: ApiSessionService;
+  let apiExecutor: ApiExecutorService;
   let router: Router;
   let paramMapSubject: BehaviorSubject<any>;
 
@@ -23,13 +26,33 @@ describe('DashboardPage', () => {
         id: 'orders',
         name: 'Orders',
         label: 'Pedidos',
-        operations: []
+        operations: [
+          {
+            id: 'listOrders',
+            operationId: 'listOrders',
+            method: 'GET',
+            path: '/orders',
+            type: 'list',
+            parameters: [],
+            responses: []
+          }
+        ]
       },
       {
         id: 'customers',
         name: 'Customers',
         label: 'Clientes',
-        operations: []
+        operations: [
+          {
+            id: 'listCustomers',
+            operationId: 'listCustomers',
+            method: 'GET',
+            path: '/customers',
+            type: 'list',
+            parameters: [],
+            responses: []
+          }
+        ]
       }
     ]
   };
@@ -88,6 +111,22 @@ describe('DashboardPage', () => {
         provideAnimationsAsync(),
         ApiSessionService,
         {
+          provide: ApiExecutorService,
+          useValue: {
+            execute: vi.fn().mockReturnValue(
+              of({
+                status: 200,
+                statusText: 'OK',
+                data: [{ id: 'ORD-1' }, { id: 'ORD-2' }],
+                duration: 15,
+                durationMs: 15,
+                isSuccess: true,
+                timestamp: Date.now()
+              })
+            )
+          }
+        },
+        {
           provide: Router,
           useValue: {
             navigate: vi.fn()
@@ -103,6 +142,7 @@ describe('DashboardPage', () => {
     }).compileComponents();
 
     sessionService = TestBed.inject(ApiSessionService);
+    apiExecutor = TestBed.inject(ApiExecutorService);
     router = TestBed.inject(Router);
     sessionService.setSession(mockApiDefinition);
 
@@ -110,9 +150,10 @@ describe('DashboardPage', () => {
     component = fixture.componentInstance;
   });
 
-  it('should create the component', () => {
+  it('should create the component and instantiate scoped feature facade', () => {
     fixture.detectChanges();
     expect(component).toBeTruthy();
+    expect(component.facade).toBeInstanceOf(ResourcePageFacadeService);
   });
 
   it('should render API context bar with connected API title and version', () => {
@@ -160,8 +201,8 @@ describe('DashboardPage', () => {
     });
   });
 
-  describe('Resolução de slug válido', () => {
-    it('should resolve pageSlug from route params and render active page header', () => {
+  describe('Resolução de slug válido e Facade Integration', () => {
+    it('should resolve pageSlug from route params and delegate loading to facade', async () => {
       sessionService.setUiConfiguration(mockUiConfig);
       paramMapSubject.next(convertToParamMap({ pageSlug: 'pedidos' }));
       fixture.detectChanges();
@@ -173,16 +214,36 @@ describe('DashboardPage', () => {
       const el: HTMLElement = fixture.nativeElement;
       const headerTitle = el.querySelector('.page-title');
       expect(headerTitle?.textContent?.trim()).toBe('Pedidos CRUD');
-    });
 
-    it('should resolve page by id if slug matches id for backward compatibility', () => {
-      sessionService.setUiConfiguration(mockUiConfig);
-      paramMapSubject.next(convertToParamMap({ pageSlug: 'customers-page' }));
+      // Wait for facade async loading
+      await new Promise((resolve) => setTimeout(resolve, 20));
       fixture.detectChanges();
 
-      expect(component.selectedPage()?.slug).toBe('clientes');
-      expect(component.selectedPage()?.title).toBe('Clientes');
-      expect(component.isInvalidSlug()).toBe(false);
+      expect(component.facade.status()).toBe('success');
+      expect(component.facade.totalCount()).toBe(2);
+      expect(el.querySelector('.placeholder-text')?.textContent).toContain('Total de registros carregados: 2');
+    });
+
+    it('should delegate refresh button click to facade.refresh()', async () => {
+      sessionService.setUiConfiguration(mockUiConfig);
+      paramMapSubject.next(convertToParamMap({ pageSlug: 'pedidos' }));
+      fixture.detectChanges();
+
+      const refreshSpy = vi.spyOn(component.facade, 'refresh');
+      component.onRefresh();
+
+      expect(refreshSpy).toHaveBeenCalled();
+    });
+
+    it('should delegate retry button click to facade.retry()', async () => {
+      sessionService.setUiConfiguration(mockUiConfig);
+      paramMapSubject.next(convertToParamMap({ pageSlug: 'pedidos' }));
+      fixture.detectChanges();
+
+      const retrySpy = vi.spyOn(component.facade, 'retry');
+      component.onRetry();
+
+      expect(retrySpy).toHaveBeenCalled();
     });
   });
 

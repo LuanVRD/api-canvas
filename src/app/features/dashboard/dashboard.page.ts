@@ -6,17 +6,20 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
 import { ApiContextBarComponent } from '../../shared/components/api-context-bar/api-context-bar.component';
 import { EmptyStateComponent } from '../../shared/components/empty-state/empty-state.component';
+import { LoadingIndicatorComponent } from '../../shared/components/loading-indicator/loading-indicator.component';
 import { DashboardSidebarComponent } from './dashboard-sidebar.component';
 import { AuthConfigDialogComponent } from '../workspace/auth-config-dialog.component';
 import { ApiSessionService } from '../../core/services/api-session.service';
 import { UiConfigurationService } from '../../core/services/ui-configuration.service';
 import { UiPageConfiguration } from '../../core/models/ui-configuration.model';
+import { ResourcePageFacadeService } from './services/resource-page-facade.service';
 
 /**
  * Dashboard feature page — operational view for custom resource pages.
  *
  * Provides stable URL parameterized routing (/dashboard/:pageSlug), sidebar navigation,
  * default page redirection, invalid slug fallback state, and integration with the active API session.
+ * All HTTP execution, caching, mutation listening, errors and loading states are delegated to ResourcePageFacadeService.
  */
 @Component({
   selector: 'app-dashboard-page',
@@ -27,9 +30,11 @@ import { UiPageConfiguration } from '../../core/models/ui-configuration.model';
     MatButtonModule,
     ApiContextBarComponent,
     EmptyStateComponent,
+    LoadingIndicatorComponent,
     DashboardSidebarComponent,
     AuthConfigDialogComponent
   ],
+  providers: [ResourcePageFacadeService],
   template: `
     <div class="dashboard-layout">
       <!-- Context Bar: API Metadata, Auth & Change API -->
@@ -160,11 +165,12 @@ import { UiPageConfiguration } from '../../core/models/ui-configuration.model';
                     type="button"
                     class="btn-header-secondary"
                     (click)="onRefresh()"
+                    [disabled]="facade.isLoading() || facade.isRefreshing()"
                     aria-label="Recarregar dados"
                     title="Recarregar dados"
                   >
-                    <mat-icon class="action-icon">refresh</mat-icon>
-                    <span>Recarregar</span>
+                    <mat-icon class="action-icon" [class.rotating]="facade.isRefreshing()">refresh</mat-icon>
+                    <span>{{ facade.isRefreshing() ? 'Recarregando...' : 'Recarregar' }}</span>
                   </button>
                   @if (selectedPage()?.actions?.primaryCreateLabel || selectedPage()?.actions?.primaryCreateActionId) {
                     <button
@@ -181,15 +187,60 @@ import { UiPageConfiguration } from '../../core/models/ui-configuration.model';
 
               <!-- Page Content Container -->
               <div class="page-content-wrapper">
-                <div class="page-placeholder-card">
-                  <div class="placeholder-content">
-                    <mat-icon class="placeholder-icon">layers</mat-icon>
-                    <h3 class="placeholder-title">{{ selectedPage()?.title }}</h3>
-                    <p class="placeholder-text">
-                      Estrutura visual da página pronta. Os componentes dinâmicos de Métricas, Filtros e Tabela serão carregados nesta visão.
-                    </p>
+                @if (facade.isLoading()) {
+                  <!-- Loading State -->
+                  <div class="dashboard-state-container" aria-label="Carregando dados">
+                    <app-loading-indicator label="Carregando dados da página..." />
                   </div>
-                </div>
+                } @else if (facade.isError()) {
+                  <!-- Error State with Retry -->
+                  <div class="dashboard-error-card" role="alert">
+                    <div class="error-icon-wrapper">
+                      <mat-icon class="error-hero-icon">error_outline</mat-icon>
+                    </div>
+                    <h3 class="error-title">Falha ao carregar dados</h3>
+                    <p class="error-message">{{ facade.error()?.message }}</p>
+                    @if (facade.error()?.hint) {
+                      <p class="error-hint">{{ facade.error()?.hint }}</p>
+                    }
+                    <div class="error-actions">
+                      <button
+                        type="button"
+                        class="btn-primary-action"
+                        (click)="onRetry()"
+                        aria-label="Tentar novamente"
+                      >
+                        <mat-icon>refresh</mat-icon>
+                        <span>Tentar novamente</span>
+                      </button>
+                    </div>
+                  </div>
+                } @else if (facade.isEmpty()) {
+                  <!-- Empty Dataset State -->
+                  <div class="dashboard-empty-container">
+                    <app-empty-state
+                      icon="inbox"
+                      title="Nenhum registro encontrado"
+                      description="Não há dados disponíveis para este recurso no momento."
+                    />
+                  </div>
+                } @else {
+                  <!-- Success State: Render Data View -->
+                  <div class="page-placeholder-card">
+                    <div class="placeholder-content">
+                      <mat-icon class="placeholder-icon">layers</mat-icon>
+                      <h3 class="placeholder-title">{{ selectedPage()?.title }}</h3>
+                      <p class="placeholder-text">
+                        Total de registros carregados: <strong class="font-mono text-highlight">{{ facade.totalCount() }}</strong>
+                      </p>
+                      @if (facade.lastExecutionDurationMs()) {
+                        <span class="latency-indicator font-mono">
+                          Tempo de resposta: {{ facade.lastExecutionDurationMs() }}ms
+                        </span>
+                      }
+                    </div>
+                  </div>
+                }
               </div>
             </section>
           } @else {
@@ -466,10 +517,15 @@ import { UiPageConfiguration } from '../../core/models/ui-configuration.model';
       transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
       outline: none;
 
-      &:hover {
+      &:hover:not(:disabled) {
         background: var(--canvas-surface-elevated);
         color: var(--canvas-text-primary);
         border-color: var(--canvas-border-subtle);
+      }
+
+      &:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
       }
 
       &:focus-visible {
@@ -482,6 +538,16 @@ import { UiPageConfiguration } from '../../core/models/ui-configuration.model';
         width: 14px;
         height: 14px;
         color: var(--canvas-text-muted);
+
+        &.rotating {
+          animation: spin 1s linear infinite;
+        }
+      }
+    }
+
+    @keyframes spin {
+      100% {
+        transform: rotate(360deg);
       }
     }
 
@@ -521,6 +587,75 @@ import { UiPageConfiguration } from '../../core/models/ui-configuration.model';
       display: flex;
       flex-direction: column;
       gap: 16px;
+      min-height: 200px;
+    }
+
+    .dashboard-state-container,
+    .dashboard-empty-container {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 240px;
+      background: var(--canvas-surface);
+      border: 1px solid var(--canvas-border);
+      border-radius: var(--radius-md);
+      padding: 32px;
+    }
+
+    .dashboard-error-card {
+      background: var(--canvas-surface);
+      border: 1px solid var(--status-error-border, rgba(239, 68, 68, 0.3));
+      border-radius: var(--radius-md);
+      padding: 36px 24px;
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+
+      .error-icon-wrapper {
+        width: 44px;
+        height: 44px;
+        border-radius: var(--radius-md);
+        background: rgba(239, 68, 68, 0.1);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin-bottom: 12px;
+
+        .error-hero-icon {
+          font-size: 24px;
+          width: 24px;
+          height: 24px;
+          color: var(--status-error, #ef4444);
+        }
+      }
+
+      .error-title {
+        font-size: 16px;
+        font-weight: 600;
+        color: var(--canvas-text-primary);
+        margin: 0 0 6px;
+      }
+
+      .error-message {
+        font-size: 13px;
+        color: var(--canvas-text-secondary);
+        margin: 0 0 8px;
+        max-width: 500px;
+      }
+
+      .error-hint {
+        font-size: 11px;
+        color: var(--canvas-text-muted);
+        margin: 0 0 20px;
+        max-width: 460px;
+      }
+
+      .error-actions {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
     }
 
     .page-placeholder-card {
@@ -560,6 +695,12 @@ import { UiPageConfiguration } from '../../core/models/ui-configuration.model';
           line-height: 1.5;
           margin: 0;
         }
+
+        .latency-indicator {
+          font-size: 10px;
+          color: var(--canvas-text-muted);
+          margin-top: 4px;
+        }
       }
     }
 
@@ -592,6 +733,8 @@ export class DashboardPage implements OnInit, OnDestroy {
   private readonly uiConfigService = inject(UiConfigurationService);
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
+
+  readonly facade = inject(ResourcePageFacadeService);
 
   private routeSub?: Subscription;
 
@@ -663,6 +806,16 @@ export class DashboardPage implements OnInit, OnDestroy {
         }
       }
     });
+
+    // Synchronize active page with the scoped feature facade
+    effect(() => {
+      const page = this.selectedPage();
+      if (page) {
+        this.facade.loadPage(page, { resetParams: true });
+      } else {
+        this.facade.resetToIdle();
+      }
+    });
   }
 
   ngOnInit(): void {
@@ -683,6 +836,7 @@ export class DashboardPage implements OnInit, OnDestroy {
 
   ngOnDestroy(): void {
     this.routeSub?.unsubscribe();
+    this.facade.destroy();
   }
 
   onSelectPage(page: UiPageConfiguration): void {
@@ -715,7 +869,11 @@ export class DashboardPage implements OnInit, OnDestroy {
   }
 
   onRefresh(): void {
-    // Refresh handler for data reload
+    this.facade.refresh();
+  }
+
+  onRetry(): void {
+    this.facade.retry();
   }
 
   onOpenExplorer(): void {
