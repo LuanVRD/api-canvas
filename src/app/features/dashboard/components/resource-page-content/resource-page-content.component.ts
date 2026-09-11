@@ -4,11 +4,15 @@ import {
   computed,
   inject,
   input,
+  OnDestroy,
+  OnInit,
   output,
   signal
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { Subject, Subscription } from 'rxjs';
+import { debounceTime, distinctUntilChanged } from 'rxjs/operators';
 import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
 import { EmptyStateComponent } from '../../../../shared/components/empty-state/empty-state.component';
@@ -19,7 +23,6 @@ import {
 } from '../../../../dynamic-ui/dynamic-table/dynamic-table.component';
 import { TableColumnDescriptor } from '../../../../dynamic-ui/dynamic-table/table-schema.service';
 import {
-  UiMetricConfiguration,
   UiPageConfiguration
 } from '../../../../core/models/ui-configuration.model';
 import { ResolvedResourcePage } from '../../../../core/models/resolved-resource-page.model';
@@ -31,6 +34,7 @@ import {
   CalculatedMetric,
   UiMetricEvaluatorService
 } from '../../../../core/services/ui-metric-evaluator.service';
+import { ResolvedFilterBinding } from '../../../../core/services/list-query-binding.service';
 
 @Component({
   selector: 'app-resource-page-content',
@@ -125,21 +129,74 @@ import {
         </section>
       }
 
-      <!-- Barra de Ferramentas / Filtro Rápido / Total de Registros -->
+      <!-- Barra de Ferramentas / Filtros / Busca / Total de Registros -->
       <div class="resource-toolbar">
-        <div class="search-box">
-          <mat-icon class="search-icon">search</mat-icon>
-          <input
-            type="text"
-            class="search-input"
-            [placeholder]="searchPlaceholder()"
-            [ngModel]="searchTerm()"
-            (ngModelChange)="onSearchInput($event)"
-            aria-label="Buscar registros"
-          />
+        <div class="toolbar-left">
+          <!-- Busca Textual com Debounce -->
+          <div class="search-box">
+            <mat-icon class="search-icon">search</mat-icon>
+            <input
+              type="text"
+              class="search-input"
+              [placeholder]="searchPlaceholder()"
+              [ngModel]="localSearchTerm()"
+              (ngModelChange)="onSearchInput($event)"
+              aria-label="Buscar registros"
+            />
+            @if (localSearchTerm()) {
+              <button
+                type="button"
+                class="btn-clear-search"
+                (click)="onClearSearch()"
+                aria-label="Limpar busca"
+                title="Limpar busca"
+              >
+                <mat-icon>close</mat-icon>
+              </button>
+            }
+          </div>
+
+          <!-- Filtros Select Dinâmicos (Gerados a partir de schemas/bindings) -->
+          @if (filterBindings().length > 0) {
+            <div class="filters-group" role="group" aria-label="Filtros de consulta">
+              @for (binding of filterBindings(); track binding.name) {
+                @if (binding.type === 'select' && binding.options.length > 0) {
+                  <div class="filter-control">
+                    <label class="filter-label" [for]="'filter-' + binding.name">{{ binding.label }}:</label>
+                    <select
+                      [id]="'filter-' + binding.name"
+                      class="filter-select"
+                      [value]="getFilterValue(binding.name)"
+                      (change)="onSelectFilterChange(binding.name, $event)"
+                      [attr.aria-label]="binding.label"
+                    >
+                      <option value="" [selected]="!getFilterValue(binding.name)">Todos</option>
+                      @for (opt of binding.options; track opt.label) {
+                        <option [value]="opt.value" [selected]="getFilterValue(binding.name) === '' + opt.value">{{ opt.label }}</option>
+                      }
+                    </select>
+                  </div>
+                }
+              }
+            </div>
+          }
+
+          <!-- Botão Reset de Filtros -->
+          @if (hasActiveFilters()) {
+            <button
+              type="button"
+              class="btn-reset-filters"
+              (click)="resetFilters.emit()"
+              title="Limpar todos os filtros e ordenações"
+              aria-label="Limpar filtros"
+            >
+              <mat-icon class="reset-icon">filter_alt_off</mat-icon>
+              <span>Limpar filtros</span>
+            </button>
+          }
         </div>
 
-        <div class="toolbar-meta">
+        <div class="toolbar-right">
           <span class="records-count font-mono" aria-label="Total de registros">
             {{ totalCount() }} {{ totalCount() === 1 ? 'registro' : 'registros' }}
           </span>
@@ -224,6 +281,17 @@ import {
                     <span>{{ createButtonLabel() }}</span>
                   </button>
                 }
+                @if (hasActiveFilters()) {
+                  <button
+                    type="button"
+                    class="btn-action-secondary"
+                    (click)="resetFilters.emit()"
+                    aria-label="Limpar filtros aplicados"
+                  >
+                    <mat-icon class="action-btn-icon">filter_alt_off</mat-icon>
+                    <span>Limpar Filtros</span>
+                  </button>
+                }
                 <button
                   type="button"
                   class="btn-action-secondary"
@@ -247,22 +315,76 @@ import {
               layoutMode="full-height"
               [showActions]="rowActions().length > 0"
               [actions]="rowActions()"
+              [sortField]="sortField()"
+              [sortOrder]="sortOrder()"
+              (sortChange)="sortChange.emit($event)"
               (rowView)="rowView.emit($event)"
               (rowEdit)="rowEdit.emit($event)"
               (rowDelete)="rowDelete.emit($event)"
               (rowSelect)="rowSelect.emit($event)"
               (rowAction)="rowAction.emit($event)"
             />
-            <div class="table-meta-footer">
-              <span class="meta-item font-mono">
-                Total carregado: <strong>{{ items().length }}</strong> de <strong>{{ totalCount() }}</strong>
-              </span>
-              @if (lastExecutionDurationMs()) {
-                <span class="meta-item font-mono text-muted">
-                  Tempo: {{ lastExecutionDurationMs() }}ms
+
+            <!-- Rodapé Operacional / Controles de Paginação -->
+            <footer class="table-footer-bar">
+              <div class="footer-left">
+                <span class="meta-item font-mono">
+                  Exibindo <strong>{{ items().length }}</strong> de <strong>{{ totalCount() }}</strong>
                 </span>
-              }
-            </div>
+                @if (lastExecutionDurationMs()) {
+                  <span class="meta-separator">·</span>
+                  <span class="meta-item font-mono text-muted">
+                    {{ lastExecutionDurationMs() }}ms
+                  </span>
+                }
+              </div>
+
+              <div class="footer-pagination">
+                <!-- Seletor de Page Size -->
+                <div class="page-size-control">
+                  <span class="page-size-label">Linhas por pág:</span>
+                  <select
+                    class="page-size-select"
+                    [value]="pageSize()"
+                    (change)="onPageSizeChange($event)"
+                    aria-label="Quantidade de linhas por página"
+                  >
+                    @for (sizeOpt of pageSizeOptions(); track sizeOpt) {
+                      <option [value]="sizeOpt">{{ sizeOpt }}</option>
+                    }
+                  </select>
+                </div>
+
+                <!-- Botões de Navegação -->
+                <div class="pagination-nav">
+                  <button
+                    type="button"
+                    class="btn-page-nav"
+                    [disabled]="currentPage() <= 1 || isRefreshing()"
+                    (click)="pageChange.emit(currentPage() - 1)"
+                    aria-label="Página anterior"
+                    title="Página anterior"
+                  >
+                    <mat-icon>chevron_left</mat-icon>
+                  </button>
+
+                  <span class="page-number-display font-mono">
+                    {{ currentPage() }} / {{ totalPages() }}
+                  </span>
+
+                  <button
+                    type="button"
+                    class="btn-page-nav"
+                    [disabled]="currentPage() >= totalPages() || isRefreshing()"
+                    (click)="pageChange.emit(currentPage() + 1)"
+                    aria-label="Próxima página"
+                    title="Próxima página"
+                  >
+                    <mat-icon>chevron_right</mat-icon>
+                  </button>
+                </div>
+              </div>
+            </footer>
           </div>
         }
       </main>
@@ -500,30 +622,39 @@ import {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      gap: 16px;
+      gap: 12px;
       flex-shrink: 0;
+      flex-wrap: wrap;
+
+      .toolbar-left {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        flex-wrap: wrap;
+        flex: 1;
+      }
 
       .search-box {
         position: relative;
         display: flex;
         align-items: center;
         width: 100%;
-        max-width: 360px;
+        max-width: 280px;
 
         .search-icon {
           position: absolute;
-          left: 10px;
-          font-size: 16px;
-          width: 16px;
-          height: 16px;
+          left: 9px;
+          font-size: 15px;
+          width: 15px;
+          height: 15px;
           color: var(--canvas-text-muted, #6e7681);
           pointer-events: none;
         }
 
         .search-input {
           width: 100%;
-          height: 30px;
-          padding: 0 10px 0 32px;
+          height: 28px;
+          padding: 0 26px 0 28px;
           background: var(--canvas-surface, #161b22);
           border: 1px solid var(--canvas-border, #30363d);
           border-radius: var(--radius-sm, 4px);
@@ -540,9 +671,94 @@ import {
             border-color: var(--canvas-text-link, #58a6ff);
           }
         }
+
+        .btn-clear-search {
+          position: absolute;
+          right: 4px;
+          background: transparent;
+          border: none;
+          color: var(--canvas-text-muted, #6e7681);
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 2px;
+
+          &:hover {
+            color: var(--canvas-text-primary, #e6edf3);
+          }
+
+          mat-icon {
+            font-size: 14px;
+            width: 14px;
+            height: 14px;
+          }
+        }
       }
 
-      .toolbar-meta {
+      .filters-group {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+
+        .filter-control {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+
+          .filter-label {
+            font-size: 11px;
+            color: var(--canvas-text-secondary, #8b949e);
+            white-space: nowrap;
+          }
+
+          .filter-select {
+            height: 28px;
+            background: var(--canvas-surface, #161b22);
+            border: 1px solid var(--canvas-border, #30363d);
+            border-radius: var(--radius-sm, 4px);
+            color: var(--canvas-text-primary, #e6edf3);
+            font-size: 11px;
+            padding: 0 8px;
+            outline: none;
+            cursor: pointer;
+
+            &:focus {
+              border-color: var(--canvas-text-link, #58a6ff);
+            }
+          }
+        }
+      }
+
+      .btn-reset-filters {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        height: 26px;
+        padding: 0 8px;
+        background: transparent;
+        border: 1px dashed var(--canvas-border, #30363d);
+        border-radius: var(--radius-sm, 4px);
+        color: var(--canvas-text-muted, #6e7681);
+        font-size: 11px;
+        cursor: pointer;
+        transition: all 0.12s ease;
+
+        &:hover {
+          color: var(--color-danger, #f85149);
+          border-color: var(--color-danger, #f85149);
+          background: rgba(248, 81, 73, 0.08);
+        }
+
+        .reset-icon {
+          font-size: 13px;
+          width: 13px;
+          height: 13px;
+        }
+      }
+
+      .toolbar-right {
         display: flex;
         align-items: center;
         gap: 12px;
@@ -550,6 +766,7 @@ import {
         .records-count {
           font-size: 12px;
           color: var(--canvas-text-secondary, #8b949e);
+          white-space: nowrap;
         }
       }
     }
@@ -578,17 +795,103 @@ import {
       }
     }
 
-    .table-meta-footer {
+    /* Rodapé Operacional com Paginação */
+    .table-footer-bar {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding: 0 4px;
+      padding: 6px 10px;
+      background: var(--canvas-surface, #161b22);
+      border: 1px solid var(--canvas-border, #30363d);
+      border-radius: var(--radius-sm, 4px);
       font-size: 11px;
       color: var(--canvas-text-secondary, #8b949e);
       flex-shrink: 0;
 
-      .text-muted {
-        color: var(--canvas-text-muted, #6e7681);
+      .footer-left {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+
+        .meta-separator {
+          color: var(--canvas-text-muted, #6e7681);
+        }
+
+        .text-muted {
+          color: var(--canvas-text-muted, #6e7681);
+        }
+      }
+
+      .footer-pagination {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+
+        .page-size-control {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+
+          .page-size-label {
+            color: var(--canvas-text-muted, #6e7681);
+            font-size: 11px;
+          }
+
+          .page-size-select {
+            height: 24px;
+            background: var(--canvas-surface-elevated, #21262d);
+            border: 1px solid var(--canvas-border, #30363d);
+            border-radius: var(--radius-sm, 4px);
+            color: var(--canvas-text-primary, #e6edf3);
+            font-size: 11px;
+            padding: 0 4px;
+            outline: none;
+            cursor: pointer;
+          }
+        }
+
+        .pagination-nav {
+          display: flex;
+          align-items: center;
+          gap: 4px;
+
+          .btn-page-nav {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 24px;
+            height: 24px;
+            background: var(--canvas-surface-elevated, #21262d);
+            border: 1px solid var(--canvas-border, #30363d);
+            border-radius: var(--radius-sm, 4px);
+            color: var(--canvas-text-primary, #e6edf3);
+            cursor: pointer;
+            transition: background 0.1s ease;
+
+            &:hover:not(:disabled) {
+              background: var(--canvas-border, #30363d);
+            }
+
+            &:disabled {
+              opacity: 0.35;
+              cursor: not-allowed;
+            }
+
+            mat-icon {
+              font-size: 16px;
+              width: 16px;
+              height: 16px;
+            }
+          }
+
+          .page-number-display {
+            padding: 0 6px;
+            color: var(--canvas-text-primary, #e6edf3);
+            font-size: 11px;
+            min-width: 44px;
+            text-align: center;
+          }
+        }
       }
     }
 
@@ -693,10 +996,20 @@ import {
           max-width: none;
         }
       }
+
+      .table-footer-bar {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 8px;
+
+        .footer-pagination {
+          justify-content: space-between;
+        }
+      }
     }
   `]
 })
-export class ResourcePageContentComponent {
+export class ResourcePageContentComponent implements OnInit, OnDestroy {
   readonly page = input.required<UiPageConfiguration>();
   readonly resolvedPage = input<ResolvedResourcePage | null>(null);
   readonly items = input<unknown[]>([]);
@@ -709,12 +1022,29 @@ export class ResourcePageContentComponent {
   readonly isRefreshing = input<boolean>(false);
   readonly searchTerm = input<string>('');
 
+  // Pagination & Filtering Inputs
+  readonly currentPage = input<number>(1);
+  readonly pageSize = input<number>(10);
+  readonly totalPages = input<number>(1);
+  readonly pageSizeOptions = input<number[]>([10, 25, 50, 100]);
+  readonly filterBindings = input<ResolvedFilterBinding[]>([]);
+  readonly activeFilters = input<Record<string, unknown>>({});
+  readonly sortField = input<string | null>(null);
+  readonly sortOrder = input<'asc' | 'desc' | null>(null);
+  readonly hasActiveFilters = input<boolean>(false);
+
+  // Outputs
   readonly refresh = output<void>();
   readonly retry = output<void>();
   readonly editPage = output<void>();
   readonly createItem = output<void>();
   readonly openExplorer = output<void>();
   readonly searchChange = output<string>();
+  readonly pageChange = output<number>();
+  readonly pageSizeChange = output<number>();
+  readonly filterChange = output<{ key: string; value: unknown }>();
+  readonly resetFilters = output<void>();
+  readonly sortChange = output<{ field: string | null; order: 'asc' | 'desc' | null }>();
   readonly rowView = output<unknown>();
   readonly rowEdit = output<unknown>();
   readonly rowDelete = output<unknown>();
@@ -722,6 +1052,11 @@ export class ResourcePageContentComponent {
   readonly rowAction = output<{ action: string; row: unknown; event: MouseEvent }>();
 
   private readonly metricEvaluator = inject(UiMetricEvaluatorService);
+
+  // Debounce pipeline for search input
+  readonly localSearchTerm = signal<string>('');
+  private readonly searchInput$ = new Subject<string>();
+  private readonly subs = new Subscription();
 
   readonly searchPlaceholder = computed<string>(() => {
     return (
@@ -750,7 +1085,56 @@ export class ResourcePageContentComponent {
     return Boolean(this.resolvedPage()?.create);
   });
 
+  ngOnInit(): void {
+    // Sync initial search term
+    this.localSearchTerm.set(this.searchTerm() || '');
+
+    // Setup 300ms debounce pipeline
+    this.subs.add(
+      this.searchInput$
+        .pipe(
+          debounceTime(300),
+          distinctUntilChanged()
+        )
+        .subscribe((term) => {
+          this.searchChange.emit(term);
+        })
+    );
+  }
+
+  ngOnDestroy(): void {
+    this.subs.unsubscribe();
+    this.searchInput$.complete();
+  }
+
   onSearchInput(value: string): void {
-    this.searchChange.emit(value);
+    const val = value ?? '';
+    this.localSearchTerm.set(val);
+    this.searchInput$.next(val);
+  }
+
+  onClearSearch(): void {
+    this.localSearchTerm.set('');
+    this.searchChange.emit('');
+  }
+
+  getFilterValue(key: string): string {
+    const val = this.activeFilters()?.[key];
+    return val !== undefined && val !== null ? String(val) : '';
+  }
+
+  onSelectFilterChange(key: string, event: Event): void {
+    const target = event.target as HTMLSelectElement;
+    const val = target ? target.value : '';
+    this.filterChange.emit({ key, value: val });
+  }
+
+  onPageSizeChange(event: Event): void {
+    const target = event.target as HTMLSelectElement;
+    const val = target ? Number(target.value) : 10;
+    if (!isNaN(val) && val > 0) {
+      this.pageSizeChange.emit(val);
+    }
   }
 }
+

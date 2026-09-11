@@ -155,7 +155,7 @@ import { ApiExecutorService } from '../../core/services/api-executor.service';
             <app-resource-page-content
               [page]="selectedPage()!"
               [resolvedPage]="facade.resolvedPage()"
-              [items]="facade.items()"
+              [items]="facade.visibleItems()"
               [totalCount]="facade.totalCount()"
               [status]="facade.status()"
               [error]="facade.error()"
@@ -164,12 +164,26 @@ import { ApiExecutorService } from '../../core/services/api-executor.service';
               [lastExecutionDurationMs]="facade.lastExecutionDurationMs()"
               [isRefreshing]="facade.isRefreshing()"
               [searchTerm]="facade.params().searchTerm"
+              [currentPage]="facade.params().page"
+              [pageSize]="facade.params().pageSize"
+              [totalPages]="facade.totalPages()"
+              [pageSizeOptions]="facade.paginationMeta().pageSizeOptions"
+              [filterBindings]="facade.filterBindings()"
+              [activeFilters]="facade.params().filters"
+              [sortField]="facade.params().sortField ?? null"
+              [sortOrder]="facade.params().sortOrder ?? null"
+              [hasActiveFilters]="facade.hasActiveFilters()"
               (refresh)="onRefresh()"
               (retry)="onRetry()"
               (editPage)="onConfigurePages()"
               (createItem)="onCreateItem()"
               (openExplorer)="onOpenExplorer()"
               (searchChange)="onSearchChange($event)"
+              (pageChange)="onPageChange($event)"
+              (pageSizeChange)="onPageSizeChange($event)"
+              (filterChange)="onFilterChange($event)"
+              (resetFilters)="onResetFilters()"
+              (sortChange)="onSortChange($event)"
               (rowView)="onRowView($event)"
               (rowEdit)="onRowEdit($event)"
               (rowDelete)="onRowDelete($event)"
@@ -768,6 +782,26 @@ export class DashboardPage implements OnInit, OnDestroy {
 
   onSearchChange(searchTerm: string): void {
     this.facade.setSearch(searchTerm);
+  }
+
+  onPageChange(page: number): void {
+    this.facade.setPage(page);
+  }
+
+  onPageSizeChange(pageSize: number): void {
+    this.facade.setPageSize(pageSize);
+  }
+
+  onFilterChange(event: { key: string; value: unknown }): void {
+    this.facade.setFilter(event.key, event.value);
+  }
+
+  onResetFilters(): void {
+    this.facade.resetParams();
+  }
+
+  onSortChange(event: { field: string | null; order: 'asc' | 'desc' | null }): void {
+    this.facade.setSort(event.field, event.order);
   }
 
   onRefresh(): void {

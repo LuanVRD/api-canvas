@@ -285,5 +285,50 @@ describe('DynamicTableComponent', () => {
       expect(el.querySelector('.empty-icon')?.textContent).toContain('filter_alt_off');
     });
   });
+
+  describe('Column Sorting', () => {
+    it('should emit sortChange when clicking on a sortable column header', () => {
+      component.columns = [
+        { key: 'name', label: 'Name', type: 'string', sortable: true },
+        { key: 'id', label: 'ID', type: 'number', sortable: false }
+      ];
+      component.data = mockData;
+      fixture.detectChanges();
+
+      const sortSpy = vi.spyOn(component.sortChange, 'emit');
+      const el = fixture.nativeElement as HTMLElement;
+      const headers = el.querySelectorAll('th.table-header');
+
+      // Click on sortable header 'name'
+      (headers[0] as HTMLElement).click();
+      expect(sortSpy).toHaveBeenCalledWith({ field: 'name', order: 'asc' });
+
+      // Simulate active sort asc and click again
+      component.sortField = 'name';
+      component.sortOrder = 'asc';
+      fixture.detectChanges();
+
+      (headers[0] as HTMLElement).click();
+      expect(sortSpy).toHaveBeenCalledWith({ field: 'name', order: 'desc' });
+
+      // Click on non-sortable header 'id'
+      sortSpy.mockClear();
+      (headers[1] as HTMLElement).click();
+      expect(sortSpy).not.toHaveBeenCalled();
+    });
+
+    it('should display sort indicators according to sortField and sortOrder', () => {
+      component.columns = mockColumns;
+      component.data = mockData;
+      component.sortField = 'price';
+      component.sortOrder = 'desc';
+      fixture.detectChanges();
+
+      const el = fixture.nativeElement as HTMLElement;
+      const activeIcon = el.querySelector('.sort-icon.active');
+      expect(activeIcon).toBeTruthy();
+      expect(activeIcon?.textContent?.trim()).toBe('arrow_downward');
+    });
+  });
 });
 

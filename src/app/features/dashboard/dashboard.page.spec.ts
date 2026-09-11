@@ -311,7 +311,7 @@ describe('DashboardPage', () => {
       expect(component.facade.status()).toBe('success');
       expect(component.facade.totalCount()).toBe(2);
       expect(el.querySelector('app-resource-page-content')).toBeTruthy();
-      expect(el.querySelector('.table-meta-footer')?.textContent).toContain('Total carregado: 2 de 2');
+      expect(el.querySelector('.table-footer-bar')?.textContent).toContain('Exibindo 2 de 2');
     });
 
     it('should delegate refresh button click to facade.refresh()', async () => {

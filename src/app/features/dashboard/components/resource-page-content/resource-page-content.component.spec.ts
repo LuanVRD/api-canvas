@@ -211,7 +211,7 @@ describe('ResourcePageContentComponent', () => {
       expect(val?.classList.contains('color-warning')).toBe(true);
     });
 
-    it('should emit searchChange on typing into the search input', () => {
+    it('should emit searchChange on typing into the search input with debounce', async () => {
       fixture.componentRef.setInput('page', mockPage);
       fixture.detectChanges();
 
@@ -219,7 +219,126 @@ describe('ResourcePageContentComponent', () => {
       component.searchChange.subscribe(searchSpy);
 
       component.onSearchInput('termo de busca');
+      expect(searchSpy).not.toHaveBeenCalled(); // Debounce in flight
+
+      await new Promise((resolve) => setTimeout(resolve, 350));
       expect(searchSpy).toHaveBeenCalledWith('termo de busca');
+    });
+
+    it('should emit searchChange immediately when clearing search', () => {
+      fixture.componentRef.setInput('page', mockPage);
+      fixture.detectChanges();
+
+      const searchSpy = vi.fn();
+      component.searchChange.subscribe(searchSpy);
+
+      component.onSearchInput('teste');
+      component.onClearSearch();
+
+      expect(searchSpy).toHaveBeenCalledWith('');
+      expect(component.localSearchTerm()).toBe('');
+    });
+
+    it('should render filter select controls and emit filterChange when changed', () => {
+      const filterBindings = [
+        {
+          name: 'status',
+          queryParam: 'status',
+          label: 'Status',
+          type: 'select' as const,
+          options: [
+            { label: 'Pendente', value: 'pending' },
+            { label: 'Concluído', value: 'completed' }
+          ]
+        }
+      ];
+
+      fixture.componentRef.setInput('page', mockPage);
+      fixture.componentRef.setInput('filterBindings', filterBindings);
+      fixture.componentRef.setInput('activeFilters', { status: 'pending' });
+      fixture.detectChanges();
+
+      const el: HTMLElement = fixture.nativeElement;
+      const select = el.querySelector('#filter-status') as HTMLSelectElement;
+      expect(select).toBeTruthy();
+      expect(select.value).toBe('pending');
+
+      const filterSpy = vi.fn();
+      component.filterChange.subscribe(filterSpy);
+
+      select.value = 'completed';
+      select.dispatchEvent(new Event('change'));
+
+      expect(filterSpy).toHaveBeenCalledWith({ key: 'status', value: 'completed' });
+    });
+
+    it('should render reset filters button when hasActiveFilters is true and emit resetFilters on click', () => {
+      fixture.componentRef.setInput('page', mockPage);
+      fixture.componentRef.setInput('hasActiveFilters', true);
+      fixture.detectChanges();
+
+      const el: HTMLElement = fixture.nativeElement;
+      const resetBtn = el.querySelector('.btn-reset-filters') as HTMLButtonElement;
+      expect(resetBtn).toBeTruthy();
+
+      const resetSpy = vi.fn();
+      component.resetFilters.subscribe(resetSpy);
+
+      resetBtn.click();
+      expect(resetSpy).toHaveBeenCalled();
+    });
+  });
+
+  describe('Paginação e Rodapé', () => {
+    it('should render pagination controls and emit pageChange on next/previous click', () => {
+      fixture.componentRef.setInput('page', mockPage);
+      fixture.componentRef.setInput('status', 'success');
+      fixture.componentRef.setInput('items', mockItems);
+      fixture.componentRef.setInput('columns', mockColumns);
+      fixture.componentRef.setInput('totalCount', 50);
+      fixture.componentRef.setInput('currentPage', 2);
+      fixture.componentRef.setInput('pageSize', 10);
+      fixture.componentRef.setInput('totalPages', 5);
+      fixture.detectChanges();
+
+      const el: HTMLElement = fixture.nativeElement;
+      const pageDisplay = el.querySelector('.page-number-display');
+      expect(pageDisplay?.textContent?.trim()).toBe('2 / 5');
+
+      const pageSpy = vi.fn();
+      component.pageChange.subscribe(pageSpy);
+
+      const navButtons = el.querySelectorAll('.btn-page-nav');
+      const prevBtn = navButtons[0] as HTMLButtonElement;
+      const nextBtn = navButtons[1] as HTMLButtonElement;
+
+      prevBtn.click();
+      expect(pageSpy).toHaveBeenCalledWith(1);
+
+      nextBtn.click();
+      expect(pageSpy).toHaveBeenCalledWith(3);
+    });
+
+    it('should emit pageSizeChange when selecting a different page size option', () => {
+      fixture.componentRef.setInput('page', mockPage);
+      fixture.componentRef.setInput('status', 'success');
+      fixture.componentRef.setInput('items', mockItems);
+      fixture.componentRef.setInput('columns', mockColumns);
+      fixture.componentRef.setInput('pageSize', 10);
+      fixture.componentRef.setInput('pageSizeOptions', [10, 25, 50]);
+      fixture.detectChanges();
+
+      const pageSizeSpy = vi.fn();
+      component.pageSizeChange.subscribe(pageSizeSpy);
+
+      const el: HTMLElement = fixture.nativeElement;
+      const select = el.querySelector('.page-size-select') as HTMLSelectElement;
+      expect(select).toBeTruthy();
+
+      select.value = '25';
+      select.dispatchEvent(new Event('change'));
+
+      expect(pageSizeSpy).toHaveBeenCalledWith(25);
     });
   });
 
@@ -305,7 +424,7 @@ describe('ResourcePageContentComponent', () => {
       const el: HTMLElement = fixture.nativeElement;
       const table = el.querySelector('app-dynamic-table');
       expect(table).toBeTruthy();
-      expect(el.querySelector('.table-meta-footer')?.textContent).toContain('Total carregado: 2 de 2');
+      expect(el.querySelector('.table-footer-bar')?.textContent).toContain('Exibindo 2 de 2');
     });
   });
 });

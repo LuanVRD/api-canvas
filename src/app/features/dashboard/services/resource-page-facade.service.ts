@@ -4,6 +4,12 @@ import { switchMap } from 'rxjs/operators';
 import { ApiSessionService } from '../../../core/services/api-session.service';
 import { ApiExecutorService } from '../../../core/services/api-executor.service';
 import { ApiRequestBuilderService } from '../../../core/services/api-request-builder.service';
+import {
+  ListQueryBindingService,
+  ResolvedFilterBinding,
+  ResolvedPaginationMeta,
+  ResolvedSortMeta
+} from '../../../core/services/list-query-binding.service';
 import { ResolvedResourcePage } from '../../../core/models/resolved-resource-page.model';
 import { UiPageConfiguration } from '../../../core/models/ui-configuration.model';
 import { ApiRequestInput } from '../../../core/models/api-request-input.model';
@@ -51,6 +57,7 @@ export class ResourcePageFacadeService implements OnDestroy {
   private readonly sessionService = inject(ApiSessionService);
   private readonly apiExecutor = inject(ApiExecutorService);
   private readonly requestBuilder = inject(ApiRequestBuilderService);
+  private readonly queryBinding = inject(ListQueryBindingService);
 
   // --- Internal Reactive State ---
   private readonly _state = signal<ResourcePageState>({ ...INITIAL_STATE });
@@ -88,6 +95,72 @@ export class ResourcePageFacadeService implements OnDestroy {
   readonly isEmpty = computed<boolean>(() => this.status() === 'empty');
   readonly isError = computed<boolean>(() => this.status() === 'error');
   readonly hasData = computed<boolean>(() => (this.data()?.length ?? 0) > 0);
+
+  // Bindings & Pagination Computeds
+  readonly paginationMeta = computed<ResolvedPaginationMeta>(() => {
+    const page = this.resolvedPage();
+    const config = this.pageConfig();
+    return this.queryBinding.detectPaginationMetadata(page?.list, config);
+  });
+
+  readonly isServerPagination = computed<boolean>(() => {
+    return this.paginationMeta().mode === 'server';
+  });
+
+  readonly sortMeta = computed<ResolvedSortMeta>(() => {
+    const page = this.resolvedPage();
+    const config = this.pageConfig();
+    return this.queryBinding.detectSortMetadata(page?.list, config);
+  });
+
+  readonly filterBindings = computed<ResolvedFilterBinding[]>(() => {
+    const page = this.resolvedPage();
+    const config = this.pageConfig();
+    return this.queryBinding.detectFilterBindings(page?.list, config);
+  });
+
+  readonly searchParamName = computed<string>(() => {
+    const page = this.resolvedPage();
+    const config = this.pageConfig();
+    return this.queryBinding.detectSearchParam(page?.list, config);
+  });
+
+  /**
+   * Total de páginas calculado com base no totalCount e pageSize atual.
+   */
+  readonly totalPages = computed<number>(() => {
+    const total = this.totalCount();
+    const size = this.params().pageSize || this.paginationMeta().defaultPageSize || 10;
+    return Math.max(1, Math.ceil(total / size));
+  });
+
+  /**
+   * Itens a serem exibidos na tabela.
+   * Se for paginação server-side, o backend já entrega a fatia certa.
+   * Se for paginação client-side, fatiamos o array em memória preservando o totalCount original.
+   */
+  readonly visibleItems = computed<unknown[]>(() => {
+    const all = this.items();
+    if (this.isServerPagination()) {
+      return all;
+    }
+
+    const page = Math.max(1, this.params().page || 1);
+    const size = Math.max(1, this.params().pageSize || this.paginationMeta().defaultPageSize || 10);
+    const startIndex = (page - 1) * size;
+    return all.slice(startIndex, startIndex + size);
+  });
+
+  /**
+   * Indica se há algum filtro ou busca ativo diferente do padrão.
+   */
+  readonly hasActiveFilters = computed<boolean>(() => {
+    const p = this.params();
+    if (p.searchTerm && p.searchTerm.trim() !== '') return true;
+    if (p.filters && Object.keys(p.filters).length > 0) return true;
+    if (p.sortField && p.sortField !== this.sortMeta().defaultSortField) return true;
+    return false;
+  });
 
   constructor() {
     this.initExecutionPipeline();
@@ -148,21 +221,20 @@ export class ResourcePageFacadeService implements OnDestroy {
       return;
     }
 
-    const nextParams: ResourcePageFilterParams = options?.resetParams
-      ? {
-          ...DEFAULT_PARAMS,
-          pageSize: config?.table?.pageSize || DEFAULT_PARAMS.pageSize,
-          sortField: config?.table?.defaultSortField || DEFAULT_PARAMS.sortField,
-          sortOrder: config?.table?.defaultSortOrder || DEFAULT_PARAMS.sortOrder,
-          ...(options?.initialParams || {})
-        }
-      : {
-          ...this._state().params,
-          pageSize: config?.table?.pageSize || this._state().params.pageSize || DEFAULT_PARAMS.pageSize,
-          sortField: config?.table?.defaultSortField ?? this._state().params.sortField,
-          sortOrder: config?.table?.defaultSortOrder ?? this._state().params.sortOrder,
-          ...(options?.initialParams || {})
-        };
+    const paginationMeta = this.queryBinding.detectPaginationMetadata(resolved.list, config);
+    const sortMeta = this.queryBinding.detectSortMetadata(resolved.list, config);
+
+    const defaultPageSize = paginationMeta.defaultPageSize;
+    const defaultSortField = sortMeta.defaultSortField;
+    const defaultSortOrder = sortMeta.defaultSortOrder;
+
+    const nextParams: ResourcePageFilterParams = {
+      ...DEFAULT_PARAMS,
+      pageSize: options?.initialParams?.pageSize ?? defaultPageSize,
+      sortField: options?.initialParams?.sortField ?? defaultSortField,
+      sortOrder: options?.initialParams?.sortOrder ?? defaultSortOrder,
+      ...(options?.initialParams || {})
+    };
 
     const shouldAutoLoad = options?.autoLoad ?? config?.autoLoad ?? true;
 
@@ -260,7 +332,7 @@ export class ResourcePageFacadeService implements OnDestroy {
   }
 
   /**
-   * Updates the current page number and triggers data reload.
+   * Updates the current page number and triggers data reload (or client slice update).
    */
   setPage(page: number): void {
     if (page < 1 || page === this._state().params.page) return;
@@ -301,7 +373,13 @@ export class ResourcePageFacadeService implements OnDestroy {
    * Sets or updates multiple filter keys simultaneously and resets to page 1.
    */
   setFilters(filters: Record<string, unknown>): void {
-    this.updateParamsAndFetch({ filters: { ...filters }, page: 1 });
+    const cleanFilters: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(filters || {})) {
+      if (v !== undefined && v !== null && v !== '') {
+        cleanFilters[k] = v;
+      }
+    }
+    this.updateParamsAndFetch({ filters: cleanFilters, page: 1 });
   }
 
   /**
@@ -325,12 +403,14 @@ export class ResourcePageFacadeService implements OnDestroy {
    * Clears all filters, search terms and sorts to default values.
    */
   resetParams(): void {
-    const config = this._state().pageConfig;
+    const paginationMeta = this.paginationMeta();
+    const sortMeta = this.sortMeta();
+
     const nextParams: ResourcePageFilterParams = {
       ...DEFAULT_PARAMS,
-      pageSize: config?.table?.pageSize || DEFAULT_PARAMS.pageSize,
-      sortField: config?.table?.defaultSortField || DEFAULT_PARAMS.sortField,
-      sortOrder: config?.table?.defaultSortOrder || DEFAULT_PARAMS.sortOrder
+      pageSize: paginationMeta.defaultPageSize || DEFAULT_PARAMS.pageSize,
+      sortField: sortMeta.defaultSortField,
+      sortOrder: sortMeta.defaultSortOrder
     };
     this.updateParamsAndFetch(nextParams);
   }
@@ -357,6 +437,26 @@ export class ResourcePageFacadeService implements OnDestroy {
       ...currentState.params,
       ...partial
     };
+
+    // No modo client-side, se apenas a página ou o pageSize mudou e já temos dados carregados,
+    // não precisamos re-disparar a requisição HTTP!
+    const isClientOnlyPaging =
+      !this.isServerPagination() &&
+      currentState.data !== null &&
+      currentState.status === 'success' &&
+      partial.searchTerm === undefined &&
+      partial.filters === undefined &&
+      partial.sortField === undefined &&
+      partial.sortOrder === undefined &&
+      partial.customParams === undefined;
+
+    if (isClientOnlyPaging) {
+      this._state.update((s) => ({
+        ...s,
+        params: nextParams
+      }));
+      return;
+    }
 
     const requestId = ++this.requestCounter;
 
@@ -445,7 +545,14 @@ export class ResourcePageFacadeService implements OnDestroy {
           if (!res) return;
 
           if (res.isSuccess) {
-            const extracted = this.extractItemsAndTotal(res.data);
+            const config = this._state().pageConfig;
+            const dataPath = config?.dataPath || config?.table?.dataPath;
+            const totalPath = config?.totalPath || config?.table?.totalPath;
+
+            const extracted = this.queryBinding.extractItemsAndTotal(res.data, {
+              dataPath,
+              totalPath
+            });
             const isEmpty = extracted.items.length === 0;
 
             this._state.update((s) => ({
@@ -510,104 +617,25 @@ export class ResourcePageFacadeService implements OnDestroy {
     resolved: ResolvedResourcePage,
     params: ResourcePageFilterParams
   ): ApiRequestInput {
-    const query: Record<string, unknown> = {};
-    const path: Record<string, unknown> = {};
+    const config = resolved.pageConfig;
+    const paginationMeta = this.queryBinding.detectPaginationMetadata(resolved.list, config);
+    const sortMeta = this.queryBinding.detectSortMetadata(resolved.list, config);
+    const filterBindings = this.queryBinding.detectFilterBindings(resolved.list, config);
+    const searchParam = this.queryBinding.detectSearchParam(resolved.list, config);
 
-    // 1. Pagination parameters
-    if (params.page !== undefined && params.page !== null) {
-      query['page'] = params.page;
-      query['_page'] = params.page;
-      query['pageIndex'] = params.page;
-    }
-    if (params.pageSize !== undefined && params.pageSize !== null) {
-      query['pageSize'] = params.pageSize;
-      query['limit'] = params.pageSize;
-      query['per_page'] = params.pageSize;
-      query['_limit'] = params.pageSize;
-    }
-
-    // 2. Search parameter
-    if (params.searchTerm) {
-      query['q'] = params.searchTerm;
-      query['search'] = params.searchTerm;
-    }
-
-    // 3. Sorting parameters
-    if (params.sortField) {
-      query['sort'] = params.sortField;
-      query['sortBy'] = params.sortField;
-      query['_sort'] = params.sortField;
-      if (params.sortOrder) {
-        query['order'] = params.sortOrder;
-        query['sortOrder'] = params.sortOrder;
-        query['_order'] = params.sortOrder;
-      }
-    }
-
-    // 4. Custom filters
-    if (params.filters) {
-      for (const [key, value] of Object.entries(params.filters)) {
-        if (value !== undefined && value !== null && value !== '') {
-          query[key] = value;
-        }
-      }
-    }
-
-    // 5. Explicit customParams
-    if (params.customParams) {
-      for (const [key, value] of Object.entries(params.customParams)) {
-        if (value !== undefined && value !== null) {
-          query[key] = value;
-        }
-      }
-    }
+    const query = this.queryBinding.buildQueryParams(
+      params,
+      paginationMeta,
+      sortMeta,
+      filterBindings,
+      searchParam
+    );
 
     return {
       query,
-      path,
+      path: {},
       headers: {}
     };
   }
-
-  private extractItemsAndTotal(responseData: unknown): {
-    items: unknown[];
-    totalCount: number;
-  } {
-    if (!responseData) {
-      return { items: [], totalCount: 0 };
-    }
-
-    // If it is directly an array
-    if (Array.isArray(responseData)) {
-      return {
-        items: responseData,
-        totalCount: responseData.length
-      };
-    }
-
-    if (typeof responseData === 'object') {
-      const obj = responseData as Record<string, unknown>;
-
-      // Check common property wrappers
-      const candidates = ['items', 'records', 'data', 'results', 'content', 'rows', 'list'];
-      for (const prop of candidates) {
-        const val = obj[prop];
-        if (Array.isArray(val)) {
-          const total =
-            (typeof obj['total'] === 'number' && obj['total']) ||
-            (typeof obj['totalCount'] === 'number' && obj['totalCount']) ||
-            (typeof obj['count'] === 'number' && obj['count']) ||
-            (typeof obj['recordsTotal'] === 'number' && obj['recordsTotal']) ||
-            val.length;
-
-          return {
-            items: val,
-            totalCount: total
-          };
-        }
-      }
-    }
-
-    return { items: [], totalCount: 0 };
-  }
 }
+

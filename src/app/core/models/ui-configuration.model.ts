@@ -102,19 +102,66 @@ export interface UiColumnConfiguration {
   statusBadgeMap?: Record<string, UiStatusBadgeOption>;
 }
 
+export interface UiFilterOption {
+  label: string;
+  value: unknown;
+}
+
+export interface UiFilterBinding {
+  /** Nome identificador do campo ou controle */
+  name: string;
+  /** Nome real do query parameter exposto pela operação OpenAPI GET (ex: 'status', 'category_id', 'role') */
+  queryParam?: string;
+  /** Rótulo amigável a ser exibido no controle visual */
+  label?: string;
+  /** Tipo de controle de entrada: 'select', 'text', 'boolean', 'number' */
+  type?: 'select' | 'text' | 'boolean' | 'number' | string;
+  /** Opções estáticas para controle do tipo 'select'. Se omitido, é derivado do enum do schema OpenAPI */
+  options?: UiFilterOption[];
+  /** Valor padrão / inicial do filtro */
+  default?: unknown;
+  /** Placeholder exibido no campo de entrada */
+  placeholder?: string;
+}
+
 export interface UiFilterConfiguration {
   searchFields?: string[];
   searchPlaceholder?: string;
+  /** Nome do query parameter para busca textual (ex: 'q', 'search', 'query', 'filter') */
+  searchParam?: string;
   statusField?: string;
+  statusParam?: string;
   dateField?: string;
+  dateParam?: string;
   enabled?: boolean;
+  /** Lista declarativa de bindings para filtros específicos */
+  filterBindings?: UiFilterBinding[];
+  /** Alias retrocompatível para filterBindings */
+  bindings?: UiFilterBinding[];
 }
+
+export type UiPaginationMode = 'auto' | 'server' | 'client' | string;
+export type UiPaginationIndexMode = '1-based' | '0-based' | 'offset' | string;
 
 export interface UiPaginationConfiguration {
   pageSize?: number;
   pageSizeOptions?: number[];
   enabled?: boolean;
+  /** Modo de paginação: 'auto' (detecta parâmetros), 'server' (requisições remotas) ou 'client' (fatiamento em memória) */
+  mode?: UiPaginationMode;
+  /** Nome do query parameter para o número da página (ex: 'page', '_page', 'pageIndex') */
+  pageParam?: string;
+  /** Nome do query parameter para a quantidade de itens por página (ex: 'pageSize', 'limit', 'per_page', 'size') */
+  pageSizeParam?: string;
+  /** Nome do query parameter para deslocamento/offset (ex: 'offset', 'skip') */
+  offsetParam?: string;
+  /** Modo de indexação: '1-based' (padrão, 1..N), '0-based' (0..N-1), ou 'offset' ((page-1)*pageSize) */
+  indexMode?: UiPaginationIndexMode;
+  /** Tamanho de página padrão */
+  defaultPageSize?: number;
 }
+
+export type UiSortFormat = 'separate' | 'prefixed' | 'combined' | string;
 
 export interface UiTableConfiguration {
   columns?: UiColumnConfiguration[];
@@ -123,6 +170,16 @@ export interface UiTableConfiguration {
   pageSize?: number;
   pageSizeOptions?: number[];
   pagination?: UiPaginationConfiguration;
+  /** Caminho por notação de ponto para extrair o array de itens da resposta (ex: 'data.items', 'result.records') */
+  dataPath?: string;
+  /** Caminho por notação de ponto para extrair o total de registros da resposta (ex: 'meta.pagination.total', 'totalCount') */
+  totalPath?: string;
+  /** Nome do query parameter para o campo de ordenação (ex: 'sort', 'sortBy', '_sort', 'orderBy') */
+  sortParam?: string;
+  /** Nome do query parameter para a direção da ordenação (ex: 'order', 'sortOrder', '_order', 'direction') */
+  orderParam?: string;
+  /** Formato de envio da ordenação: 'separate' (sort=name&order=asc), 'prefixed' (sort=+name ou sort=-name), 'combined' (sort=name,asc) */
+  sortFormat?: UiSortFormat;
 }
 
 export interface UiOperationReferences {
@@ -224,6 +281,10 @@ export interface UiPageConfiguration {
   table?: UiTableConfiguration;
   pagination?: UiPaginationConfiguration;
   actions?: UiPageActionsConfiguration;
+  /** Caminho por notação de ponto para extrair o array de itens da resposta (ex: 'data.items', 'result.records') */
+  dataPath?: string;
+  /** Caminho por notação de ponto para extrair o total de registros da resposta (ex: 'meta.pagination.total', 'totalCount') */
+  totalPath?: string;
 }
 
 export interface UiResourceConfiguration {

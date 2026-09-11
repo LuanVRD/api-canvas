@@ -22,7 +22,10 @@ describe('ResourcePageFacadeService', () => {
     path: '/orders',
     type: 'list',
     summary: 'List all orders',
-    parameters: [],
+    parameters: [
+      { name: 'page', location: 'query', required: false, schema: { type: 'integer' } },
+      { name: 'pageSize', location: 'query', required: false, schema: { type: 'integer' } }
+    ],
     responses: []
   };
 
@@ -608,6 +611,130 @@ describe('ResourcePageFacadeService', () => {
       expect(facade.status()).toBe('error');
       expect(facade.error()?.category).toBe('OPERATION_NOT_FOUND');
       expect(facade.error()?.hint).toContain('API Explorer');
+    });
+
+    it('should correctly extract enveloped responses using dataPath and totalPath', async () => {
+      vi.spyOn(apiExecutor, 'execute').mockReturnValue(
+        of({
+          status: 200,
+          statusText: 'OK',
+          data: {
+            envelope: {
+              orders_array: [{ id: 'ORD-1' }, { id: 'ORD-2' }],
+              meta_info: {
+                total_orders_count: 150
+              }
+            }
+          },
+          duration: 10,
+          isSuccess: true,
+          timestamp: Date.now()
+        })
+      );
+
+      const customEnvelopePage: UiPageConfiguration = {
+        ...mockOrdersPageConfig,
+        dataPath: 'envelope.orders_array',
+        totalPath: 'envelope.meta_info.total_orders_count'
+      };
+
+      facade.loadPage(customEnvelopePage);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+
+      expect(facade.status()).toBe('success');
+      expect(facade.items().length).toBe(2);
+      expect(facade.totalCount()).toBe(150);
+      expect(facade.totalPages()).toBe(15); // 150 / 10 = 15 pages
+    });
+
+    it('should handle client-side pagination slicing without modifying totalCount', async () => {
+      const twentyItems = Array.from({ length: 20 }, (_, i) => ({ id: `ORD-${i + 1}`, name: `Order ${i + 1}` }));
+
+      vi.spyOn(apiExecutor, 'execute').mockReturnValue(
+        of({
+          status: 200,
+          statusText: 'OK',
+          data: twentyItems,
+          duration: 10,
+          isSuccess: true,
+          timestamp: Date.now()
+        })
+      );
+
+      // Client mode pagination
+      const clientPagingPage: UiPageConfiguration = {
+        ...mockOrdersPageConfig,
+        pagination: {
+          mode: 'client',
+          pageSize: 5
+        }
+      };
+
+      facade.loadPage(clientPagingPage);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+
+      expect(facade.status()).toBe('success');
+      expect(facade.totalCount()).toBe(20);
+      expect(facade.items().length).toBe(20); // Full items in state
+      expect(facade.visibleItems().length).toBe(5); // Sliced for display
+      expect((facade.visibleItems()[0] as any).id).toBe('ORD-1');
+
+      // Go to page 2 (in client mode, should slice in memory without re-fetching HTTP)
+      facade.setPage(2);
+      expect(facade.params().page).toBe(2);
+      expect(facade.totalCount()).toBe(20);
+      expect(facade.visibleItems().length).toBe(5);
+      expect((facade.visibleItems()[0] as any).id).toBe('ORD-6');
+    });
+
+    it('should build query parameters respecting bindings and omitting empty/null values', async () => {
+      let capturedInput: any = null;
+      vi.spyOn(apiExecutor, 'execute').mockImplementation((_url, _op, input) => {
+        capturedInput = input;
+        return of({
+          status: 200,
+          statusText: 'OK',
+          data: [],
+          duration: 10,
+          isSuccess: true,
+          timestamp: Date.now()
+        });
+      });
+
+      const serverPagingPage: UiPageConfiguration = {
+        ...mockOrdersPageConfig,
+        pagination: {
+          mode: 'server',
+          pageParam: 'p',
+          pageSizeParam: 'limit'
+        },
+        filters: {
+          searchParam: 'query',
+          filterBindings: [
+            { name: 'status', queryParam: 'order_status' }
+          ]
+        },
+        table: {
+          sortParam: 'sortBy',
+          orderParam: 'sortDirection'
+        }
+      };
+
+      facade.loadPage(serverPagingPage);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+
+      facade.setSearch('electronics');
+      facade.setFilter('status', 'active');
+      facade.setSort('createdAt', 'asc');
+      facade.setPage(3);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+
+      expect(capturedInput.query['p']).toBe(3);
+      expect(capturedInput.query['limit']).toBe(10);
+      expect(capturedInput.query['query']).toBe('electronics');
+      expect(capturedInput.query['order_status']).toBe('active');
+      expect(capturedInput.query['sortBy']).toBe('createdAt');
+      expect(capturedInput.query['sortDirection']).toBe('asc');
     });
   });
 });

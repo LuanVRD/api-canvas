@@ -69,9 +69,28 @@ export interface TableActionConfig {
             <table mat-table [dataSource]="data" class="mat-elevation-z0 technical-table">
               @for (col of columns; track col.key) {
                 <ng-container [matColumnDef]="col.key">
-                  <th mat-header-cell *matHeaderCellDef class="table-header">
-                    <span class="header-label" [title]="col.description || col.label">{{ col.label }}</span>
-                    <span class="header-type font-mono">&lt;{{ col.type }}&gt;</span>
+                  <th
+                    mat-header-cell
+                    *matHeaderCellDef
+                    class="table-header"
+                    [class.sortable]="col.sortable !== false"
+                    [class.sorted]="sortField === col.key && !!sortOrder"
+                    (click)="onHeaderClick(col)"
+                    [attr.title]="col.sortable !== false ? 'Clique para ordenar por ' + col.label : (col.description || col.label)"
+                  >
+                    <div class="header-inner">
+                      <span class="header-label">{{ col.label }}</span>
+                      <span class="header-type font-mono">&lt;{{ col.type }}&gt;</span>
+                      @if (col.sortable !== false) {
+                        @if (sortField === col.key && sortOrder) {
+                          <mat-icon class="sort-icon active font-mono">
+                            {{ sortOrder === 'desc' ? 'arrow_downward' : 'arrow_upward' }}
+                          </mat-icon>
+                        } @else {
+                          <mat-icon class="sort-icon idle font-mono">unfold_more</mat-icon>
+                        }
+                      }
+                    </div>
                   </th>
                   <td mat-cell *matCellDef="let element" class="table-cell">
                     <app-value-renderer
@@ -322,10 +341,35 @@ export interface TableActionConfig {
       position: sticky;
       top: 0;
       z-index: 10;
+      user-select: none;
+
+      &.sortable {
+        cursor: pointer;
+        transition: background 0.1s ease, color 0.1s ease;
+
+        &:hover {
+          background: var(--canvas-surface-elevated) !important;
+          color: var(--canvas-text-primary);
+
+          .sort-icon.idle {
+            opacity: 0.8;
+          }
+        }
+      }
+
+      &.sorted {
+        color: var(--canvas-text-link, #58a6ff);
+      }
+    }
+
+    .header-inner {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
     }
 
     .header-label {
-      margin-right: 4px;
+      margin-right: 2px;
     }
 
     .header-type {
@@ -333,6 +377,24 @@ export interface TableActionConfig {
       font-size: 10px;
       text-transform: lowercase;
       font-weight: normal;
+    }
+
+    .sort-icon {
+      font-size: 14px;
+      width: 14px;
+      height: 14px;
+      line-height: 14px;
+      vertical-align: middle;
+
+      &.idle {
+        opacity: 0.25;
+        transition: opacity 0.12s ease;
+      }
+
+      &.active {
+        color: var(--canvas-text-link, #58a6ff);
+        opacity: 1;
+      }
     }
 
     .table-cell {
@@ -489,12 +551,39 @@ export class DynamicTableComponent {
   @Input() emptyDescription = 'The collection is currently empty (0 items).';
   @Input() emptyIcon = 'table_rows';
 
+  // Sorting state
+  @Input() sortField?: string | null;
+  @Input() sortOrder?: 'asc' | 'desc' | null;
+
   // Event Outputs
   @Output() rowView = new EventEmitter<unknown>();
   @Output() rowEdit = new EventEmitter<unknown>();
   @Output() rowDelete = new EventEmitter<unknown>();
   @Output() rowSelect = new EventEmitter<unknown>();
   @Output() rowAction = new EventEmitter<{ action: string; row: unknown; event: MouseEvent }>();
+  @Output() sortChange = new EventEmitter<{ field: string | null; order: 'asc' | 'desc' | null }>();
+
+  onHeaderClick(col: TableColumnDescriptor): void {
+    if (col.sortable === false) {
+      return;
+    }
+
+    let nextOrder: 'asc' | 'desc' | null = 'asc';
+    let nextField: string | null = col.key;
+
+    if (this.sortField === col.key) {
+      if (this.sortOrder === 'asc') {
+        nextOrder = 'desc';
+      } else if (this.sortOrder === 'desc') {
+        nextOrder = null;
+        nextField = null;
+      } else {
+        nextOrder = 'asc';
+      }
+    }
+
+    this.sortChange.emit({ field: nextField, order: nextOrder });
+  }
 
   get effectiveLayoutMode(): TableLayoutMode {
     return this.layoutMode || 'compact';
