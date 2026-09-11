@@ -546,6 +546,29 @@ export class UiConfigurationValidatorService {
           }
         });
       }
+
+      const explicitCustomDescriptors = [
+        ...(page.actions.rowActions?.customActions || []),
+        ...(page.actions.rowActions?.actions || [])
+      ];
+
+      explicitCustomDescriptors.forEach((desc, idx) => {
+        const opId = desc.operationId || desc.id;
+        if (opId) {
+          const op = this.findOperationInScope(opId, resource, apiDefinition);
+          if (!op && apiDefinition) {
+            issues.push({
+              severity: 'warning',
+              code: 'OPERATION_NOT_FOUND',
+              path: `${path}.actions.rowActions.customActions[${idx}]`,
+              message: `A ação de linha customizada '${desc.label || opId}' referencia a operação inexistente '${opId}'.`,
+              targetType: 'action',
+              targetId: opId,
+              fallbackApplied: 'A ação individual será omitida da tabela.'
+            });
+          }
+        }
+      });
     }
 
     // 5. Schema-dependent validations: Table columns, Filters & Metrics
@@ -968,6 +991,24 @@ export class UiConfigurationValidatorService {
           ...copy.actions.rowActions,
           customActionOperations: pageConfig.actions.rowActions.customActionOperations.filter((opId) =>
             Boolean(this.findOperationInScope(opId, resource, apiDefinition))
+          )
+        };
+      }
+
+      if (pageConfig.actions.rowActions?.customActions && apiDefinition) {
+        copy.actions.rowActions = {
+          ...copy.actions.rowActions,
+          customActions: pageConfig.actions.rowActions.customActions.filter((desc) =>
+            Boolean(this.findOperationInScope(desc.operationId || desc.id || '', resource, apiDefinition))
+          )
+        };
+      }
+
+      if (pageConfig.actions.rowActions?.actions && apiDefinition) {
+        copy.actions.rowActions = {
+          ...copy.actions.rowActions,
+          actions: pageConfig.actions.rowActions.actions.filter((desc) =>
+            Boolean(this.findOperationInScope(desc.operationId || desc.id || '', resource, apiDefinition))
           )
         };
       }

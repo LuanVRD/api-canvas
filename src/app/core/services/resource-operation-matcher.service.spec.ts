@@ -546,6 +546,79 @@ describe('ResourceOperationMatcherService', () => {
       expect(resolved.customActions[0].isExplicit).toBe(false);
     });
 
+    it('should resolve explicitly configured custom action descriptors with style, confirmation and inputMode', () => {
+      const listOp: ApiOperation = { id: 'get_orders', method: 'GET', path: '/orders', type: 'list', parameters: [], responses: [] };
+      const statusOp: ApiOperation = {
+        id: 'patch_status',
+        method: 'PATCH',
+        path: '/orders/{id}/status',
+        type: 'action',
+        summary: 'Patch Status',
+        parameters: [{ name: 'id', location: 'path', required: true, schema: { type: 'string' } }],
+        requestBody: { schema: { type: 'object' } },
+        responses: []
+      };
+      const duplicateOp: ApiOperation = {
+        id: 'post_duplicate',
+        method: 'POST',
+        path: '/orders/{id}/duplicate',
+        type: 'action',
+        summary: 'Duplicate Order',
+        parameters: [{ name: 'id', location: 'path', required: true, schema: { type: 'string' } }],
+        responses: []
+      };
+
+      const resource: ApiResource = {
+        id: 'orders',
+        name: 'orders',
+        label: 'Orders',
+        operations: [listOp, statusOp, duplicateOp]
+      };
+
+      const pageConfig = {
+        actions: {
+          rowActions: {
+            customActions: [
+              {
+                id: 'custom_status',
+                operationId: 'patch_status',
+                label: 'Alterar Status',
+                icon: 'edit_note',
+                style: 'primary',
+                inputMode: 'dialog'
+              },
+              {
+                id: 'custom_dup',
+                operationId: 'post_duplicate',
+                label: 'Duplicar Imediatamente',
+                icon: 'content_copy',
+                style: 'default',
+                inputMode: 'direct',
+                confirmation: false
+              }
+            ]
+          }
+        }
+      };
+
+      const resolved = service.resolveResourcePage({ resource, pageConfig });
+
+      expect(resolved.customActions.length).toBe(2);
+      const action1 = resolved.customActions.find((a) => a.id === 'custom_status')!;
+      expect(action1).toBeDefined();
+      expect(action1.label).toBe('Alterar Status');
+      expect(action1.icon).toBe('edit_note');
+      expect(action1.style).toBe('primary');
+      expect(action1.inputMode).toBe('dialog');
+      expect(action1.isExplicit).toBe(true);
+
+      const action2 = resolved.customActions.find((a) => a.id === 'custom_dup')!;
+      expect(action2).toBeDefined();
+      expect(action2.label).toBe('Duplicar Imediatamente');
+      expect(action2.inputMode).toBe('direct');
+      expect(action2.confirmation).toBe(false);
+    });
+
     it('should resolve operations cleanly when operationId is completely absent', () => {
       // Operations without operationId, identified solely by path and method
       const listOp: ApiOperation = { id: 'get_/categories', method: 'GET', path: '/categories', type: 'list', parameters: [], responses: [] };

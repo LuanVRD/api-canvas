@@ -665,5 +665,197 @@ describe('DashboardPage', () => {
       expect(active?.missingParams?.length).toBe(1);
       expect(active?.missingParams?.[0].name).toBe('orderId');
     });
+
+    it('should include custom actions in pageRowActions and open CustomActionDialogComponent on trigger', () => {
+      const customApiDef: ApiDefinition = {
+        ...mockApiDefinition,
+        resources: [
+          {
+            ...mockApiDefinition.resources[0],
+            operations: [
+              ...mockApiDefinition.resources[0].operations,
+              {
+                id: 'cancelOrder',
+                operationId: 'cancelOrder',
+                method: 'POST',
+                path: '/orders/{orderId}/cancel',
+                summary: 'Cancelar Pedido',
+                type: 'action',
+                parameters: [
+                  {
+                    name: 'orderId',
+                    location: 'path',
+                    required: true,
+                    schema: { type: 'string' }
+                  }
+                ],
+                responses: []
+              },
+              {
+                id: 'patchStatus',
+                operationId: 'patchStatus',
+                method: 'PATCH',
+                path: '/orders/{orderId}/status',
+                summary: 'Editar Status',
+                type: 'action',
+                parameters: [
+                  {
+                    name: 'orderId',
+                    location: 'path',
+                    required: true,
+                    schema: { type: 'string' }
+                  }
+                ],
+                requestBody: {
+                  schema: {
+                    type: 'object',
+                    properties: { status: { type: 'string' } }
+                  }
+                },
+                responses: []
+              }
+            ]
+          },
+          mockApiDefinition.resources[1]
+        ]
+      };
+
+      const customActionsConfig: UiConfiguration = {
+        pages: {
+          'orders-page': {
+            id: 'orders-page',
+            resourceId: 'orders',
+            title: 'Pedidos',
+            slug: 'pedidos',
+            actions: {
+              rowActions: {
+                customActions: [
+                  {
+                    id: 'cancel_act',
+                    operationId: 'cancelOrder',
+                    label: 'Cancelar Pedido',
+                    icon: 'cancel',
+                    danger: true
+                  },
+                  {
+                    id: 'edit_status_act',
+                    operationId: 'patchStatus',
+                    label: 'Alterar Status',
+                    icon: 'edit_note'
+                  }
+                ]
+              }
+            }
+          }
+        }
+      };
+
+      sessionService.setSession(customApiDef);
+      sessionService.setUiConfiguration(customActionsConfig);
+      paramMapSubject.next(convertToParamMap({ pageSlug: 'pedidos' }));
+      fixture.detectChanges();
+
+      const actions = component.pageRowActions();
+      const cancelAct = actions.find((a) => a.id === 'cancel_act');
+      expect(cancelAct).toBeDefined();
+      expect(cancelAct?.label).toBe('Cancelar Pedido');
+      expect(cancelAct?.danger).toBe(true);
+
+      const statusAct = actions.find((a) => a.id === 'edit_status_act');
+      expect(statusAct).toBeDefined();
+      expect(statusAct?.label).toBe('Alterar Status');
+
+      // Trigger custom action
+      component.onRowAction({
+        action: 'cancel_act',
+        row: { orderId: 'ORD-555' },
+        event: new MouseEvent('click')
+      });
+
+      const activeCustom = component.activeCustomAction();
+      expect(activeCustom).toBeTruthy();
+      expect(activeCustom?.action.id).toBe('cancel_act');
+      expect(activeCustom?.params).toEqual({ orderId: 'ORD-555' });
+    });
+
+    it('should notify mutation and refresh when custom action executes successfully', () => {
+      const customApiDef: ApiDefinition = {
+        ...mockApiDefinition,
+        resources: [
+          {
+            ...mockApiDefinition.resources[0],
+            operations: [
+              ...mockApiDefinition.resources[0].operations,
+              {
+                id: 'cancelOrder',
+                operationId: 'cancelOrder',
+                method: 'POST',
+                path: '/orders/{orderId}/cancel',
+                summary: 'Cancelar Pedido',
+                type: 'action',
+                parameters: [
+                  {
+                    name: 'orderId',
+                    location: 'path',
+                    required: true,
+                    schema: { type: 'string' }
+                  }
+                ],
+                responses: []
+              }
+            ]
+          },
+          mockApiDefinition.resources[1]
+        ]
+      };
+
+      const customActionsConfig: UiConfiguration = {
+        pages: {
+          'orders-page': {
+            id: 'orders-page',
+            resourceId: 'orders',
+            title: 'Pedidos',
+            slug: 'pedidos',
+            actions: {
+              rowActions: {
+                customActions: [
+                  {
+                    id: 'cancel_act',
+                    operationId: 'cancelOrder',
+                    label: 'Cancelar Pedido'
+                  }
+                ]
+              }
+            }
+          }
+        }
+      };
+
+      sessionService.setSession(customApiDef);
+      sessionService.setUiConfiguration(customActionsConfig);
+      paramMapSubject.next(convertToParamMap({ pageSlug: 'pedidos' }));
+      fixture.detectChanges();
+
+      const mutationSpy = vi.spyOn(sessionService, 'notifyResourceMutation');
+      const refreshSpy = vi.spyOn(component.facade, 'refresh');
+
+      const customAct = component.facade.resolvedPage()?.customActions.find((a) => a.id === 'cancel_act')!;
+      expect(customAct).toBeDefined();
+
+      const mockResult = {
+        status: 200,
+        statusText: 'OK',
+        data: { success: true },
+        duration: 25,
+        durationMs: 25,
+        isSuccess: true
+      };
+
+      component.onCustomActionExecuted(customAct, mockResult);
+
+      expect(mutationSpy).toHaveBeenCalledWith('orders', 'cancelOrder', mockResult);
+      expect(refreshSpy).toHaveBeenCalled();
+      expect(component.activeCustomAction()).toBeNull();
+    });
   });
 });

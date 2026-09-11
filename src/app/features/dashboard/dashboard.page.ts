@@ -20,9 +20,12 @@ import { CreateRecordDialogComponent } from '../../dynamic-ui/create-dialog/crea
 import { RecordDetailsDrawerComponent } from '../../dynamic-ui/object-details/record-details-drawer.component';
 import { EditRecordDialogComponent } from '../../dynamic-ui/edit-dialog/edit-record-dialog.component';
 import { DeleteConfirmDialogComponent } from '../../dynamic-ui/delete-dialog/delete-confirm-dialog.component';
+import { CustomActionDialogComponent } from '../../dynamic-ui/custom-action-dialog/custom-action-dialog.component';
 import { ApiExecutionResult } from '../../core/models/api-execution-result.model';
 import { ApiOperation } from '../../core/models/api-operation.model';
 import { ApiParameter } from '../../core/models/api-parameter.model';
+import { ResolvedCustomAction } from '../../core/models/resolved-resource-page.model';
+import { ApiExecutorService } from '../../core/services/api-executor.service';
 
 /**
  * Dashboard feature page — operational view for custom resource pages.
@@ -46,7 +49,8 @@ import { ApiParameter } from '../../core/models/api-parameter.model';
     CreateRecordDialogComponent,
     RecordDetailsDrawerComponent,
     EditRecordDialogComponent,
-    DeleteConfirmDialogComponent
+    DeleteConfirmDialogComponent,
+    CustomActionDialogComponent
   ],
   providers: [ResourcePageFacadeService],
   template: `
@@ -170,6 +174,7 @@ import { ApiParameter } from '../../core/models/api-parameter.model';
               (rowEdit)="onRowEdit($event)"
               (rowDelete)="onRowDelete($event)"
               (rowSelect)="onRowSelect($event)"
+              (rowAction)="onRowAction($event)"
             />
           } @else {
             <!-- State when pages exist but none selected (during transition) -->
@@ -232,6 +237,18 @@ import { ApiParameter } from '../../core/models/api-parameter.model';
           [missingParams]="delConfirm.missingParams || []"
           (deleted)="onRecordDeleted($event)"
           (close)="onCloseDeleteConfirmation()"
+        />
+      }
+
+      <!-- Custom Action Dialog Modal -->
+      @if (activeCustomAction(); as customModal) {
+        <app-custom-action-dialog
+          [action]="customModal.action"
+          [record]="customModal.record"
+          [initialParams]="customModal.params"
+          [missingParams]="customModal.missingParams || []"
+          (executed)="onCustomActionExecuted(customModal.action, $event)"
+          (close)="onCloseCustomAction()"
         />
       }
     </div>
@@ -427,6 +444,7 @@ export class DashboardPage implements OnInit, OnDestroy {
   private readonly uiConfigService = inject(UiConfigurationService);
   private readonly tableSchemaService = inject(TableSchemaService);
   private readonly matcher = inject(ResourceOperationMatcherService);
+  private readonly executor = inject(ApiExecutorService);
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
 
@@ -456,6 +474,13 @@ export class DashboardPage implements OnInit, OnDestroy {
   readonly activeDeleteConfirmation = signal<{
     record: unknown;
     deleteOp: ApiOperation;
+    params: Record<string, string>;
+    missingParams?: ApiParameter[];
+  } | null>(null);
+
+  readonly activeCustomAction = signal<{
+    action: ResolvedCustomAction;
+    record: unknown;
     params: Record<string, string>;
     missingParams?: ApiParameter[];
   } | null>(null);
@@ -508,6 +533,19 @@ export class DashboardPage implements OnInit, OnDestroy {
         tooltip: rowCfg?.editTooltip || 'Editar registro',
         visible: true
       });
+    }
+    if (resolved?.customActions && resolved.customActions.length > 0) {
+      for (const customAct of resolved.customActions) {
+        actions.push({
+          id: customAct.id,
+          label: customAct.label,
+          icon: customAct.icon || 'bolt',
+          tooltip: customAct.tooltip || customAct.label,
+          danger: customAct.danger === true,
+          visible: true,
+          customAction: customAct
+        });
+      }
     }
     if (resolved?.delete && rowCfg?.delete !== false) {
       actions.push({
@@ -842,6 +880,93 @@ export class DashboardPage implements OnInit, OnDestroy {
       );
     }
     this.onCloseDeleteConfirmation();
+    this.facade.refresh();
+  }
+
+  onRowAction(event: { action: string; row: unknown; event: MouseEvent }): void {
+    if (event.action === 'view') {
+      this.onRowView(event.row);
+      return;
+    }
+    if (event.action === 'edit') {
+      this.onRowEdit(event.row);
+      return;
+    }
+    if (event.action === 'delete') {
+      this.onRowDelete(event.row);
+      return;
+    }
+
+    const resolved = this.facade.resolvedPage();
+    const customAct = resolved?.customActions?.find(
+      (a) =>
+        a.id === event.action ||
+        a.operation.id === event.action ||
+        a.operation.operationId === event.action
+    );
+    if (!customAct) return;
+
+    const resolution = this.matcher.resolveParameters(customAct.operation, event.row);
+    const hasRequestBody = Boolean(customAct.operation.requestBody);
+
+    // Direct execution without dialog only if explicitly configured
+    if (
+      customAct.inputMode === 'direct' &&
+      customAct.confirmation === false &&
+      resolution.canAutoResolve &&
+      !hasRequestBody
+    ) {
+      const baseUrl = this.sessionService.baseUrl();
+      const input = { path: resolution.resolvedParams };
+      this.executor.execute(baseUrl, customAct.operation, input).subscribe({
+        next: (result) => {
+          if (result.isSuccess) {
+            this.onCustomActionExecuted(customAct, result);
+          } else {
+            this.activeCustomAction.set({
+              action: customAct,
+              record: event.row,
+              params: resolution.resolvedParams,
+              missingParams: resolution.missingParams
+            });
+          }
+        },
+        error: () => {
+          this.activeCustomAction.set({
+            action: customAct,
+            record: event.row,
+            params: resolution.resolvedParams,
+            missingParams: resolution.missingParams
+          });
+        }
+      });
+      return;
+    }
+
+    // Otherwise open the reusable action dialog
+    this.activeCustomAction.set({
+      action: customAct,
+      record: event.row,
+      params: resolution.resolvedParams,
+      missingParams: resolution.missingParams
+    });
+  }
+
+  onCloseCustomAction(): void {
+    this.activeCustomAction.set(null);
+  }
+
+  onCustomActionExecuted(action: ResolvedCustomAction, result: ApiExecutionResult): void {
+    const resolved = this.facade.resolvedPage();
+    const resourceId = resolved?.resourceId || this.selectedPage()?.resourceId;
+    if (resourceId) {
+      this.sessionService.notifyResourceMutation(
+        resourceId,
+        action.operation.operationId || action.operation.id,
+        result
+      );
+    }
+    this.onCloseCustomAction();
     this.facade.refresh();
   }
 

@@ -18,6 +18,7 @@ export interface TableActionConfig {
   danger?: boolean;
   disabled?: boolean | ((item: unknown) => boolean);
   visible?: boolean | ((item: unknown) => boolean);
+  customAction?: unknown;
 }
 
 @Component({
@@ -108,11 +109,11 @@ export interface TableActionConfig {
                             [ngClass]="[
                               action.id + '-btn',
                               action.cssClass || '',
-                              action.danger || action.id === 'delete' ? 'delete delete-btn' : ''
+                              action.danger || action.id === 'delete' ? 'delete delete-btn danger-action' : ''
                             ]"
                             [disabled]="isActionDisabled(action, element)"
-                            [title]="action.tooltip || action.label || action.id"
-                            [attr.aria-label]="action.ariaLabel || action.tooltip || action.label || action.id"
+                            [title]="getActionTitle(action)"
+                            [attr.aria-label]="getActionAriaLabel(action)"
                             (click)="onActionTriggered($event, action, element)"
                           >
                             <mat-icon class="action-icon">{{ action.icon || 'settings' }}</mat-icon>
@@ -411,9 +412,11 @@ export interface TableActionConfig {
       }
 
       &.delete:hover:not(:disabled),
-      &.delete-btn:hover:not(:disabled) {
+      &.delete-btn:hover:not(:disabled),
+      &.danger-action:hover:not(:disabled) {
         color: var(--http-delete, #f85149);
         background: var(--http-delete-bg, rgba(218, 54, 51, 0.15));
+        outline: 1px solid rgba(248, 81, 73, 0.4);
       }
 
       .action-icon {
@@ -565,6 +568,22 @@ export class DynamicTableComponent {
       return action.disabled(element);
     }
     return action.disabled === true;
+  }
+
+  getActionTitle(action: TableActionConfig): string {
+    const base = action.tooltip || action.label || action.id;
+    if (action.danger || action.id === 'delete') {
+      return base.includes('[Ação destrutiva]') ? base : `${base} [Ação destrutiva]`;
+    }
+    return base;
+  }
+
+  getActionAriaLabel(action: TableActionConfig): string {
+    const base = action.ariaLabel || action.tooltip || action.label || action.id;
+    if (action.danger || action.id === 'delete') {
+      return base.includes('[Ação destrutiva]') ? base : `${base} (Ação destrutiva)`;
+    }
+    return base;
   }
 
   onActionTriggered(event: MouseEvent, action: TableActionConfig, element: unknown): void {

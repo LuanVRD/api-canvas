@@ -251,6 +251,7 @@ import {
               (rowEdit)="rowEdit.emit($event)"
               (rowDelete)="rowDelete.emit($event)"
               (rowSelect)="rowSelect.emit($event)"
+              (rowAction)="rowAction.emit($event)"
             />
             <div class="table-meta-footer">
               <span class="meta-item font-mono">
@@ -718,6 +719,7 @@ export class ResourcePageContentComponent {
   readonly rowEdit = output<unknown>();
   readonly rowDelete = output<unknown>();
   readonly rowSelect = output<unknown>();
+  readonly rowAction = output<{ action: string; row: unknown; event: MouseEvent }>();
 
   private readonly metricEvaluator = inject(UiMetricEvaluatorService);
 

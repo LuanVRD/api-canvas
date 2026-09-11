@@ -9,7 +9,11 @@ import {
   ResolvedResourcePage,
   ResolveResourcePageOptions
 } from '../models/resolved-resource-page.model';
-import { UiPageConfiguration, UiResourceConfiguration } from '../models/ui-configuration.model';
+import {
+  UiCustomActionDescriptor,
+  UiPageConfiguration,
+  UiResourceConfiguration
+} from '../models/ui-configuration.model';
 
 export interface ParamResolutionResult {
   canAutoResolve: boolean;
@@ -292,9 +296,11 @@ export class ResourceOperationMatcherService {
     }
 
     // 6. Resolve Custom Actions
-    const explicitCustomOpIds = [
+    const explicitCustomDescriptors: (string | UiCustomActionDescriptor)[] = [
       ...(pageConfig?.operations?.custom || []),
       ...(pageConfig?.actions?.rowActions?.customActionOperations || []),
+      ...(pageConfig?.actions?.rowActions?.customActions || []),
+      ...(pageConfig?.actions?.rowActions?.actions || []),
       ...(resourceConfig?.operations?.custom || [])
     ];
 
@@ -308,7 +314,7 @@ export class ResourceOperationMatcherService {
 
     const customActions = this.resolveCustomActions(
       resource,
-      explicitCustomOpIds,
+      explicitCustomDescriptors,
       knownCoreOpIds,
       apiDefinition,
       warnings
@@ -746,9 +752,12 @@ export class ResourceOperationMatcherService {
   /**
    * Resolves custom/RPC actions for a resource, combining explicit configurations and discovered non-CRUD action endpoints.
    */
+  /**
+   * Resolves custom/RPC actions for a resource, combining explicit configurations and discovered non-CRUD action endpoints.
+   */
   private resolveCustomActions(
     resource: ApiResource,
-    explicitCustomOpIds: string[],
+    explicitCustomDescriptors: (string | UiCustomActionDescriptor)[],
     knownCoreOpIds: Set<string>,
     apiDefinition: ApiDefinition | null | undefined,
     warnings: ResolvedOperationWarning[]
@@ -756,19 +765,53 @@ export class ResourceOperationMatcherService {
     const result: ResolvedCustomAction[] = [];
     const addedOpIds = new Set<string>();
 
-    // 1. Process explicit custom action IDs
-    for (const rawId of explicitCustomOpIds) {
-      if (!rawId || typeof rawId !== 'string' || rawId.trim() === '') continue;
-      const opId = rawId.trim();
+    // 1. Process explicit custom action descriptors and IDs
+    for (const item of explicitCustomDescriptors) {
+      if (!item) continue;
+      const isDescriptor = typeof item === 'object';
+      const descriptor = isDescriptor ? item : undefined;
+      const rawId = isDescriptor ? item.operationId || item.id : item;
 
+      if (!rawId || typeof rawId !== 'string' || rawId.trim() === '') continue;
+      if (descriptor?.hidden === true) continue;
+
+      const opId = rawId.trim();
       const op = this.findOperationInResourceOrApi(opId, resource, apiDefinition);
+
       if (op) {
         if (!addedOpIds.has(op.id)) {
           addedOpIds.add(op.id);
+          const isDanger =
+            descriptor?.danger !== undefined
+              ? descriptor.danger
+              : descriptor?.style === 'danger' ||
+                op.method === 'DELETE' ||
+                /cancel|delete|remove|terminate|destroy|void/i.test(`${op.id} ${op.operationId || ''} ${op.summary || ''} ${op.path}`);
+
+          const style = descriptor?.style || (isDanger ? 'danger' : 'default');
+          const icon = descriptor?.icon || this.inferActionIcon(op, isDanger);
+          const label = descriptor?.label || op.summary || op.id;
+          const tooltip = descriptor?.tooltip || label;
+          const confirmation =
+            descriptor?.confirmation !== undefined
+              ? descriptor.confirmation
+              : isDanger
+                ? true
+                : false;
+          const inputMode = descriptor?.inputMode || 'auto';
+
           result.push({
-            id: op.id,
-            label: op.summary || op.id,
+            id: descriptor?.id || op.id,
+            label,
             operation: op,
+            icon,
+            tooltip,
+            style,
+            danger: isDanger,
+            confirmation,
+            inputMode,
+            initialValues: descriptor?.initialValues,
+            descriptor,
             isExplicit: true
           });
         }
@@ -795,10 +838,20 @@ export class ResourceOperationMatcherService {
 
         if (isPostOrPutOrPatch && (hasPathParams || op.type === 'action')) {
           addedOpIds.add(op.id);
+          const isDanger =
+            op.method === 'DELETE' ||
+            /cancel|delete|remove|terminate|destroy|void/i.test(`${op.id} ${op.operationId || ''} ${op.summary || ''} ${op.path}`);
+
           result.push({
             id: op.id,
             label: op.summary || op.id,
             operation: op,
+            icon: this.inferActionIcon(op, isDanger),
+            tooltip: op.summary || op.id,
+            style: isDanger ? 'danger' : 'default',
+            danger: isDanger,
+            confirmation: isDanger,
+            inputMode: 'auto',
             isExplicit: false
           });
         }
@@ -806,6 +859,26 @@ export class ResourceOperationMatcherService {
     }
 
     return result;
+  }
+
+  /**
+   * Infers a suitable Material icon name for custom OpenAPI operations based on verbs and semantics.
+   */
+  private inferActionIcon(op: ApiOperation, isDanger: boolean): string {
+    const text = `${op.id} ${op.operationId || ''} ${op.summary || ''} ${op.path}`.toLowerCase();
+    if (isDanger || text.includes('delete') || text.includes('remove') || text.includes('destroy')) return 'delete';
+    if (text.includes('cancel') || text.includes('abort') || text.includes('void')) return 'cancel';
+    if (text.includes('status') || text.includes('state')) return 'edit_note';
+    if (text.includes('ship') || text.includes('dispatch') || text.includes('delivery')) return 'local_shipping';
+    if (text.includes('duplicate') || text.includes('copy') || text.includes('clone')) return 'content_copy';
+    if (text.includes('send') || text.includes('publish') || text.includes('submit')) return 'send';
+    if (text.includes('approve') || text.includes('accept') || text.includes('confirm')) return 'check_circle';
+    if (text.includes('reject') || text.includes('deny') || text.includes('block')) return 'block';
+    if (text.includes('refresh') || text.includes('sync') || text.includes('retry')) return 'sync';
+    if (text.includes('refund') || text.includes('payment') || text.includes('bill')) return 'receipt_long';
+    if (op.method === 'POST') return 'play_arrow';
+    if (op.method === 'PUT' || op.method === 'PATCH') return 'edit_note';
+    return 'bolt';
   }
 
   private matchOperationInList(

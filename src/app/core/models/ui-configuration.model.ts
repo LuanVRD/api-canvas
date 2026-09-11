@@ -134,6 +134,53 @@ export interface UiOperationReferences {
   custom?: string[];
 }
 
+export type UiActionStyle =
+  | 'default'
+  | 'primary'
+  | 'danger'
+  | 'warning'
+  | 'info'
+  | 'success'
+  | string;
+
+export type UiActionInputMode = 'auto' | 'dialog' | 'direct' | string;
+
+export interface UiActionConfirmationConfig {
+  title?: string;
+  message?: string;
+  confirmText?: string;
+  cancelText?: string;
+}
+
+export interface UiCustomActionDescriptor {
+  /** Identificador opcional da ação (se omitido, deriva do operationId) */
+  id?: string;
+  /** ID, operationId ou método + path da operação OpenAPI */
+  operationId: string;
+  /** Rótulo legível do botão / item de menu */
+  label?: string;
+  /** Ícone Material a ser exibido no botão */
+  icon?: string;
+  /** Dica / tooltip exibido ao passar o mouse */
+  tooltip?: string;
+  /** Estilo visual semântico do botão */
+  style?: UiActionStyle;
+  /** Flag explícita indicando ação destrutiva (requer atenção reforçada) */
+  danger?: boolean;
+  /** Confirmação antes da execução (booleano ou configuração personalizada) */
+  confirmation?: boolean | UiActionConfirmationConfig;
+  /** Modo de entrada: 'auto' (detecta body), 'dialog' (força modal) ou 'direct' (executa diretamente sem dialog se sem body/sem confirmação) */
+  inputMode?: UiActionInputMode;
+  /** Valores padrão/iniciais para o request body ou parâmetros */
+  initialValues?: Record<string, unknown>;
+  /** Mapeamento de campos do registro linha para propriedades do payload */
+  fieldMapping?: Record<string, string>;
+  /** Desabilitar temporariamente a ação */
+  disabled?: boolean;
+  /** Ocultar a ação na tabela */
+  hidden?: boolean;
+}
+
 export interface UiRowActionsConfiguration {
   viewDetails?: boolean;
   viewDetailsLabel?: string;
@@ -145,6 +192,8 @@ export interface UiRowActionsConfiguration {
   deleteLabel?: string;
   deleteTooltip?: string;
   customActionOperations?: string[];
+  customActions?: UiCustomActionDescriptor[];
+  actions?: UiCustomActionDescriptor[];
 }
 
 export interface UiPageActionsConfiguration {

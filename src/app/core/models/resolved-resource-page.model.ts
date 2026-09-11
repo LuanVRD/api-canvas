@@ -1,7 +1,14 @@
 import { ApiOperation } from './api-operation.model';
 import { ApiResource } from './api-resource.model';
 import { ApiDefinition } from './api-definition.model';
-import { UiPageConfiguration, UiResourceConfiguration } from './ui-configuration.model';
+import {
+  UiActionConfirmationConfig,
+  UiActionInputMode,
+  UiActionStyle,
+  UiCustomActionDescriptor,
+  UiPageConfiguration,
+  UiResourceConfiguration
+} from './ui-configuration.model';
 
 export type ResolvedOperationRole =
   | 'list'
@@ -30,8 +37,16 @@ export interface ResolvedOperationWarning {
 
 export interface ResolvedCustomAction {
   id: string;
-  label?: string;
+  label: string;
   operation: ApiOperation;
+  icon?: string;
+  tooltip?: string;
+  style?: UiActionStyle;
+  danger?: boolean;
+  confirmation?: boolean | UiActionConfirmationConfig;
+  inputMode?: UiActionInputMode;
+  initialValues?: Record<string, unknown>;
+  descriptor?: UiCustomActionDescriptor;
   isExplicit: boolean;
 }
 
