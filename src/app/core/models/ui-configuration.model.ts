@@ -136,8 +136,14 @@ export interface UiOperationReferences {
 
 export interface UiRowActionsConfiguration {
   viewDetails?: boolean;
+  viewDetailsLabel?: string;
+  viewDetailsTooltip?: string;
   edit?: boolean;
+  editLabel?: string;
+  editTooltip?: string;
   delete?: boolean;
+  deleteLabel?: string;
+  deleteTooltip?: string;
   customActionOperations?: string[];
 }
 

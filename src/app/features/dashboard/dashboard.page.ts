@@ -10,13 +10,19 @@ import { DashboardSidebarComponent } from './dashboard-sidebar.component';
 import { AuthConfigDialogComponent } from '../workspace/auth-config-dialog.component';
 import { ApiSessionService } from '../../core/services/api-session.service';
 import { UiConfigurationService } from '../../core/services/ui-configuration.service';
+import { ResourceOperationMatcherService } from '../../core/services/resource-operation-matcher.service';
 import { UiConfiguration, UiPageConfiguration } from '../../core/models/ui-configuration.model';
 import { ResourcePageFacadeService } from './services/resource-page-facade.service';
 import { TableActionConfig } from '../../dynamic-ui/dynamic-table/dynamic-table.component';
 import { TableSchemaService, TableColumnDescriptor } from '../../dynamic-ui/dynamic-table/table-schema.service';
 import { ResourcePageContentComponent } from './components/resource-page-content/resource-page-content.component';
 import { CreateRecordDialogComponent } from '../../dynamic-ui/create-dialog/create-record-dialog.component';
+import { RecordDetailsDrawerComponent } from '../../dynamic-ui/object-details/record-details-drawer.component';
+import { EditRecordDialogComponent } from '../../dynamic-ui/edit-dialog/edit-record-dialog.component';
+import { DeleteConfirmDialogComponent } from '../../dynamic-ui/delete-dialog/delete-confirm-dialog.component';
 import { ApiExecutionResult } from '../../core/models/api-execution-result.model';
+import { ApiOperation } from '../../core/models/api-operation.model';
+import { ApiParameter } from '../../core/models/api-parameter.model';
 
 /**
  * Dashboard feature page — operational view for custom resource pages.
@@ -37,7 +43,10 @@ import { ApiExecutionResult } from '../../core/models/api-execution-result.model
     DashboardSidebarComponent,
     AuthConfigDialogComponent,
     ResourcePageContentComponent,
-    CreateRecordDialogComponent
+    CreateRecordDialogComponent,
+    RecordDetailsDrawerComponent,
+    EditRecordDialogComponent,
+    DeleteConfirmDialogComponent
   ],
   providers: [ResourcePageFacadeService],
   template: `
@@ -186,6 +195,43 @@ import { ApiExecutionResult } from '../../core/models/api-execution-result.model
           [operation]="createOp"
           (close)="isCreateDialogOpen.set(false)"
           (created)="onCreateSuccess($event)"
+        />
+      }
+
+      <!-- Record Details Drawer / Modal -->
+      @if (activeDetailsInspection(); as inspection) {
+        <app-record-details-drawer
+          [operation]="inspection.detailsOp"
+          [initialParams]="inspection.params"
+          [missingParams]="inspection.missingParams || []"
+          (editRecord)="onEditRecord($event)"
+          (close)="onCloseDetailsInspection()"
+        />
+      }
+
+      <!-- Record Edit Modal -->
+      @if (activeEditRecord(); as editRec) {
+        <app-edit-record-dialog
+          [operation]="editRec.updateOp"
+          [availableOperations]="editRec.availableOps || [editRec.updateOp]"
+          [record]="editRec.record"
+          [initialParams]="editRec.params"
+          [missingParams]="editRec.missingParams || []"
+          [detailsOperation]="editRec.detailsOp"
+          (updated)="onRecordUpdated($event)"
+          (close)="onCloseEditRecord()"
+        />
+      }
+
+      <!-- Record Delete Confirmation Modal -->
+      @if (activeDeleteConfirmation(); as delConfirm) {
+        <app-delete-confirm-dialog
+          [operation]="delConfirm.deleteOp"
+          [record]="delConfirm.record"
+          [initialParams]="delConfirm.params"
+          [missingParams]="delConfirm.missingParams || []"
+          (deleted)="onRecordDeleted($event)"
+          (close)="onCloseDeleteConfirmation()"
         />
       }
     </div>
@@ -380,6 +426,7 @@ export class DashboardPage implements OnInit, OnDestroy {
   private readonly sessionService = inject(ApiSessionService);
   private readonly uiConfigService = inject(UiConfigurationService);
   private readonly tableSchemaService = inject(TableSchemaService);
+  private readonly matcher = inject(ResourceOperationMatcherService);
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
 
@@ -390,6 +437,28 @@ export class DashboardPage implements OnInit, OnDestroy {
   readonly isAuthDialogOpen = signal<boolean>(false);
   readonly isCreateDialogOpen = signal<boolean>(false);
   readonly requestedSlug = signal<string | null>(null);
+
+  readonly activeDetailsInspection = signal<{
+    detailsOp: ApiOperation;
+    params: Record<string, string>;
+    missingParams?: ApiParameter[];
+  } | null>(null);
+
+  readonly activeEditRecord = signal<{
+    record: unknown;
+    updateOp: ApiOperation;
+    availableOps?: ApiOperation[];
+    params: Record<string, string>;
+    missingParams?: ApiParameter[];
+    detailsOp?: ApiOperation | null;
+  } | null>(null);
+
+  readonly activeDeleteConfirmation = signal<{
+    record: unknown;
+    deleteOp: ApiOperation;
+    params: Record<string, string>;
+    missingParams?: ApiParameter[];
+  } | null>(null);
 
   /**
    * Dynamically inferred column descriptors for the active dashboard page.
@@ -422,32 +491,32 @@ export class DashboardPage implements OnInit, OnDestroy {
     const rowCfg = page?.actions?.rowActions;
 
     const actions: TableActionConfig[] = [];
-    if (resolved?.details || rowCfg?.viewDetails !== false) {
+    if (resolved?.details && rowCfg?.viewDetails !== false) {
       actions.push({
         id: 'view',
-        label: 'Ver detalhes',
+        label: rowCfg?.viewDetailsLabel || 'Ver detalhes',
         icon: 'visibility',
-        tooltip: 'Ver detalhes',
-        visible: rowCfg?.viewDetails !== false && !!resolved?.details
+        tooltip: rowCfg?.viewDetailsTooltip || 'Ver detalhes',
+        visible: true
       });
     }
-    if (resolved?.update || rowCfg?.edit !== false) {
+    if (resolved?.update && rowCfg?.edit !== false) {
       actions.push({
         id: 'edit',
-        label: 'Editar',
+        label: rowCfg?.editLabel || 'Editar',
         icon: 'edit',
-        tooltip: 'Editar registro',
-        visible: rowCfg?.edit !== false && !!resolved?.update
+        tooltip: rowCfg?.editTooltip || 'Editar registro',
+        visible: true
       });
     }
-    if (resolved?.delete || rowCfg?.delete !== false) {
+    if (resolved?.delete && rowCfg?.delete !== false) {
       actions.push({
         id: 'delete',
-        label: 'Excluir',
+        label: rowCfg?.deleteLabel || 'Excluir',
         icon: 'delete',
-        tooltip: 'Excluir registro',
+        tooltip: rowCfg?.deleteTooltip || 'Excluir registro',
         danger: true,
-        visible: rowCfg?.delete !== false && !!resolved?.delete
+        visible: true
       });
     }
     return actions;
@@ -645,7 +714,16 @@ export class DashboardPage implements OnInit, OnDestroy {
     }
   }
 
-  onCreateSuccess(_result: ApiExecutionResult): void {
+  onCreateSuccess(result: ApiExecutionResult): void {
+    const resolved = this.facade.resolvedPage();
+    const resourceId = resolved?.resourceId || this.selectedPage()?.resourceId;
+    if (resourceId && resolved?.create) {
+      this.sessionService.notifyResourceMutation(
+        resourceId,
+        resolved.create.operationId || resolved.create.id,
+        result
+      );
+    }
     this.isCreateDialogOpen.set(false);
     this.facade.refresh();
   }
@@ -670,16 +748,101 @@ export class DashboardPage implements OnInit, OnDestroy {
     this.router.navigate(['/connect']);
   }
 
-  onRowView(_record: unknown): void {
-    // Row view inspection handler
+  onRowView(record: unknown): void {
+    const resolved = this.facade.resolvedPage();
+    const detailsOp = resolved?.details;
+    if (!detailsOp) return;
+
+    const resolution = this.matcher.resolveParameters(detailsOp, record);
+    this.activeDetailsInspection.set({
+      detailsOp,
+      params: resolution.resolvedParams,
+      missingParams: resolution.missingParams
+    });
   }
 
-  onRowEdit(_record: unknown): void {
-    // Row edit dialog handler
+  onCloseDetailsInspection(): void {
+    this.activeDetailsInspection.set(null);
   }
 
-  onRowDelete(_record: unknown): void {
-    // Row delete confirmation dialog handler
+  onRowEdit(record: unknown): void {
+    const resolved = this.facade.resolvedPage();
+    const updateOp = resolved?.update;
+    if (!updateOp) return;
+
+    const resolution = this.matcher.resolveParameters(updateOp, record);
+    this.activeEditRecord.set({
+      record,
+      updateOp,
+      availableOps: resolved?.updateOperations?.length ? resolved.updateOperations : [updateOp],
+      params: resolution.resolvedParams,
+      missingParams: resolution.missingParams,
+      detailsOp: resolved?.details ?? null
+    });
+  }
+
+  onEditRecord(event: {
+    record: unknown;
+    updateOp: ApiOperation;
+    availableOps?: ApiOperation[];
+    params: Record<string, string>;
+    missingParams?: ApiParameter[];
+    detailsOp?: ApiOperation | null;
+  }): void {
+    this.activeDetailsInspection.set(null);
+    this.activeEditRecord.set(event);
+  }
+
+  onCloseEditRecord(): void {
+    this.activeEditRecord.set(null);
+  }
+
+  onRecordUpdated(result: ApiExecutionResult): void {
+    const activeEdit = this.activeEditRecord();
+    const resolved = this.facade.resolvedPage();
+    const resourceId = resolved?.resourceId || this.selectedPage()?.resourceId;
+    if (resourceId && activeEdit) {
+      this.sessionService.notifyResourceMutation(
+        resourceId,
+        activeEdit.updateOp.operationId || activeEdit.updateOp.id,
+        result
+      );
+    }
+    this.onCloseEditRecord();
+    this.facade.refresh();
+  }
+
+  onRowDelete(record: unknown): void {
+    const resolved = this.facade.resolvedPage();
+    const deleteOp = resolved?.delete;
+    if (!deleteOp) return;
+
+    const resolution = this.matcher.resolveParameters(deleteOp, record);
+    this.activeDeleteConfirmation.set({
+      record,
+      deleteOp,
+      params: resolution.resolvedParams,
+      missingParams: resolution.missingParams
+    });
+  }
+
+  onCloseDeleteConfirmation(): void {
+    this.activeDeleteConfirmation.set(null);
+  }
+
+  onRecordDeleted(result: ApiExecutionResult): void {
+    const activeConfirm = this.activeDeleteConfirmation();
+    const resolved = this.facade.resolvedPage();
+    const resourceId = resolved?.resourceId || this.selectedPage()?.resourceId;
+    if (resourceId && activeConfirm) {
+      this.sessionService.notifyResourceMutation(
+        resourceId,
+        activeConfirm.deleteOp.operationId || activeConfirm.deleteOp.id,
+        result
+      );
+    }
+    this.onCloseDeleteConfirmation();
+    this.facade.refresh();
   }
 
   onRowSelect(_record: unknown): void {

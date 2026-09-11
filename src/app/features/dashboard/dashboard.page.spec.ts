@@ -44,6 +44,54 @@ describe('DashboardPage', () => {
             type: 'create',
             parameters: [],
             responses: []
+          },
+          {
+            id: 'getOrder',
+            operationId: 'getOrder',
+            method: 'GET',
+            path: '/orders/{orderId}',
+            type: 'details',
+            parameters: [
+              {
+                name: 'orderId',
+                location: 'path',
+                required: true,
+                schema: { type: 'string' }
+              }
+            ],
+            responses: []
+          },
+          {
+            id: 'updateOrder',
+            operationId: 'updateOrder',
+            method: 'PUT',
+            path: '/orders/{orderId}',
+            type: 'update',
+            parameters: [
+              {
+                name: 'orderId',
+                location: 'path',
+                required: true,
+                schema: { type: 'string' }
+              }
+            ],
+            responses: []
+          },
+          {
+            id: 'deleteOrder',
+            operationId: 'deleteOrder',
+            method: 'DELETE',
+            path: '/orders/{orderId}',
+            type: 'delete',
+            parameters: [
+              {
+                name: 'orderId',
+                location: 'path',
+                required: true,
+                schema: { type: 'string' }
+              }
+            ],
+            responses: []
           }
         ]
       },
@@ -111,6 +159,29 @@ describe('DashboardPage', () => {
     }
   };
 
+  const mockUiConfigWithCustomLabels: UiConfiguration = {
+    pages: {
+      'orders-page': {
+        id: 'orders-page',
+        resourceId: 'orders',
+        title: 'Pedidos CRUD',
+        icon: 'receipt_long',
+        slug: 'pedidos',
+        order: 1,
+        actions: {
+          rowActions: {
+            viewDetailsLabel: 'Inspecionar',
+            viewDetailsTooltip: 'Inspecionar detalhes do pedido',
+            editLabel: 'Modificar',
+            editTooltip: 'Modificar pedido selecionado',
+            deleteLabel: 'Remover',
+            deleteTooltip: 'Remover pedido da base'
+          }
+        }
+      }
+    }
+  };
+
   beforeEach(async () => {
     paramMapSubject = new BehaviorSubject(convertToParamMap({}));
 
@@ -126,7 +197,7 @@ describe('DashboardPage', () => {
               of({
                 status: 200,
                 statusText: 'OK',
-                data: [{ id: 'ORD-1' }, { id: 'ORD-2' }],
+                data: [{ id: 'ORD-1', orderId: 'ORD-1' }, { id: 'ORD-2', orderId: 'ORD-2' }],
                 duration: 15,
                 durationMs: 15,
                 isSuccess: true,
@@ -332,6 +403,7 @@ describe('DashboardPage', () => {
 
       component.isCreateDialogOpen.set(true);
       const refreshSpy = vi.spyOn(component.facade, 'refresh');
+      const mutationSpy = vi.spyOn(sessionService, 'notifyResourceMutation');
 
       component.onCreateSuccess({
         status: 201,
@@ -343,7 +415,255 @@ describe('DashboardPage', () => {
       });
 
       expect(component.isCreateDialogOpen()).toBe(false);
+      expect(mutationSpy).toHaveBeenCalledWith('orders', 'createOrder', expect.anything());
       expect(refreshSpy).toHaveBeenCalled();
+    });
+  });
+
+  describe('Ações por Linha e Dialogs CRUD', () => {
+    it('should compute available row actions (view, edit, delete) with default labels and tooltips', () => {
+      sessionService.setUiConfiguration(mockUiConfig);
+      paramMapSubject.next(convertToParamMap({ pageSlug: 'pedidos' }));
+      fixture.detectChanges();
+
+      const actions = component.pageRowActions();
+      expect(actions.length).toBe(3);
+
+      const viewAction = actions.find((a) => a.id === 'view');
+      expect(viewAction).toBeTruthy();
+      expect(viewAction?.label).toBe('Ver detalhes');
+      expect(viewAction?.tooltip).toBe('Ver detalhes');
+      expect(viewAction?.icon).toBe('visibility');
+
+      const editAction = actions.find((a) => a.id === 'edit');
+      expect(editAction).toBeTruthy();
+      expect(editAction?.label).toBe('Editar');
+      expect(editAction?.tooltip).toBe('Editar registro');
+      expect(editAction?.icon).toBe('edit');
+
+      const deleteAction = actions.find((a) => a.id === 'delete');
+      expect(deleteAction).toBeTruthy();
+      expect(deleteAction?.label).toBe('Excluir');
+      expect(deleteAction?.tooltip).toBe('Excluir registro');
+      expect(deleteAction?.icon).toBe('delete');
+      expect(deleteAction?.danger).toBe(true);
+    });
+
+    it('should apply custom labels and tooltips from page configuration to row actions', () => {
+      sessionService.setUiConfiguration(mockUiConfigWithCustomLabels);
+      paramMapSubject.next(convertToParamMap({ pageSlug: 'pedidos' }));
+      fixture.detectChanges();
+
+      const actions = component.pageRowActions();
+      expect(actions.find((a) => a.id === 'view')?.label).toBe('Inspecionar');
+      expect(actions.find((a) => a.id === 'view')?.tooltip).toBe('Inspecionar detalhes do pedido');
+      expect(actions.find((a) => a.id === 'edit')?.label).toBe('Modificar');
+      expect(actions.find((a) => a.id === 'edit')?.tooltip).toBe('Modificar pedido selecionado');
+      expect(actions.find((a) => a.id === 'delete')?.label).toBe('Remover');
+      expect(actions.find((a) => a.id === 'delete')?.tooltip).toBe('Remover pedido da base');
+    });
+
+    it('should omit actions when operations are unavailable or disabled via configuration', () => {
+      // 1. Clientes only has list operation, no details/update/delete
+      sessionService.setUiConfiguration(mockUiConfig);
+      paramMapSubject.next(convertToParamMap({ pageSlug: 'clientes' }));
+      fixture.detectChanges();
+
+      expect(component.pageRowActions()).toEqual([]);
+
+      // 2. Explicitly disabling actions in configuration
+      const disabledConfig: UiConfiguration = {
+        pages: {
+          'orders-page': {
+            id: 'orders-page',
+            resourceId: 'orders',
+            title: 'Pedidos',
+            slug: 'pedidos',
+            actions: {
+              rowActions: {
+                viewDetails: false,
+                edit: false,
+                delete: false
+              }
+            }
+          }
+        }
+      };
+
+      sessionService.setUiConfiguration(disabledConfig);
+      paramMapSubject.next(convertToParamMap({ pageSlug: 'pedidos' }));
+      fixture.detectChanges();
+
+      expect(component.pageRowActions()).toEqual([]);
+    });
+
+    it('should open RecordDetailsDrawerComponent on row view and resolve path parameters without assuming id name', () => {
+      sessionService.setUiConfiguration(mockUiConfig);
+      paramMapSubject.next(convertToParamMap({ pageSlug: 'pedidos' }));
+      fixture.detectChanges();
+
+      expect(component.activeDetailsInspection()).toBeNull();
+
+      // Test with record having order_id and orderId variations
+      const record = { order_id: 'ORD-789', status: 'Processando', total: 350 };
+      component.onRowView(record);
+
+      const active = component.activeDetailsInspection();
+      expect(active).toBeTruthy();
+      expect(active?.detailsOp.id).toBe('getOrder');
+      expect(active?.params).toEqual({ orderId: 'ORD-789' });
+      expect(active?.missingParams).toEqual([]);
+
+      fixture.detectChanges();
+      const el: HTMLElement = fixture.nativeElement;
+      expect(el.querySelector('app-record-details-drawer')).toBeTruthy();
+
+      // Close details inspection
+      component.onCloseDetailsInspection();
+      expect(component.activeDetailsInspection()).toBeNull();
+      fixture.detectChanges();
+      expect(el.querySelector('app-record-details-drawer')).toBeNull();
+    });
+
+    it('should open EditRecordDialogComponent on row edit and pass available operations', () => {
+      sessionService.setUiConfiguration(mockUiConfig);
+      paramMapSubject.next(convertToParamMap({ pageSlug: 'pedidos' }));
+      fixture.detectChanges();
+
+      expect(component.activeEditRecord()).toBeNull();
+
+      const record = { orderId: 'ORD-999', customer: 'Alice', status: 'Pendente' };
+      component.onRowEdit(record);
+
+      const active = component.activeEditRecord();
+      expect(active).toBeTruthy();
+      expect(active?.updateOp.id).toBe('updateOrder');
+      expect(active?.availableOps?.length).toBeGreaterThan(0);
+      expect(active?.record).toEqual(record);
+      expect(active?.params).toEqual({ orderId: 'ORD-999' });
+      expect(active?.detailsOp?.id).toBe('getOrder');
+
+      fixture.detectChanges();
+      const el: HTMLElement = fixture.nativeElement;
+      expect(el.querySelector('app-edit-record-dialog')).toBeTruthy();
+
+      // Close edit record dialog
+      component.onCloseEditRecord();
+      expect(component.activeEditRecord()).toBeNull();
+      fixture.detectChanges();
+      expect(el.querySelector('app-edit-record-dialog')).toBeNull();
+    });
+
+    it('should open DeleteConfirmDialogComponent on row delete', () => {
+      sessionService.setUiConfiguration(mockUiConfig);
+      paramMapSubject.next(convertToParamMap({ pageSlug: 'pedidos' }));
+      fixture.detectChanges();
+
+      expect(component.activeDeleteConfirmation()).toBeNull();
+
+      const record = { id: 'ORD-456', total: 100 };
+      component.onRowDelete(record);
+
+      const active = component.activeDeleteConfirmation();
+      expect(active).toBeTruthy();
+      expect(active?.deleteOp.id).toBe('deleteOrder');
+      expect(active?.params).toEqual({ orderId: 'ORD-456' });
+
+      fixture.detectChanges();
+      const el: HTMLElement = fixture.nativeElement;
+      expect(el.querySelector('app-delete-confirm-dialog')).toBeTruthy();
+
+      // Close delete confirmation
+      component.onCloseDeleteConfirmation();
+      expect(component.activeDeleteConfirmation()).toBeNull();
+      fixture.detectChanges();
+      expect(el.querySelector('app-delete-confirm-dialog')).toBeNull();
+    });
+
+    it('should handle transition from details drawer to edit dialog (edit from drawer)', () => {
+      sessionService.setUiConfiguration(mockUiConfig);
+      paramMapSubject.next(convertToParamMap({ pageSlug: 'pedidos' }));
+      fixture.detectChanges();
+
+      component.onRowView({ orderId: 'ORD-123' });
+      expect(component.activeDetailsInspection()).toBeTruthy();
+
+      const resolved = component.facade.resolvedPage();
+      component.onEditRecord({
+        record: { orderId: 'ORD-123', client: 'Bob' },
+        updateOp: resolved!.update!,
+        params: { orderId: 'ORD-123' },
+        detailsOp: resolved!.details!
+      });
+
+      // Details drawer should be closed and edit dialog opened
+      expect(component.activeDetailsInspection()).toBeNull();
+      expect(component.activeEditRecord()).toBeTruthy();
+      expect(component.activeEditRecord()?.params).toEqual({ orderId: 'ORD-123' });
+    });
+
+    it('should notify resource mutation and refresh list when record is updated', () => {
+      sessionService.setUiConfiguration(mockUiConfig);
+      paramMapSubject.next(convertToParamMap({ pageSlug: 'pedidos' }));
+      fixture.detectChanges();
+
+      component.onRowEdit({ orderId: 'ORD-123' });
+      const mutationSpy = vi.spyOn(sessionService, 'notifyResourceMutation');
+      const refreshSpy = vi.spyOn(component.facade, 'refresh');
+
+      const mockResult = {
+        status: 200,
+        statusText: 'OK',
+        data: { orderId: 'ORD-123', updated: true },
+        duration: 10,
+        durationMs: 10,
+        isSuccess: true
+      };
+
+      component.onRecordUpdated(mockResult);
+
+      expect(mutationSpy).toHaveBeenCalledWith('orders', 'updateOrder', mockResult);
+      expect(refreshSpy).toHaveBeenCalled();
+      expect(component.activeEditRecord()).toBeNull();
+    });
+
+    it('should notify resource mutation and refresh list when record is deleted', () => {
+      sessionService.setUiConfiguration(mockUiConfig);
+      paramMapSubject.next(convertToParamMap({ pageSlug: 'pedidos' }));
+      fixture.detectChanges();
+
+      component.onRowDelete({ orderId: 'ORD-123' });
+      const mutationSpy = vi.spyOn(sessionService, 'notifyResourceMutation');
+      const refreshSpy = vi.spyOn(component.facade, 'refresh');
+
+      const mockResult = {
+        status: 204,
+        statusText: 'No Content',
+        data: null,
+        duration: 12,
+        durationMs: 12,
+        isSuccess: true
+      };
+
+      component.onRecordDeleted(mockResult);
+
+      expect(mutationSpy).toHaveBeenCalledWith('orders', 'deleteOrder', mockResult);
+      expect(refreshSpy).toHaveBeenCalled();
+      expect(component.activeDeleteConfirmation()).toBeNull();
+    });
+
+    it('should preserve missing parameters in missingParams when parameter cannot be inferred', () => {
+      sessionService.setUiConfiguration(mockUiConfig);
+      paramMapSubject.next(convertToParamMap({ pageSlug: 'pedidos' }));
+      fixture.detectChanges();
+
+      // Record with unrelated fields
+      component.onRowView({ status: 'Pendente', notes: 'Sem identificador' });
+
+      const active = component.activeDetailsInspection();
+      expect(active).toBeTruthy();
+      expect(active?.missingParams?.length).toBe(1);
+      expect(active?.missingParams?.[0].name).toBe('orderId');
     });
   });
 });
