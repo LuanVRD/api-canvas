@@ -13,6 +13,8 @@ import { ApiSessionService } from '../../core/services/api-session.service';
 import { UiConfigurationService } from '../../core/services/ui-configuration.service';
 import { UiPageConfiguration } from '../../core/models/ui-configuration.model';
 import { ResourcePageFacadeService } from './services/resource-page-facade.service';
+import { DynamicTableComponent, TableActionConfig } from '../../dynamic-ui/dynamic-table/dynamic-table.component';
+import { TableSchemaService, TableColumnDescriptor } from '../../dynamic-ui/dynamic-table/table-schema.service';
 
 /**
  * Dashboard feature page — operational view for custom resource pages.
@@ -32,7 +34,8 @@ import { ResourcePageFacadeService } from './services/resource-page-facade.servi
     EmptyStateComponent,
     LoadingIndicatorComponent,
     DashboardSidebarComponent,
-    AuthConfigDialogComponent
+    AuthConfigDialogComponent,
+    DynamicTableComponent
   ],
   providers: [ResourcePageFacadeService],
   template: `
@@ -225,11 +228,22 @@ import { ResourcePageFacadeService } from './services/resource-page-facade.servi
                     />
                   </div>
                 } @else {
-                  <!-- Success State: Render Data View -->
-                  <div class="page-placeholder-card">
-                    <div class="placeholder-content">
-                      <mat-icon class="placeholder-icon">layers</mat-icon>
-                      <h3 class="placeholder-title">{{ selectedPage()?.title }}</h3>
+                  <!-- Success State: Render Data View via Dynamic Table -->
+                  <div class="dashboard-table-view">
+                    <app-dynamic-table
+                      [data]="facade.items()"
+                      [columns]="inferredColumns()"
+                      [totalCount]="facade.totalCount()"
+                      [loading]="facade.isRefreshing()"
+                      layoutMode="full-height"
+                      [showActions]="hasRowActions()"
+                      [actions]="pageRowActions()"
+                      (rowView)="onRowView($event)"
+                      (rowEdit)="onRowEdit($event)"
+                      (rowDelete)="onRowDelete($event)"
+                      (rowSelect)="onRowSelect($event)"
+                    />
+                    <div class="table-footer-meta">
                       <p class="placeholder-text">
                         Total de registros carregados: <strong class="font-mono text-highlight">{{ facade.totalCount() }}</strong>
                       </p>
@@ -658,6 +672,22 @@ import { ResourcePageFacadeService } from './services/resource-page-facade.servi
       }
     }
 
+    .dashboard-table-view {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      width: 100%;
+      min-height: 320px;
+    }
+
+    .table-footer-meta {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 0 4px;
+    }
+
     .page-placeholder-card {
       background: var(--canvas-surface);
       border: 1px solid var(--canvas-border);
@@ -731,6 +761,7 @@ import { ResourcePageFacadeService } from './services/resource-page-facade.servi
 export class DashboardPage implements OnInit, OnDestroy {
   private readonly sessionService = inject(ApiSessionService);
   private readonly uiConfigService = inject(UiConfigurationService);
+  private readonly tableSchemaService = inject(TableSchemaService);
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
 
@@ -740,6 +771,68 @@ export class DashboardPage implements OnInit, OnDestroy {
 
   readonly isAuthDialogOpen = signal<boolean>(false);
   readonly requestedSlug = signal<string | null>(null);
+
+  /**
+   * Dynamically inferred column descriptors for the active dashboard page.
+   */
+  readonly inferredColumns = computed<TableColumnDescriptor[]>(() => {
+    const items = this.facade.items();
+    const page = this.selectedPage();
+    const resolved = this.facade.resolvedPage();
+    const schema = resolved?.list?.responses?.[0]?.schema;
+    const globalFields = this.sessionService.uiConfiguration()?.fields;
+
+    const resConfig = page
+      ? {
+          list: {
+            columns: page.table?.columns?.map((c) => c.field)
+          }
+        }
+      : null;
+
+    return this.tableSchemaService.inferColumns(items, schema, resConfig, globalFields);
+  });
+
+  readonly hasRowActions = computed<boolean>(() => {
+    return this.pageRowActions().length > 0;
+  });
+
+  readonly pageRowActions = computed<TableActionConfig[]>(() => {
+    const page = this.selectedPage();
+    const resolved = this.facade.resolvedPage();
+    const rowCfg = page?.actions?.rowActions;
+
+    const actions: TableActionConfig[] = [];
+    if (resolved?.details || rowCfg?.viewDetails !== false) {
+      actions.push({
+        id: 'view',
+        label: 'Ver detalhes',
+        icon: 'visibility',
+        tooltip: 'Ver detalhes',
+        visible: rowCfg?.viewDetails !== false && !!resolved?.details
+      });
+    }
+    if (resolved?.update || rowCfg?.edit !== false) {
+      actions.push({
+        id: 'edit',
+        label: 'Editar',
+        icon: 'edit',
+        tooltip: 'Editar registro',
+        visible: rowCfg?.edit !== false && !!resolved?.update
+      });
+    }
+    if (resolved?.delete || rowCfg?.delete !== false) {
+      actions.push({
+        id: 'delete',
+        label: 'Excluir',
+        icon: 'delete',
+        tooltip: 'Excluir registro',
+        danger: true,
+        visible: rowCfg?.delete !== false && !!resolved?.delete
+      });
+    }
+    return actions;
+  });
 
   /**
    * Computed list of all active custom pages for the connected API.
@@ -882,5 +975,21 @@ export class DashboardPage implements OnInit, OnDestroy {
 
   onReconnect(): void {
     this.router.navigate(['/connect']);
+  }
+
+  onRowView(_record: unknown): void {
+    // Row view inspection handler
+  }
+
+  onRowEdit(_record: unknown): void {
+    // Row edit dialog handler
+  }
+
+  onRowDelete(_record: unknown): void {
+    // Row delete confirmation dialog handler
+  }
+
+  onRowSelect(_record: unknown): void {
+    // Row selection handler
   }
 }
