@@ -124,14 +124,23 @@ export interface DashboardPageConfig {
 }
 
 export interface DashboardMetricConfig {
-  id: string;
+  id?: string;
   label: string;
-  icon: string;
-  type: 'count_all' | 'count_matching' | 'sum_field';
+  icon?: string;
+  type?: 'count_all' | 'count_matching' | 'sum_field' | string;
   field?: string;
-  matchingValue?: any;
-  colorScheme: 'default' | 'warning' | 'info' | 'success' | 'danger';
+  matchingValue?: unknown;
+  colorScheme?: 'default' | 'primary' | 'warning' | 'info' | 'success' | 'danger';
+  format?: 'number' | 'currency' | 'percent' | string;
+  description?: string;
 }
+
+### 3.1. Diretrizes Arquiteturais do Avaliador de Métricas (`UiMetricEvaluatorService`):
+1. **Genericidade**: Nenhuma regra de negócio fixa (ex.: 'status', 'pedidos') embutida no core do componente ou serviço. O cálculo é derivado exclusivamente do descriptor.
+2. **Ocultamento Automático**: Se nenhuma métrica for configurada (`metrics` ausente ou array vazio), a faixa de métricas é 100% omitida do DOM, sem gaps ou espaços vazios.
+3. **Controle de Densidade**: Exibição limitada a no máximo 6 métricas (idealmente 2 a 4 conforme o protótipo), preservando a clareza e caráter de ferramenta profissional.
+4. **Cálculo Local vs. Paginação Server-side**: Métricas locais (`count_matching`, `sum_field`) avaliam o conjunto de dados em memória carregado na página ativa. A métrica `count_all` utiliza prioritariamente o `totalCount` retornado pelo backend.
+5. **Cores Semânticas Restritas**: Mapeamento exclusivo para tokens canônicos do sistema de design (`color-default`, `color-primary`, `color-warning`, `color-info`, `color-success`, `color-danger`).
 
 export interface DashboardColumnConfig {
   field: string;

@@ -133,6 +133,56 @@ describe('ResourcePageContentComponent', () => {
       expect(pendingMetric.querySelector('.metric-value')?.textContent?.trim()).toBe('1');
     });
 
+    it('should hide metrics grid completely when page has no metrics configured', () => {
+      const pageWithoutMetrics: UiPageConfiguration = {
+        id: 'no-metrics-page',
+        resourceId: 'items',
+        title: 'Sem Métricas'
+      };
+
+      fixture.componentRef.setInput('page', pageWithoutMetrics);
+      fixture.componentRef.setInput('items', mockItems);
+      fixture.detectChanges();
+
+      const el: HTMLElement = fixture.nativeElement;
+      expect(el.querySelector('.metrics-grid')).toBeNull();
+      expect(el.querySelectorAll('.metric-card').length).toBe(0);
+    });
+
+    it('should hide metrics grid completely when metrics array is empty', () => {
+      const pageEmptyMetrics: UiPageConfiguration = {
+        id: 'empty-metrics-page',
+        resourceId: 'items',
+        title: 'Métricas Vazias',
+        metrics: []
+      };
+
+      fixture.componentRef.setInput('page', pageEmptyMetrics);
+      fixture.componentRef.setInput('items', mockItems);
+      fixture.detectChanges();
+
+      const el: HTMLElement = fixture.nativeElement;
+      expect(el.querySelector('.metrics-grid')).toBeNull();
+    });
+
+    it('should render color classes and icons on metric cards', () => {
+      fixture.componentRef.setInput('page', mockPage);
+      fixture.componentRef.setInput('items', mockItems);
+      fixture.componentRef.setInput('totalCount', 50);
+      fixture.detectChanges();
+
+      const el: HTMLElement = fixture.nativeElement;
+      const metricCards = el.querySelectorAll('.metric-card');
+      expect(metricCards.length).toBe(2);
+
+      const pendingCard = metricCards[1];
+      const icon = pendingCard.querySelector('.metric-icon');
+      const val = pendingCard.querySelector('.metric-value');
+
+      expect(icon?.textContent?.trim()).toBe('schedule');
+      expect(val?.classList.contains('color-warning')).toBe(true);
+    });
+
     it('should emit searchChange on typing into the search input', () => {
       fixture.componentRef.setInput('page', mockPage);
       fixture.detectChanges();

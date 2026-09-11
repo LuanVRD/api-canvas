@@ -2,6 +2,7 @@ import {
   Component,
   ChangeDetectionStrategy,
   computed,
+  inject,
   input,
   output,
   signal
@@ -26,15 +27,10 @@ import {
   ResourcePageError,
   ResourcePageStatus
 } from '../../models/resource-page-state.model';
-
-export interface CalculatedMetric {
-  id?: string;
-  label: string;
-  icon?: string;
-  value: string | number;
-  colorClass: string;
-  description?: string;
-}
+import {
+  CalculatedMetric,
+  UiMetricEvaluatorService
+} from '../../../../core/services/ui-metric-evaluator.service';
 
 @Component({
   selector: 'app-resource-page-content',
@@ -117,7 +113,7 @@ export interface CalculatedMetric {
                 <span class="metric-label">{{ metric.label }}</span>
               </div>
               <div class="metric-value font-mono" [ngClass]="metric.colorClass">
-                {{ metric.value }}
+                {{ metric.formattedValue || metric.value }}
               </div>
               @if (metric.description) {
                 <span class="metric-hint">{{ metric.description }}</span>
@@ -719,6 +715,8 @@ export class ResourcePageContentComponent {
   readonly rowDelete = output<unknown>();
   readonly rowSelect = output<unknown>();
 
+  private readonly metricEvaluator = inject(UiMetricEvaluatorService);
+
   readonly searchPlaceholder = computed<string>(() => {
     return (
       this.page().filters?.searchPlaceholder ||
@@ -735,71 +733,11 @@ export class ResourcePageContentComponent {
   });
 
   readonly metricsList = computed<CalculatedMetric[]>(() => {
-    const metricsConfig = this.page().metrics;
-    if (!metricsConfig || metricsConfig.length === 0) {
-      return [];
-    }
-
-    const items = this.items();
-    const total = this.totalCount();
-
-    return metricsConfig.map((cfg) => {
-      let value: string | number = 0;
-
-      if (cfg.type === 'count_all') {
-        value = total || items.length;
-      } else if (cfg.type === 'count_matching' && cfg.field && cfg.matchingValue !== undefined) {
-        value = items.filter((item) => {
-          if (item && typeof item === 'object') {
-            const val = (item as Record<string, unknown>)[cfg.field!];
-            return String(val).toLowerCase() === String(cfg.matchingValue).toLowerCase();
-          }
-          return false;
-        }).length;
-      } else if (cfg.type === 'sum_field' && cfg.field) {
-        const sum = items.reduce<number>((acc: number, item: unknown) => {
-          if (item && typeof item === 'object') {
-            const num = Number((item as Record<string, unknown>)[cfg.field!]);
-            return acc + (isNaN(num) ? 0 : num);
-          }
-          return acc;
-        }, 0);
-        value = sum;
-      } else {
-        value = total || items.length;
-      }
-
-      let colorClass = 'color-default';
-      switch (cfg.colorScheme) {
-        case 'primary':
-          colorClass = 'color-primary';
-          break;
-        case 'warning':
-          colorClass = 'color-warning';
-          break;
-        case 'info':
-          colorClass = 'color-info';
-          break;
-        case 'success':
-          colorClass = 'color-success';
-          break;
-        case 'danger':
-          colorClass = 'color-danger';
-          break;
-        default:
-          colorClass = 'color-default';
-          break;
-      }
-
-      return {
-        id: cfg.id,
-        label: cfg.label,
-        icon: cfg.icon,
-        value,
-        colorClass,
-        description: cfg.description
-      };
-    });
+    return this.metricEvaluator.evaluateMetrics(
+      this.page().metrics,
+      this.items(),
+      this.totalCount()
+    );
   });
 
   onSearchInput(value: string): void {
