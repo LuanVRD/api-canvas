@@ -129,6 +129,8 @@ export interface UiPageConfiguration {
   resourceId?: string;
   title?: string;
   slug?: string;
+  isDefault?: boolean;
+  default?: boolean;
   icon?: string;
   description?: string;
   order?: number;

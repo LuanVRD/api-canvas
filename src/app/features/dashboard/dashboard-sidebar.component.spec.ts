@@ -83,6 +83,18 @@ describe('DashboardSidebarComponent', () => {
     expect(items[1].getAttribute('aria-current')).toBeNull();
   });
 
+  it('should mark page as active when selectedPageSlug matches', () => {
+    fixture.componentRef.setInput('pages', mockPages);
+    fixture.componentRef.setInput('selectedPageSlug', 'clientes');
+    fixture.detectChanges();
+
+    const el: HTMLElement = fixture.nativeElement;
+    const items = el.querySelectorAll('.page-item');
+    expect(items[1].classList.contains('active')).toBe(true);
+    expect(items[1].getAttribute('aria-current')).toBe('page');
+    expect(items[0].classList.contains('active')).toBe(false);
+  });
+
   it('should emit pageSelect event when a page item is clicked', () => {
     fixture.componentRef.setInput('pages', mockPages);
     fixture.detectChanges();

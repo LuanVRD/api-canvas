@@ -56,6 +56,29 @@ describe('DashboardPage', () => {
     }
   };
 
+  const mockUiConfigWithDefault: UiConfiguration = {
+    pages: {
+      'orders-page': {
+        id: 'orders-page',
+        resourceId: 'orders',
+        title: 'Pedidos CRUD',
+        icon: 'receipt_long',
+        slug: 'pedidos',
+        order: 1,
+        description: 'Painel operacional de pedidos'
+      },
+      'customers-page': {
+        id: 'customers-page',
+        resourceId: 'customers',
+        title: 'Clientes',
+        icon: 'people',
+        slug: 'clientes',
+        isDefault: true,
+        order: 2
+      }
+    }
+  };
+
   beforeEach(async () => {
     paramMapSubject = new BehaviorSubject(convertToParamMap({}));
 
@@ -99,62 +122,111 @@ describe('DashboardPage', () => {
     expect(el.querySelector('.api-version')?.textContent?.trim()).toBe('v1.0.0');
   });
 
-  it('should display unconfigured empty state when no pages are configured', () => {
-    sessionService.setUiConfiguration(null);
-    fixture.detectChanges();
+  describe('Ausência de páginas (Unconfigured State)', () => {
+    it('should display unconfigured empty state when no pages are configured without redirecting', () => {
+      sessionService.setUiConfiguration(null);
+      fixture.detectChanges();
 
-    const el: HTMLElement = fixture.nativeElement;
-    const unconfigured = el.querySelector('.unconfigured-state');
-    expect(unconfigured).toBeTruthy();
-    expect(unconfigured?.textContent).toContain('Nenhuma página configurada');
-    expect(el.querySelector('.btn-primary-action')).toBeTruthy();
+      const el: HTMLElement = fixture.nativeElement;
+      const unconfigured = el.querySelector('.unconfigured-state');
+      expect(unconfigured).toBeTruthy();
+      expect(unconfigured?.textContent).toContain('Nenhuma página configurada');
+      expect(el.querySelector('.btn-primary-action')).toBeTruthy();
+      expect(router.navigate).not.toHaveBeenCalled();
+    });
+
+    it('should navigate to /workspace when clicking on Explorar Recursos in unconfigured state', () => {
+      sessionService.setUiConfiguration(null);
+      fixture.detectChanges();
+
+      component.onOpenExplorer();
+      expect(router.navigate).toHaveBeenCalledWith(['/workspace']);
+    });
   });
 
-  it('should render custom pages in sidebar and active page header when configured', () => {
-    sessionService.setUiConfiguration(mockUiConfig);
-    fixture.detectChanges();
+  describe('Redirecionamento de rota padrão (/dashboard)', () => {
+    it('should redirect /dashboard to the page marked as isDefault', () => {
+      sessionService.setUiConfiguration(mockUiConfigWithDefault);
+      fixture.detectChanges();
 
-    const el: HTMLElement = fixture.nativeElement;
-    const sidebarItems = el.querySelectorAll('.page-item');
-    expect(sidebarItems.length).toBe(2);
+      expect(router.navigate).toHaveBeenCalledWith(['/dashboard', 'clientes'], { replaceUrl: true });
+    });
 
-    // First page should be selected by default
-    expect(component.selectedPageId()).toBe('orders-page');
-    expect(component.selectedPage()?.title).toBe('Pedidos CRUD');
+    it('should redirect /dashboard to the first visible page when no page is marked as default', () => {
+      sessionService.setUiConfiguration(mockUiConfig);
+      fixture.detectChanges();
 
-    const headerTitle = el.querySelector('.page-title');
-    expect(headerTitle?.textContent?.trim()).toBe('Pedidos CRUD');
+      expect(router.navigate).toHaveBeenCalledWith(['/dashboard', 'pedidos'], { replaceUrl: true });
+    });
   });
 
-  it('should select specific page according to route paramMap', () => {
-    sessionService.setUiConfiguration(mockUiConfig);
-    paramMapSubject.next(convertToParamMap({ pageId: 'customers-page' }));
-    fixture.detectChanges();
+  describe('Resolução de slug válido', () => {
+    it('should resolve pageSlug from route params and render active page header', () => {
+      sessionService.setUiConfiguration(mockUiConfig);
+      paramMapSubject.next(convertToParamMap({ pageSlug: 'pedidos' }));
+      fixture.detectChanges();
 
-    expect(component.selectedPageId()).toBe('customers-page');
-    expect(component.selectedPage()?.title).toBe('Clientes');
+      expect(component.requestedSlug()).toBe('pedidos');
+      expect(component.selectedPage()?.title).toBe('Pedidos CRUD');
+      expect(component.isInvalidSlug()).toBe(false);
+
+      const el: HTMLElement = fixture.nativeElement;
+      const headerTitle = el.querySelector('.page-title');
+      expect(headerTitle?.textContent?.trim()).toBe('Pedidos CRUD');
+    });
+
+    it('should resolve page by id if slug matches id for backward compatibility', () => {
+      sessionService.setUiConfiguration(mockUiConfig);
+      paramMapSubject.next(convertToParamMap({ pageSlug: 'customers-page' }));
+      fixture.detectChanges();
+
+      expect(component.selectedPage()?.slug).toBe('clientes');
+      expect(component.selectedPage()?.title).toBe('Clientes');
+      expect(component.isInvalidSlug()).toBe(false);
+    });
   });
 
-  it('should navigate to /dashboard/:pageId when selecting a page from sidebar', () => {
-    sessionService.setUiConfiguration(mockUiConfig);
-    fixture.detectChanges();
+  describe('Tratamento de slug inválido/inexistente', () => {
+    it('should display not found empty state when requested slug does not exist in configuration', () => {
+      sessionService.setUiConfiguration(mockUiConfig);
+      paramMapSubject.next(convertToParamMap({ pageSlug: 'rota-inexistente' }));
+      fixture.detectChanges();
 
-    const pageToSelect = component.pages()[1];
-    component.onSelectPage(pageToSelect);
+      expect(component.isInvalidSlug()).toBe(true);
+      expect(component.selectedPage()).toBeNull();
 
-    expect(router.navigate).toHaveBeenCalledWith(['/dashboard', 'customers-page']);
+      const el: HTMLElement = fixture.nativeElement;
+      const notFoundSection = el.querySelector('.not-found-state');
+      expect(notFoundSection).toBeTruthy();
+      expect(notFoundSection?.textContent).toContain('Página não encontrada');
+      expect(notFoundSection?.textContent).toContain('rota-inexistente');
+    });
+
+    it('should provide recovery action to navigate to default page from invalid slug state', () => {
+      sessionService.setUiConfiguration(mockUiConfigWithDefault);
+      paramMapSubject.next(convertToParamMap({ pageSlug: 'slug-invalido' }));
+      fixture.detectChanges();
+
+      component.onGoToDefaultPage();
+      expect(router.navigate).toHaveBeenCalledWith(['/dashboard', 'clientes']);
+    });
   });
 
-  it('should navigate to /workspace when clicking on Explorar Recursos in unconfigured state', () => {
-    sessionService.setUiConfiguration(null);
-    fixture.detectChanges();
+  describe('Navegação e Sidebar', () => {
+    it('should navigate to /dashboard/:pageSlug when selecting a page from sidebar', () => {
+      sessionService.setUiConfiguration(mockUiConfig);
+      fixture.detectChanges();
 
-    component.onOpenExplorer();
-    expect(router.navigate).toHaveBeenCalledWith(['/workspace']);
-  });
+      const pageToSelect = component.pages()[1];
+      component.onSelectPage(pageToSelect);
 
-  it('should navigate to /connect when Change API is triggered', () => {
-    component.onReconnect();
-    expect(router.navigate).toHaveBeenCalledWith(['/connect']);
+      expect(router.navigate).toHaveBeenCalledWith(['/dashboard', 'clientes']);
+      expect(component.requestedSlug()).toBe('clientes');
+    });
+
+    it('should navigate to /connect when Change API is triggered', () => {
+      component.onReconnect();
+      expect(router.navigate).toHaveBeenCalledWith(['/connect']);
+    });
   });
 });

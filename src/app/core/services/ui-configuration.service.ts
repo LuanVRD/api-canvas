@@ -193,9 +193,14 @@ export class UiConfigurationService {
             resourceMatch?.label ||
             this.formatLabel(resKey);
 
+          const slug = resConfig.page.slug || resConfig.slug || id;
+          const isDefault = resConfig.page.isDefault ?? resConfig.page.default ?? false;
+
           pagesMap.set(id, {
             ...resConfig.page,
             id,
+            slug,
+            isDefault,
             resourceId: resConfig.page.resourceId || resKey,
             title: resolvedTitle,
             icon: resConfig.page.icon || resConfig.icon || 'table_chart',
@@ -228,10 +233,15 @@ export class UiConfigurationService {
           this.formatLabel(id);
 
         const existing = pagesMap.get(id);
+        const slug = pageConfig.slug || existing?.slug || id;
+        const isDefault = pageConfig.isDefault ?? pageConfig.default ?? existing?.isDefault ?? false;
+
         pagesMap.set(id, {
           ...(existing || {}),
           ...pageConfig,
           id,
+          slug,
+          isDefault,
           title: resolvedTitle,
           icon: pageConfig.icon || resConfig?.icon || existing?.icon || 'table_chart',
           order: pageConfig.order ?? resConfig?.order ?? existing?.order
@@ -290,6 +300,7 @@ export class UiConfigurationService {
       title: pageConfig?.title || resourceConfig?.label,
       icon: pageConfig?.icon || resourceConfig?.icon,
       slug: pageConfig?.slug || resourceConfig?.slug,
+      isDefault: pageConfig?.isDefault ?? pageConfig?.default ?? false,
       order: pageConfig?.order ?? resourceConfig?.order,
       hidden: pageConfig?.hidden ?? resourceConfig?.hidden ?? false,
       displayMode: pageConfig?.displayMode || 'dashboard',

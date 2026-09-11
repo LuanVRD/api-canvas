@@ -37,7 +37,7 @@ export const routes: Routes = [
       import('./features/dashboard/dashboard.page').then(m => m.DashboardPage)
   },
   {
-    path: 'dashboard/:pageId',
+    path: 'dashboard/:pageSlug',
     canActivate: [apiSessionGuard],
     loadComponent: () =>
       import('./features/dashboard/dashboard.page').then(m => m.DashboardPage)

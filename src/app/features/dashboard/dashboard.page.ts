@@ -1,4 +1,4 @@
-import { Component, computed, inject, OnDestroy, OnInit, signal } from '@angular/core';
+import { Component, computed, effect, inject, OnDestroy, OnInit, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router } from '@angular/router';
 import { Subscription } from 'rxjs';
@@ -15,8 +15,8 @@ import { UiPageConfiguration } from '../../core/models/ui-configuration.model';
 /**
  * Dashboard feature page — operational view for custom resource pages.
  *
- * Provides sidebar navigation for configured custom pages, header controls,
- * empty state onboarding, and integration with the active API session.
+ * Provides stable URL parameterized routing (/dashboard/:pageSlug), sidebar navigation,
+ * default page redirection, invalid slug fallback state, and integration with the active API session.
  */
 @Component({
   selector: 'app-dashboard-page',
@@ -43,6 +43,7 @@ import { UiPageConfiguration } from '../../core/models/ui-configuration.model';
         <app-dashboard-sidebar
           [pages]="pages()"
           [selectedPageId]="selectedPage()?.id ?? undefined"
+          [selectedPageSlug]="selectedPage()?.slug ?? requestedSlug() ?? undefined"
           (pageSelect)="onSelectPage($event)"
           (newPageClick)="onCreatePage()"
           (configurePagesClick)="onConfigurePages()"
@@ -78,6 +79,50 @@ import { UiPageConfiguration } from '../../core/models/ui-configuration.model';
                   >
                     <mat-icon>code</mat-icon>
                     <span>Explorar Recursos</span>
+                  </button>
+                </div>
+              </div>
+            </section>
+          } @else if (isInvalidSlug()) {
+            <!-- Invalid / Not Found Slug Empty State -->
+            <section class="not-found-state" aria-label="Página não encontrada">
+              <div class="unconfigured-card">
+                <div class="unconfigured-icon-wrapper not-found-icon-wrapper">
+                  <mat-icon class="unconfigured-hero-icon not-found-hero-icon">search_off</mat-icon>
+                </div>
+                <h2 class="unconfigured-title">Página não encontrada</h2>
+                <p class="unconfigured-description">
+                  A página <strong class="font-mono text-highlight">{{ requestedSlug() }}</strong> não foi encontrada na configuração ativa do dashboard.
+                </p>
+                <div class="unconfigured-actions">
+                  @if (defaultPage()) {
+                    <button
+                      type="button"
+                      class="btn-primary-action"
+                      (click)="onGoToDefaultPage()"
+                      aria-label="Ir para página inicial do dashboard"
+                    >
+                      <mat-icon>dashboard</mat-icon>
+                      <span>Ir para o Dashboard</span>
+                    </button>
+                  }
+                  <button
+                    type="button"
+                    class="btn-secondary-action"
+                    (click)="onOpenExplorer()"
+                    aria-label="Abrir no API Explorer"
+                  >
+                    <mat-icon>code</mat-icon>
+                    <span>Explorar Recursos</span>
+                  </button>
+                  <button
+                    type="button"
+                    class="btn-secondary-action"
+                    (click)="onCreatePage()"
+                    aria-label="Criar nova página"
+                  >
+                    <mat-icon>add</mat-icon>
+                    <span>Nova Página</span>
                   </button>
                 </div>
               </div>
@@ -148,7 +193,7 @@ import { UiPageConfiguration } from '../../core/models/ui-configuration.model';
               </div>
             </section>
           } @else {
-            <!-- State when pages exist but none selected -->
+            <!-- State when pages exist but none selected (during transition) -->
             <section class="select-page-prompt">
               <app-empty-state
                 icon="layers"
@@ -190,8 +235,9 @@ import { UiPageConfiguration } from '../../core/models/ui-configuration.model';
       background: var(--canvas-bg);
     }
 
-    /* Unconfigured Empty State */
-    .unconfigured-state {
+    /* Unconfigured & Not Found Empty State */
+    .unconfigured-state,
+    .not-found-state {
       display: flex;
       align-items: center;
       justify-content: center;
@@ -230,6 +276,12 @@ import { UiPageConfiguration } from '../../core/models/ui-configuration.model';
         height: 28px;
         color: var(--canvas-text-link);
       }
+
+      &.not-found-icon-wrapper {
+        .not-found-hero-icon {
+          color: var(--canvas-text-muted);
+        }
+      }
     }
 
     .unconfigured-title {
@@ -246,6 +298,14 @@ import { UiPageConfiguration } from '../../core/models/ui-configuration.model';
       color: var(--canvas-text-secondary);
       margin: 0 0 24px;
       max-width: 440px;
+    }
+
+    .text-highlight {
+      color: var(--canvas-text-primary);
+      background: var(--canvas-surface-elevated);
+      padding: 1px 6px;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--canvas-border-subtle);
     }
 
     .unconfigured-actions {
@@ -536,7 +596,7 @@ export class DashboardPage implements OnInit, OnDestroy {
   private routeSub?: Subscription;
 
   readonly isAuthDialogOpen = signal<boolean>(false);
-  readonly selectedPageId = signal<string | null>(null);
+  readonly requestedSlug = signal<string | null>(null);
 
   /**
    * Computed list of all active custom pages for the connected API.
@@ -548,38 +608,74 @@ export class DashboardPage implements OnInit, OnDestroy {
   });
 
   /**
-   * Computed currently active page object.
+   * Computed default page to redirect to when navigating directly to /dashboard.
+   * Prioritizes isDefault: true / default: true, falling back to the first available page.
+   */
+  readonly defaultPage = computed<UiPageConfiguration | null>(() => {
+    const list = this.pages();
+    if (list.length === 0) {
+      return null;
+    }
+    const explicitDefault = list.find((p) => p.isDefault === true || p.default === true);
+    return explicitDefault || list[0];
+  });
+
+  /**
+   * Computed currently resolved page object matching the requested slug or id.
    */
   readonly selectedPage = computed<UiPageConfiguration | null>(() => {
     const list = this.pages();
     if (list.length === 0) {
       return null;
     }
-    const id = this.selectedPageId();
-    if (id) {
-      const match = list.find(
-        (p) =>
-          p.id === id ||
-          p.slug === id ||
-          p.resourceId === id ||
-          p.id?.toLowerCase() === id.toLowerCase() ||
-          p.slug?.toLowerCase() === id.toLowerCase()
-      );
-      if (match) return match;
+    const slug = this.requestedSlug();
+    if (!slug) {
+      return null;
     }
-    return list[0];
+    const target = slug.toLowerCase().trim();
+    return (
+      list.find(
+        (p) =>
+          p.slug?.toLowerCase() === target ||
+          p.id?.toLowerCase() === target ||
+          p.resourceId?.toLowerCase() === target
+      ) ?? null
+    );
   });
+
+  /**
+   * True when a page slug was requested in the URL but could not be resolved to any active page.
+   */
+  readonly isInvalidSlug = computed<boolean>(() => {
+    return this.pages().length > 0 && !!this.requestedSlug() && this.selectedPage() === null;
+  });
+
+  constructor() {
+    // Automatically redirect to default/first page if at root /dashboard and pages are available
+    effect(() => {
+      const list = this.pages();
+      const currentSlug = this.requestedSlug();
+      if (!currentSlug && list.length > 0) {
+        const def = this.defaultPage();
+        const targetSlug = def?.slug || def?.id;
+        if (targetSlug) {
+          this.router.navigate(['/dashboard', targetSlug], { replaceUrl: true });
+        }
+      }
+    });
+  }
 
   ngOnInit(): void {
     this.routeSub = this.route.paramMap.subscribe((params) => {
-      const pageId = params.get('pageId');
-      if (pageId) {
-        this.selectedPageId.set(pageId);
+      const pageSlug = params.get('pageSlug') || params.get('pageId');
+      if (pageSlug) {
+        this.requestedSlug.set(pageSlug);
       } else {
-        const available = this.pages();
-        if (available.length > 0 && !this.selectedPageId()) {
-          const firstId = available[0].id || available[0].slug || null;
-          this.selectedPageId.set(firstId);
+        this.requestedSlug.set(null);
+        const def = this.defaultPage();
+        const targetSlug = def?.slug || def?.id;
+        if (targetSlug) {
+          this.router.navigate(['/dashboard', targetSlug], { replaceUrl: true });
         }
       }
     });
@@ -590,10 +686,21 @@ export class DashboardPage implements OnInit, OnDestroy {
   }
 
   onSelectPage(page: UiPageConfiguration): void {
-    const targetId = page.id || page.slug;
-    this.selectedPageId.set(targetId || null);
-    if (targetId) {
-      this.router.navigate(['/dashboard', targetId]);
+    const targetSlug = page.slug || page.id;
+    if (targetSlug) {
+      this.requestedSlug.set(targetSlug);
+      this.router.navigate(['/dashboard', targetSlug]);
+    } else {
+      this.router.navigate(['/dashboard']);
+    }
+  }
+
+  onGoToDefaultPage(): void {
+    const def = this.defaultPage();
+    const targetSlug = def?.slug || def?.id;
+    if (targetSlug) {
+      this.requestedSlug.set(targetSlug);
+      this.router.navigate(['/dashboard', targetSlug]);
     } else {
       this.router.navigate(['/dashboard']);
     }

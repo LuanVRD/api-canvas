@@ -53,13 +53,13 @@ import { UiPageConfiguration } from '../../core/models/ui-configuration.model';
 
       <!-- Custom Pages Navigation List -->
       <nav class="page-list" role="list" aria-label="Lista de páginas personalizadas">
-        @for (page of filteredPages(); track page.id) {
+        @for (page of filteredPages(); track page.id || page.slug) {
           <button
             type="button"
             role="listitem"
             class="page-item"
-            [class.active]="selectedPageId() === page.id"
-            [attr.aria-current]="selectedPageId() === page.id ? 'page' : null"
+            [class.active]="isPageActive(page)"
+            [attr.aria-current]="isPageActive(page) ? 'page' : null"
             (click)="selectPage(page)"
             (keydown.enter)="selectPage(page)"
             (keydown.space)="selectPage(page); $event.preventDefault()"
@@ -388,6 +388,7 @@ import { UiPageConfiguration } from '../../core/models/ui-configuration.model';
 export class DashboardSidebarComponent {
   readonly pages = input<UiPageConfiguration[]>([]);
   readonly selectedPageId = input<string | undefined>(undefined);
+  readonly selectedPageSlug = input<string | undefined>(undefined);
   readonly pageCounts = input<Record<string, number>>({});
 
   readonly pageSelect = output<UiPageConfiguration>();
@@ -395,6 +396,17 @@ export class DashboardSidebarComponent {
   readonly configurePagesClick = output<void>();
 
   readonly filterQuery = signal<string>('');
+
+  isPageActive(page: UiPageConfiguration): boolean {
+    const activeKey = this.selectedPageSlug() || this.selectedPageId();
+    if (!activeKey) return false;
+    const target = activeKey.toLowerCase();
+    return Boolean(
+      (page.slug && page.slug.toLowerCase() === target) ||
+      (page.id && page.id.toLowerCase() === target) ||
+      (page.resourceId && page.resourceId.toLowerCase() === target)
+    );
+  }
 
   readonly filteredPages = computed<UiPageConfiguration[]>(() => {
     const q = this.filterQuery().trim().toLowerCase();
