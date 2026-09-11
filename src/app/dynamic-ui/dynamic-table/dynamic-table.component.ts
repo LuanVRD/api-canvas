@@ -147,8 +147,8 @@ import { ValueRendererComponent } from '../value-renderer/value-renderer.compone
 
     .table-scroll-wrapper {
       width: 100%;
-      overflow-x: auto;
-      max-height: 520px;
+      overflow: auto;
+      max-height: 480px;
     }
 
     .technical-table {

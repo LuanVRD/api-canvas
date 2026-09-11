@@ -1072,7 +1072,7 @@ export interface CustomHeaderItem {
     .err-hint .hint-icon { font-size: 14px; width: 14px; height: 14px; color: var(--color-warning); flex-shrink: 0; }
     .err-details { margin-top: 4px; font-size: 11px; color: #ff7b72; white-space: pre-wrap; }
     .console-loading-wrapper { padding: 40px 16px; }
-    .response-body-viewer { background: var(--canvas-bg); border: 1px solid var(--canvas-border); border-radius: var(--radius-sm); padding: 10px; max-height: 480px; overflow-y: auto; }
+    .response-body-viewer { width: 100%; min-width: 0; }
     .response-pre { margin: 0; font-size: 12px; line-height: 1.5; color: var(--canvas-text-primary); white-space: pre-wrap; word-break: break-all; }
     .response-headers-viewer { background: var(--canvas-bg); border: 1px solid var(--canvas-border); border-radius: var(--radius-sm); padding: 10px; max-height: 380px; overflow-y: auto; }
     .resp-headers-table { display: flex; flex-direction: column; gap: 4px; }

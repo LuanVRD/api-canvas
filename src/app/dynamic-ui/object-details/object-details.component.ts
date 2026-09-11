@@ -224,8 +224,8 @@ export interface PropertyItem {
     }
     .properties-table {
       width: 100%;
-      overflow-x: auto;
-      max-height: 520px;
+      overflow: auto;
+      max-height: 480px;
     }
     .prop-header-row {
       display: flex;

@@ -134,13 +134,13 @@ export type ViewMode = 'visual' | 'raw';
           <!-- 5. UNEXPECTED / INVALID FORMAT FALLBACK -->
           @else {
             <div class="invalid-format-wrapper">
-              <app-json-viewer [data]="parsedData()" [showHeader]="false" />
+              <app-json-viewer [data]="parsedData()" [showHeader]="false" maxHeight="480px" />
             </div>
           }
         } @else {
           <!-- RAW JSON VIEW -->
           <div class="raw-code-wrapper">
-            <app-json-viewer [data]="parsedData()" [showHeader]="false" />
+            <app-json-viewer [data]="parsedData()" [showHeader]="false" maxHeight="480px" />
           </div>
         }
       </div>
@@ -233,8 +233,9 @@ export type ViewMode = 'visual' | 'raw';
     }
     .viewer-body {
       padding: 8px;
-      overflow: auto;
-      max-height: 580px;
+      min-width: 0;
+      width: 100%;
+      box-sizing: border-box;
     }
     .empty-response-box {
       padding: 40px 16px;
