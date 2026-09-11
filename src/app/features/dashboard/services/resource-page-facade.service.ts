@@ -18,6 +18,7 @@ import {
 export interface LoadPageOptions {
   resetParams?: boolean;
   initialParams?: Partial<ResourcePageFilterParams>;
+  autoLoad?: boolean;
 }
 
 export interface RefreshOptions {
@@ -163,6 +164,23 @@ export class ResourcePageFacadeService implements OnDestroy {
           ...(options?.initialParams || {})
         };
 
+    const shouldAutoLoad = options?.autoLoad ?? config?.autoLoad ?? true;
+
+    if (!shouldAutoLoad) {
+      this._state.update((s) => ({
+        ...s,
+        status: 'idle',
+        resolvedPage: resolved,
+        pageConfig: config,
+        data: null,
+        rawResponse: null,
+        totalCount: 0,
+        params: nextParams,
+        error: null
+      }));
+      return;
+    }
+
     const requestId = ++this.requestCounter;
 
     this._state.update((s) => ({
@@ -182,6 +200,29 @@ export class ResourcePageFacadeService implements OnDestroy {
       isRefresh: false,
       page: resolved,
       params: nextParams
+    });
+  }
+
+  /**
+   * Executes the list operation explicitly (useful when autoLoad is false or in idle state).
+   */
+  executeList(): void {
+    const currentState = this._state();
+    const resolved = currentState.resolvedPage;
+    if (!resolved) return;
+
+    const requestId = ++this.requestCounter;
+    this._state.update((s) => ({
+      ...s,
+      status: 'loading',
+      error: null
+    }));
+
+    this.executionTrigger$.next({
+      requestId,
+      isRefresh: false,
+      page: resolved,
+      params: currentState.params
     });
   }
 
@@ -387,11 +428,15 @@ export class ResourcePageFacadeService implements OnDestroy {
           if (payload.missingListOp) {
             this._state.update((s) => ({
               ...s,
-              status: 'empty',
+              status: 'error',
               data: [],
               rawResponse: null,
               totalCount: 0,
-              error: null
+              error: {
+                message: `O recurso "${s.resolvedPage?.resourceId || s.pageConfig?.resourceId || 'selecionado'}" não possui uma operação de listagem configurada.`,
+                category: 'OPERATION_NOT_FOUND',
+                hint: 'Verifique no API Explorer as operações disponíveis ou configure uma rota de listagem.'
+              }
             }));
             return;
           }

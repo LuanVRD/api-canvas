@@ -6,15 +6,15 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
 import { ApiContextBarComponent } from '../../shared/components/api-context-bar/api-context-bar.component';
 import { EmptyStateComponent } from '../../shared/components/empty-state/empty-state.component';
-import { LoadingIndicatorComponent } from '../../shared/components/loading-indicator/loading-indicator.component';
 import { DashboardSidebarComponent } from './dashboard-sidebar.component';
 import { AuthConfigDialogComponent } from '../workspace/auth-config-dialog.component';
 import { ApiSessionService } from '../../core/services/api-session.service';
 import { UiConfigurationService } from '../../core/services/ui-configuration.service';
-import { UiPageConfiguration } from '../../core/models/ui-configuration.model';
+import { UiConfiguration, UiPageConfiguration } from '../../core/models/ui-configuration.model';
 import { ResourcePageFacadeService } from './services/resource-page-facade.service';
-import { DynamicTableComponent, TableActionConfig } from '../../dynamic-ui/dynamic-table/dynamic-table.component';
+import { TableActionConfig } from '../../dynamic-ui/dynamic-table/dynamic-table.component';
 import { TableSchemaService, TableColumnDescriptor } from '../../dynamic-ui/dynamic-table/table-schema.service';
+import { ResourcePageContentComponent } from './components/resource-page-content/resource-page-content.component';
 
 /**
  * Dashboard feature page — operational view for custom resource pages.
@@ -32,10 +32,9 @@ import { TableSchemaService, TableColumnDescriptor } from '../../dynamic-ui/dyna
     MatButtonModule,
     ApiContextBarComponent,
     EmptyStateComponent,
-    LoadingIndicatorComponent,
     DashboardSidebarComponent,
     AuthConfigDialogComponent,
-    DynamicTableComponent
+    ResourcePageContentComponent
   ],
   providers: [ResourcePageFacadeService],
   template: `
@@ -136,127 +135,30 @@ import { TableSchemaService, TableColumnDescriptor } from '../../dynamic-ui/dyna
               </div>
             </section>
           } @else if (selectedPage()) {
-            <!-- Active Page View -->
-            <section class="page-panel" [attr.aria-label]="selectedPage()?.title">
-              <!-- Page Header -->
-              <header class="page-header">
-                <div class="header-left">
-                  <div class="page-title-row">
-                    <mat-icon class="page-title-icon">{{ selectedPage()?.icon || 'table_chart' }}</mat-icon>
-                    <h1 class="page-title">{{ selectedPage()?.title }}</h1>
-                    @if (selectedPage()?.resourceId) {
-                      <span class="resource-pill font-mono">{{ selectedPage()?.resourceId }}</span>
-                    }
-                  </div>
-                  @if (selectedPage()?.description) {
-                    <p class="page-description">{{ selectedPage()?.description }}</p>
-                  }
-                </div>
-
-                <div class="header-actions">
-                  <button
-                    type="button"
-                    class="btn-header-secondary"
-                    (click)="onConfigurePages()"
-                    aria-label="Editar configuração da página"
-                    title="Editar página"
-                  >
-                    <mat-icon class="action-icon">settings</mat-icon>
-                    <span>Editar página</span>
-                  </button>
-                  <button
-                    type="button"
-                    class="btn-header-secondary"
-                    (click)="onRefresh()"
-                    [disabled]="facade.isLoading() || facade.isRefreshing()"
-                    aria-label="Recarregar dados"
-                    title="Recarregar dados"
-                  >
-                    <mat-icon class="action-icon" [class.rotating]="facade.isRefreshing()">refresh</mat-icon>
-                    <span>{{ facade.isRefreshing() ? 'Recarregando...' : 'Recarregar' }}</span>
-                  </button>
-                  @if (selectedPage()?.actions?.primaryCreateLabel || selectedPage()?.actions?.primaryCreateActionId) {
-                    <button
-                      type="button"
-                      class="btn-header-primary"
-                      aria-label="Ação primária de criação"
-                    >
-                      <mat-icon class="action-icon">add</mat-icon>
-                      <span>{{ selectedPage()?.actions?.primaryCreateLabel || 'Adicionar' }}</span>
-                    </button>
-                  }
-                </div>
-              </header>
-
-              <!-- Page Content Container -->
-              <div class="page-content-wrapper">
-                @if (facade.isLoading()) {
-                  <!-- Loading State -->
-                  <div class="dashboard-state-container" aria-label="Carregando dados">
-                    <app-loading-indicator label="Carregando dados da página..." />
-                  </div>
-                } @else if (facade.isError()) {
-                  <!-- Error State with Retry -->
-                  <div class="dashboard-error-card" role="alert">
-                    <div class="error-icon-wrapper">
-                      <mat-icon class="error-hero-icon">error_outline</mat-icon>
-                    </div>
-                    <h3 class="error-title">Falha ao carregar dados</h3>
-                    <p class="error-message">{{ facade.error()?.message }}</p>
-                    @if (facade.error()?.hint) {
-                      <p class="error-hint">{{ facade.error()?.hint }}</p>
-                    }
-                    <div class="error-actions">
-                      <button
-                        type="button"
-                        class="btn-primary-action"
-                        (click)="onRetry()"
-                        aria-label="Tentar novamente"
-                      >
-                        <mat-icon>refresh</mat-icon>
-                        <span>Tentar novamente</span>
-                      </button>
-                    </div>
-                  </div>
-                } @else if (facade.isEmpty()) {
-                  <!-- Empty Dataset State -->
-                  <div class="dashboard-empty-container">
-                    <app-empty-state
-                      icon="inbox"
-                      title="Nenhum registro encontrado"
-                      description="Não há dados disponíveis para este recurso no momento."
-                    />
-                  </div>
-                } @else {
-                  <!-- Success State: Render Data View via Dynamic Table -->
-                  <div class="dashboard-table-view">
-                    <app-dynamic-table
-                      [data]="facade.items()"
-                      [columns]="inferredColumns()"
-                      [totalCount]="facade.totalCount()"
-                      [loading]="facade.isRefreshing()"
-                      layoutMode="full-height"
-                      [showActions]="hasRowActions()"
-                      [actions]="pageRowActions()"
-                      (rowView)="onRowView($event)"
-                      (rowEdit)="onRowEdit($event)"
-                      (rowDelete)="onRowDelete($event)"
-                      (rowSelect)="onRowSelect($event)"
-                    />
-                    <div class="table-footer-meta">
-                      <p class="placeholder-text">
-                        Total de registros carregados: <strong class="font-mono text-highlight">{{ facade.totalCount() }}</strong>
-                      </p>
-                      @if (facade.lastExecutionDurationMs()) {
-                        <span class="latency-indicator font-mono">
-                          Tempo de resposta: {{ facade.lastExecutionDurationMs() }}ms
-                        </span>
-                      }
-                    </div>
-                  </div>
-                }
-              </div>
-            </section>
+            <!-- Active Page View via ResourcePageContentComponent -->
+            <app-resource-page-content
+              [page]="selectedPage()!"
+              [resolvedPage]="facade.resolvedPage()"
+              [items]="facade.items()"
+              [totalCount]="facade.totalCount()"
+              [status]="facade.status()"
+              [error]="facade.error()"
+              [columns]="inferredColumns()"
+              [rowActions]="pageRowActions()"
+              [lastExecutionDurationMs]="facade.lastExecutionDurationMs()"
+              [isRefreshing]="facade.isRefreshing()"
+              [searchTerm]="facade.params().searchTerm"
+              (refresh)="onRefresh()"
+              (retry)="onRetry()"
+              (editPage)="onConfigurePages()"
+              (createItem)="onCreateItem()"
+              (openExplorer)="onOpenExplorer()"
+              (searchChange)="onSearchChange($event)"
+              (rowView)="onRowView($event)"
+              (rowEdit)="onRowEdit($event)"
+              (rowDelete)="onRowDelete($event)"
+              (rowSelect)="onRowSelect($event)"
+            />
           } @else {
             <!-- State when pages exist but none selected (during transition) -->
             <section class="select-page-prompt">
@@ -447,293 +349,6 @@ import { TableSchemaService, TableColumnDescriptor } from '../../dynamic-ui/dyna
       }
     }
 
-    /* Active Page View */
-    .page-panel {
-      max-width: 1200px;
-      margin: 0 auto;
-      display: flex;
-      flex-direction: column;
-      gap: 20px;
-    }
-
-    .page-header {
-      display: flex;
-      align-items: flex-start;
-      justify-content: space-between;
-      gap: 16px;
-      border-bottom: 1px solid var(--canvas-border-subtle);
-      padding-bottom: 16px;
-
-      .header-left {
-        min-width: 0;
-
-        .page-title-row {
-          display: flex;
-          align-items: center;
-          gap: 10px;
-          margin-bottom: 4px;
-
-          .page-title-icon {
-            font-size: 20px;
-            width: 20px;
-            height: 20px;
-            color: var(--canvas-text-link);
-            flex-shrink: 0;
-          }
-
-          .page-title {
-            margin: 0;
-            font-size: 20px;
-            font-weight: 600;
-            color: var(--canvas-text-primary);
-            letter-spacing: -0.2px;
-          }
-
-          .resource-pill {
-            font-size: 11px;
-            color: var(--canvas-text-muted);
-            background: var(--canvas-surface-elevated);
-            padding: 1px 6px;
-            border-radius: var(--radius-sm);
-            border: 1px solid var(--canvas-border-subtle);
-          }
-        }
-
-        .page-description {
-          margin: 0;
-          font-size: 13px;
-          color: var(--canvas-text-secondary);
-          line-height: 1.5;
-        }
-      }
-
-      .header-actions {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        flex-shrink: 0;
-      }
-    }
-
-    .btn-header-secondary {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      height: 28px;
-      padding: 0 10px;
-      background: var(--canvas-surface);
-      border: 1px solid var(--canvas-border);
-      border-radius: var(--radius-sm);
-      color: var(--canvas-text-secondary);
-      font-size: 12px;
-      font-weight: 500;
-      cursor: pointer;
-      transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
-      outline: none;
-
-      &:hover:not(:disabled) {
-        background: var(--canvas-surface-elevated);
-        color: var(--canvas-text-primary);
-        border-color: var(--canvas-border-subtle);
-      }
-
-      &:disabled {
-        opacity: 0.6;
-        cursor: not-allowed;
-      }
-
-      &:focus-visible {
-        outline: 2px solid var(--canvas-text-link);
-        outline-offset: -2px;
-      }
-
-      .action-icon {
-        font-size: 14px;
-        width: 14px;
-        height: 14px;
-        color: var(--canvas-text-muted);
-
-        &.rotating {
-          animation: spin 1s linear infinite;
-        }
-      }
-    }
-
-    @keyframes spin {
-      100% {
-        transform: rotate(360deg);
-      }
-    }
-
-    .btn-header-primary {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      height: 28px;
-      padding: 0 12px;
-      background: var(--action-primary);
-      color: var(--action-primary-text);
-      border: 1px solid transparent;
-      border-radius: var(--radius-sm);
-      font-size: 12px;
-      font-weight: 600;
-      cursor: pointer;
-      transition: background 0.12s ease;
-      outline: none;
-
-      &:hover {
-        background: var(--action-primary-hover);
-      }
-
-      &:focus-visible {
-        outline: 2px solid var(--canvas-text-link);
-        outline-offset: 2px;
-      }
-
-      .action-icon {
-        font-size: 14px;
-        width: 14px;
-        height: 14px;
-      }
-    }
-
-    .page-content-wrapper {
-      display: flex;
-      flex-direction: column;
-      gap: 16px;
-      min-height: 200px;
-    }
-
-    .dashboard-state-container,
-    .dashboard-empty-container {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      min-height: 240px;
-      background: var(--canvas-surface);
-      border: 1px solid var(--canvas-border);
-      border-radius: var(--radius-md);
-      padding: 32px;
-    }
-
-    .dashboard-error-card {
-      background: var(--canvas-surface);
-      border: 1px solid var(--status-error-border, rgba(239, 68, 68, 0.3));
-      border-radius: var(--radius-md);
-      padding: 36px 24px;
-      text-align: center;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-
-      .error-icon-wrapper {
-        width: 44px;
-        height: 44px;
-        border-radius: var(--radius-md);
-        background: rgba(239, 68, 68, 0.1);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        margin-bottom: 12px;
-
-        .error-hero-icon {
-          font-size: 24px;
-          width: 24px;
-          height: 24px;
-          color: var(--status-error, #ef4444);
-        }
-      }
-
-      .error-title {
-        font-size: 16px;
-        font-weight: 600;
-        color: var(--canvas-text-primary);
-        margin: 0 0 6px;
-      }
-
-      .error-message {
-        font-size: 13px;
-        color: var(--canvas-text-secondary);
-        margin: 0 0 8px;
-        max-width: 500px;
-      }
-
-      .error-hint {
-        font-size: 11px;
-        color: var(--canvas-text-muted);
-        margin: 0 0 20px;
-        max-width: 460px;
-      }
-
-      .error-actions {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-      }
-    }
-
-    .dashboard-table-view {
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
-      width: 100%;
-      min-height: 320px;
-    }
-
-    .table-footer-meta {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 12px;
-      padding: 0 4px;
-    }
-
-    .page-placeholder-card {
-      background: var(--canvas-surface);
-      border: 1px solid var(--canvas-border);
-      border-radius: var(--radius-md);
-      padding: 48px 24px;
-      text-align: center;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-
-      .placeholder-content {
-        max-width: 400px;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        gap: 8px;
-
-        .placeholder-icon {
-          font-size: 32px;
-          width: 32px;
-          height: 32px;
-          color: var(--canvas-text-muted);
-        }
-
-        .placeholder-title {
-          font-size: 15px;
-          font-weight: 600;
-          color: var(--canvas-text-secondary);
-          margin: 0;
-        }
-
-        .placeholder-text {
-          font-size: 12px;
-          color: var(--canvas-text-muted);
-          line-height: 1.5;
-          margin: 0;
-        }
-
-        .latency-indicator {
-          font-size: 10px;
-          color: var(--canvas-text-muted);
-          margin-top: 4px;
-        }
-      }
-    }
-
     .select-page-prompt {
       display: flex;
       align-items: center;
@@ -745,15 +360,6 @@ import { TableSchemaService, TableColumnDescriptor } from '../../dynamic-ui/dyna
     @media (max-width: 768px) {
       .dashboard-content {
         padding: 16px;
-      }
-      .page-header {
-        flex-direction: column;
-        align-items: flex-start;
-        .header-actions {
-          width: 100%;
-          justify-content: flex-start;
-          flex-wrap: wrap;
-        }
       }
     }
   `]
@@ -954,11 +560,77 @@ export class DashboardPage implements OnInit, OnDestroy {
   }
 
   onCreatePage(): void {
-    // Stub for page creation workflow / modal trigger
+    const resources = this.sessionService.resources();
+    if (resources.length === 0) {
+      this.router.navigate(['/workspace']);
+      return;
+    }
+
+    const currentConfig = this.sessionService.uiConfiguration() || {};
+    const existingPages = { ...(currentConfig.pages || {}) };
+
+    // Find first unmapped resource or generate default pages for all discovered resources
+    const unmappedResource = resources.find(
+      (r) => !Object.values(existingPages).some((p) => p.resourceId === r.id || p.id === r.id)
+    );
+
+    let targetSlug: string | undefined;
+
+    if (unmappedResource) {
+      const id = `${unmappedResource.id}-page`;
+      const slug = unmappedResource.id.toLowerCase();
+      existingPages[id] = {
+        id,
+        resourceId: unmappedResource.id,
+        title: unmappedResource.label || unmappedResource.name,
+        slug,
+        isDefault: Object.keys(existingPages).length === 0,
+        icon: 'table_chart',
+        order: Object.keys(existingPages).length + 1
+      };
+      targetSlug = slug;
+    } else {
+      resources.forEach((r, idx) => {
+        const id = `${r.id}-page`;
+        const slug = r.id.toLowerCase();
+        existingPages[id] = {
+          id,
+          resourceId: r.id,
+          title: r.label || r.name,
+          slug,
+          isDefault: idx === 0,
+          icon: 'table_chart',
+          order: idx + 1
+        };
+        if (idx === 0) {
+          targetSlug = slug;
+        }
+      });
+    }
+
+    const newConfig: UiConfiguration = {
+      ...currentConfig,
+      pages: existingPages
+    };
+
+    this.sessionService.replaceUiConfiguration(newConfig);
+
+    if (targetSlug) {
+      this.requestedSlug.set(targetSlug);
+      this.router.navigate(['/dashboard', targetSlug]);
+    }
   }
 
   onConfigurePages(): void {
     // Stub for page management / edit configuration workflow
+  }
+
+  onCreateItem(): void {
+    // Stub for adding a new item / modal trigger
+  }
+
+  onSearchChange(searchTerm: string): void {
+    this.facade.setSearch(searchTerm);
   }
 
   onRefresh(): void {

@@ -136,6 +136,7 @@ export interface UiPageConfiguration {
   order?: number;
   hidden?: boolean;
   displayMode?: UiPageDisplayMode;
+  autoLoad?: boolean;
 
   operations?: UiOperationReferences;
   metrics?: UiMetricConfiguration[];

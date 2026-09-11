@@ -183,6 +183,15 @@ describe('DashboardPage', () => {
       component.onOpenExplorer();
       expect(router.navigate).toHaveBeenCalledWith(['/workspace']);
     });
+
+    it('should generate pages from connected resources and navigate when clicking Criar primeira página', () => {
+      sessionService.setUiConfiguration(null);
+      fixture.detectChanges();
+
+      component.onCreatePage();
+      expect(component.pages().length).toBeGreaterThan(0);
+      expect(router.navigate).toHaveBeenCalledWith(['/dashboard', 'orders']);
+    });
   });
 
   describe('Redirecionamento de rota padrão (/dashboard)', () => {
@@ -221,7 +230,8 @@ describe('DashboardPage', () => {
 
       expect(component.facade.status()).toBe('success');
       expect(component.facade.totalCount()).toBe(2);
-      expect(el.querySelector('.placeholder-text')?.textContent).toContain('Total de registros carregados: 2');
+      expect(el.querySelector('app-resource-page-content')).toBeTruthy();
+      expect(el.querySelector('.table-meta-footer')?.textContent).toContain('Total carregado: 2 de 2');
     });
 
     it('should delegate refresh button click to facade.refresh()', async () => {

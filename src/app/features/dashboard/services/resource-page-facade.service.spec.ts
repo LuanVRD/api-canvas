@@ -544,4 +544,71 @@ describe('ResourcePageFacadeService', () => {
       expect(() => facade.refresh()).not.toThrow();
     });
   });
+
+  describe('AutoLoad e Execução Sob Demanda', () => {
+    it('should stay in idle state without executing request when autoLoad is false in pageConfig', async () => {
+      const executeSpy = vi.spyOn(apiExecutor, 'execute');
+      const pageConfigWithNoAutoLoad: UiPageConfiguration = {
+        ...mockOrdersPageConfig,
+        autoLoad: false
+      };
+
+      facade.loadPage(pageConfigWithNoAutoLoad);
+      await new Promise((resolve) => setTimeout(resolve, 10));
+
+      expect(facade.status()).toBe('idle');
+      expect(facade.resolvedPage()).toBeTruthy();
+      expect(executeSpy).not.toHaveBeenCalled();
+    });
+
+    it('should stay in idle state when autoLoad is passed as false in options', async () => {
+      const executeSpy = vi.spyOn(apiExecutor, 'execute');
+
+      facade.loadPage(mockOrdersPageConfig, { autoLoad: false });
+      await new Promise((resolve) => setTimeout(resolve, 10));
+
+      expect(facade.status()).toBe('idle');
+      expect(executeSpy).not.toHaveBeenCalled();
+    });
+
+    it('should execute list on demand when calling executeList() from idle state', async () => {
+      const executeSpy = vi.spyOn(apiExecutor, 'execute').mockReturnValue(
+        of({
+          status: 200,
+          statusText: 'OK',
+          data: [{ id: 'ORD-10' }],
+          duration: 10,
+          isSuccess: true,
+          timestamp: Date.now()
+        })
+      );
+
+      facade.loadPage(mockOrdersPageConfig, { autoLoad: false });
+      expect(facade.status()).toBe('idle');
+
+      facade.executeList();
+      expect(facade.status()).toBe('loading');
+
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(facade.status()).toBe('success');
+      expect(facade.items().length).toBe(1);
+      expect(executeSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it('should set error status with OPERATION_NOT_FOUND when resource has no list operation', async () => {
+      const pageWithoutList: ResolvedResourcePage = {
+        ...mockResolvedPage,
+        resourceId: 'orders',
+        list: null as any
+      };
+
+      facade.loadPage(pageWithoutList);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+
+      expect(facade.status()).toBe('error');
+      expect(facade.error()?.category).toBe('OPERATION_NOT_FOUND');
+      expect(facade.error()?.hint).toContain('API Explorer');
+    });
+  });
 });
+
