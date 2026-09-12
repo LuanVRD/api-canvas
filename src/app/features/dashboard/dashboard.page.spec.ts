@@ -929,5 +929,54 @@ describe('DashboardPage', () => {
       expect(replaceSpy).toHaveBeenCalledWith(newConfig);
       expect(component.isPageConfigDialogOpen()).toBe(false);
     });
+
+    it('should redirect smoothly to new slug when active page slug is renamed without reloading application', () => {
+      component.onEditCurrentPage();
+      expect(component.pageConfigTargetPageId()).toBe('orders-page');
+
+      const navigateSpy = vi.spyOn(router, 'navigate');
+
+      const newConfigWithRenamedSlug: UiConfiguration = {
+        version: 1,
+        pages: {
+          'orders-page': {
+            id: 'orders-page',
+            resourceId: 'orders',
+            title: 'Pedidos',
+            slug: 'novos-pedidos'
+          }
+        }
+      };
+
+      component.onSavePageConfiguration(newConfigWithRenamedSlug);
+
+      expect(component.requestedSlug()).toBe('novos-pedidos');
+      expect(navigateSpy).toHaveBeenCalledWith(['/dashboard', 'novos-pedidos'], { replaceUrl: true });
+    });
+
+    it('should redirect to default page if active page is deleted from configuration', () => {
+      paramMapSubject.next(convertToParamMap({ pageSlug: 'pedidos' }));
+      component.onConfigurePages();
+
+      const navigateSpy = vi.spyOn(router, 'navigate');
+
+      const newConfigWithDeletedPage: UiConfiguration = {
+        version: 1,
+        pages: {
+          'customers-page': {
+            id: 'customers-page',
+            resourceId: 'customers',
+            title: 'Clientes',
+            slug: 'clientes',
+            isDefault: true
+          }
+        }
+      };
+
+      component.onSavePageConfiguration(newConfigWithDeletedPage);
+
+      expect(component.requestedSlug()).toBe('clientes');
+      expect(navigateSpy).toHaveBeenCalledWith(['/dashboard', 'clientes'], { replaceUrl: true });
+    });
   });
 });

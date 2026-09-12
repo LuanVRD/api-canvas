@@ -165,4 +165,71 @@ describe('PageConfigDialogComponent', () => {
     expect((savedConfig as any)?.pages?.['orders-page']?.title).toBe('Pedidos VIP');
     expect(closed).toBe(true);
   });
+
+  it('7. should navigate through all 6 wizard steps using goToNextStep and goToPreviousStep', () => {
+    fixture.componentRef.setInput('initialMode', 'edit');
+    fixture.componentRef.setInput('initialPageId', 'orders-page');
+    fixture.componentRef.setInput('publishedConfiguration', initialConfig);
+    fixture.componentRef.setInput('apiDefinition', mockApiDefinition);
+    fixture.detectChanges();
+
+    expect(component.wizardComponent?.currentStep()).toBe(1);
+
+    // Advance to step 2, 3, 4, 5, 6
+    component.goToNextStep();
+    expect(component.wizardComponent?.currentStep()).toBe(2);
+    component.goToNextStep();
+    expect(component.wizardComponent?.currentStep()).toBe(3);
+    component.goToNextStep();
+    expect(component.wizardComponent?.currentStep()).toBe(4);
+    component.goToNextStep();
+    expect(component.wizardComponent?.currentStep()).toBe(5);
+    component.goToNextStep();
+    expect(component.wizardComponent?.currentStep()).toBe(6);
+
+    // Should not exceed step 6
+    component.goToNextStep();
+    expect(component.wizardComponent?.currentStep()).toBe(6);
+
+    // Go back to step 5
+    component.goToPreviousStep();
+    expect(component.wizardComponent?.currentStep()).toBe(5);
+  });
+
+  it('8. should block publication when draft contains blocking validation errors', () => {
+    fixture.componentRef.setInput('initialMode', 'edit');
+    fixture.componentRef.setInput('initialPageId', 'orders-page');
+    fixture.componentRef.setInput('publishedConfiguration', initialConfig);
+    fixture.componentRef.setInput('apiDefinition', mockApiDefinition);
+    fixture.detectChanges();
+
+    // Create a blocking error: invalid slug with uppercase letters and spaces
+    component.draftService.updatePage('orders-page', { slug: 'INVALID SLUG!' });
+
+    let saveEmitted = false;
+    component.save.subscribe(() => { saveEmitted = true; });
+
+    expect(component.draftService.hasBlockingErrors()).toBe(true);
+    component.onSaveAndPublish();
+
+    // Save should NOT be emitted due to blocking error
+    expect(saveEmitted).toBe(false);
+  });
+
+  it('9. should restore published configuration and clear dirty state when discarding draft', () => {
+    fixture.componentRef.setInput('initialMode', 'manage');
+    fixture.componentRef.setInput('publishedConfiguration', initialConfig);
+    fixture.componentRef.setInput('apiDefinition', mockApiDefinition);
+    fixture.detectChanges();
+
+    component.draftService.updatePage('orders-page', { title: 'Título Alterado Provisório' });
+    expect(component.draftService.isDirty()).toBe(true);
+
+    component.onPromptDiscard();
+    expect(component.isUnsavedDialogOpen()).toBe(true);
+
+    component.onDiscardAndClose();
+    expect(component.draftService.isDirty()).toBe(false);
+    expect(component.draftService.draftPages()[0].title).toBe('Pedidos');
+  });
 });

@@ -735,6 +735,7 @@ export class DashboardPage implements OnInit, OnDestroy {
   }
 
   onSavePageConfiguration(newConfig: UiConfiguration): void {
+    const editingTargetId = this.pageConfigTargetPageId();
     this.sessionService.replaceUiConfiguration(newConfig);
     this.isPageConfigDialogOpen.set(false);
 
@@ -742,11 +743,19 @@ export class DashboardPage implements OnInit, OnDestroy {
     const currentSlug = this.requestedSlug();
     const updatedPages = this.pages();
     if (currentSlug && !updatedPages.some((p) => p.slug === currentSlug || p.id === currentSlug)) {
-      const def = this.defaultPage();
-      const targetSlug = def?.slug || def?.id;
+      let targetPage: UiPageConfiguration | undefined;
+      if (editingTargetId) {
+        targetPage = updatedPages.find((p) => p.id === editingTargetId);
+      }
+      if (!targetPage) {
+        targetPage = this.defaultPage() ?? undefined;
+      }
+      const targetSlug = targetPage?.slug || targetPage?.id;
       if (targetSlug) {
         this.requestedSlug.set(targetSlug);
-        this.router.navigate(['/dashboard', targetSlug]);
+        this.router.navigate(['/dashboard', targetSlug], { replaceUrl: true });
+      } else {
+        this.router.navigate(['/dashboard'], { replaceUrl: true });
       }
     }
   }

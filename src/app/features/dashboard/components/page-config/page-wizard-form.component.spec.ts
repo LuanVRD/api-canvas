@@ -5,14 +5,19 @@ import { PageDraftService } from '../../services/page-draft.service';
 import { UiConfigurationValidatorService } from '../../../../core/services/ui-configuration-validator.service';
 import { ResourceOperationMatcherService } from '../../../../core/services/resource-operation-matcher.service';
 import { TableSchemaService } from '../../../../dynamic-ui/dynamic-table/table-schema.service';
+import { of, throwError } from 'rxjs';
 import { ApiDefinition } from '../../../../core/models/api-definition.model';
 import { UiConfiguration } from '../../../../core/models/ui-configuration.model';
+import { ApiSessionService } from '../../../../core/services/api-session.service';
+import { ApiExecutorService } from '../../../../core/services/api-executor.service';
+import { ApiExecutionResult } from '../../../../core/models/api-execution-result.model';
 
 
 describe('PageWizardFormComponent', () => {
   let component: PageWizardFormComponent;
   let fixture: ComponentFixture<PageWizardFormComponent>;
   let draftService: PageDraftService;
+  let sessionService: ApiSessionService;
   let router: Router;
 
   const mockApiDefinition: ApiDefinition = {
@@ -192,6 +197,9 @@ describe('PageWizardFormComponent', () => {
         TableSchemaService
       ]
     }).compileComponents();
+
+    sessionService = TestBed.inject(ApiSessionService);
+    sessionService.setSession(mockApiDefinition);
 
     draftService = TestBed.inject(PageDraftService);
     draftService.initDraft(initialPublishedConfig, mockApiDefinition, 'edit', 'orders-page');
@@ -532,6 +540,129 @@ describe('PageWizardFormComponent', () => {
     component.toggleSearchField('id');
     fixture.detectChanges();
     expect(component.isSearchFieldSelected('id')).toBe(false);
+  });
+
+  it('16. should navigate to Step 6 Preview, render ResourcePageContentComponent and remain idle in safe mode', () => {
+    component.goToStep(6);
+    fixture.detectChanges();
+
+    expect(component.currentStep()).toBe(6);
+    expect(component.previewFacade.isIdle()).toBe(true);
+
+    const el = fixture.nativeElement as HTMLElement;
+    expect(el.querySelector('.preview-step-section')).toBeTruthy();
+    expect(el.querySelector('app-resource-page-content')).toBeTruthy();
+    expect(el.querySelector('.preview-safe-idle-notice')).toBeTruthy();
+    expect(el.textContent).toContain('Modo Seguro: Chamada à API sob demanda');
+  });
+
+  it('17. should execute real API request and render live items when onExecutePreviewList is clicked', async () => {
+    const apiExecutor = TestBed.inject(ApiExecutorService);
+    const mockResult: ApiExecutionResult = {
+      isSuccess: true,
+      status: 200,
+      statusText: 'OK',
+      durationMs: 42,
+      data: [
+        { id: 'ord-101', status: 'completed', total: 250, createdAt: '2026-09-12T10:00:00Z' },
+        { id: 'ord-102', status: 'pending', total: 120, createdAt: '2026-09-12T10:30:00Z' }
+      ]
+    };
+    vi.spyOn(apiExecutor, 'execute').mockReturnValue(of(mockResult));
+
+    component.goToStep(6);
+    fixture.detectChanges();
+
+    component.onExecutePreviewList();
+    await new Promise((r) => setTimeout(r, 10));
+    fixture.detectChanges();
+
+    expect(component.previewFacade.isSuccess()).toBe(true);
+    expect(component.previewFacade.items().length).toBe(2);
+    expect(component.previewFacade.totalCount()).toBe(2);
+
+    const el = fixture.nativeElement as HTMLElement;
+    expect(el.textContent).toContain('ord-101');
+    expect(el.textContent).toContain('ord-102');
+  });
+
+  it('18. should handle request error in preview gracefully without crashing', async () => {
+    const apiExecutor = TestBed.inject(ApiExecutorService);
+    const mockErrorResult: ApiExecutionResult = {
+      isSuccess: false,
+      status: 500,
+      statusText: 'Internal Server Error',
+      durationMs: 95,
+      error: {
+        message: 'Falha ao conectar com o backend',
+        category: 'HTTP_ERROR',
+        status: 500
+      }
+    };
+    vi.spyOn(apiExecutor, 'execute').mockReturnValue(of(mockErrorResult));
+
+    component.goToStep(6);
+    fixture.detectChanges();
+
+    component.onExecutePreviewList();
+    await new Promise((r) => setTimeout(r, 10));
+    fixture.detectChanges();
+
+    expect(component.previewFacade.isError()).toBe(true);
+    expect(component.previewFacade.error()?.message).toContain('Falha ao conectar com o backend');
+
+    const el = fixture.nativeElement as HTMLElement;
+    expect(el.querySelector('.preview-live-text')?.textContent).toContain('Falha na Consulta');
+  });
+
+  it('19. should toggle auto-load in preview and trigger live fetch', async () => {
+    const apiExecutor = TestBed.inject(ApiExecutorService);
+    const mockResult: ApiExecutionResult = {
+      isSuccess: true,
+      status: 200,
+      statusText: 'OK',
+      durationMs: 15,
+      data: [{ id: 'ord-999', status: 'pending', total: 50 }]
+    };
+    const execSpy = vi.spyOn(apiExecutor, 'execute').mockReturnValue(of(mockResult));
+
+    component.goToStep(6);
+    fixture.detectChanges();
+    expect(component.previewAutoLoad()).toBe(false);
+
+    // Toggle auto-load on
+    const mockEvent = { target: { checked: true } } as unknown as Event;
+    component.togglePreviewAutoLoad(mockEvent);
+    await new Promise((r) => setTimeout(r, 10));
+    fixture.detectChanges();
+
+    expect(component.previewAutoLoad()).toBe(true);
+    expect(execSpy).toHaveBeenCalled();
+    expect(component.previewFacade.isSuccess()).toBe(true);
+  });
+
+  it('20. should display validation ready card in Step 6 when configuration is valid', () => {
+    component.goToStep(6);
+    fixture.detectChanges();
+
+    expect(component.draftService.hasBlockingErrors()).toBe(false);
+
+    const el = fixture.nativeElement as HTMLElement;
+    expect(el.querySelector('.preview-validation-card.is-ready')).toBeTruthy();
+    expect(el.textContent).toContain('Página pronta para publicação');
+  });
+
+  it('21. should display blocking validation errors in Step 6 if slug is invalid', () => {
+    component.form.get('slug')?.setValue('SLUG COM ESPACO');
+    component.markDirty();
+    component.goToStep(6);
+    fixture.detectChanges();
+
+    expect(component.draftService.hasBlockingErrors()).toBe(true);
+
+    const el = fixture.nativeElement as HTMLElement;
+    expect(el.querySelector('.preview-validation-card.has-blocking')).toBeTruthy();
+    expect(el.textContent).toContain('Existem erros impeditivos para publicação');
   });
 });
 

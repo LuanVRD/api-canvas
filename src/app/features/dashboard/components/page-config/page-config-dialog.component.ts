@@ -132,7 +132,7 @@ import { ApiDefinition } from '../../../../core/models/api-definition.model';
                   </button>
                 }
 
-                @if (step < 5) {
+                @if (step < 6) {
                   <button
                     type="button"
                     class="btn-secondary"
@@ -530,7 +530,7 @@ export class PageConfigDialogComponent implements OnInit {
 
   goToNextStep(): void {
     const current = this.wizardComponent?.currentStep() ?? 1;
-    if (current < 5) {
+    if (current < 6) {
       this.wizardComponent?.goToStep((current + 1) as any);
     }
   }

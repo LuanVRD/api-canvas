@@ -26,9 +26,12 @@ import { ApiSchema } from '../../../../core/models/api-schema.model';
 import { ApiOperation } from '../../../../core/models/api-operation.model';
 import { ApiParameter } from '../../../../core/models/api-parameter.model';
 import { ResourceOperationMatcherService } from '../../../../core/services/resource-operation-matcher.service';
-import { TableSchemaService } from '../../../../dynamic-ui/dynamic-table/table-schema.service';
+import { TableSchemaService, TableColumnDescriptor } from '../../../../dynamic-ui/dynamic-table/table-schema.service';
+import { TableActionConfig } from '../../../../dynamic-ui/dynamic-table/dynamic-table.component';
+import { ResourcePageContentComponent } from '../resource-page-content/resource-page-content.component';
+import { ResourcePageFacadeService } from '../../services/resource-page-facade.service';
 
-export type WizardStep = 1 | 2 | 3 | 4 | 5;
+export type WizardStep = 1 | 2 | 3 | 4 | 5 | 6;
 
 
 export const AVAILABLE_PAGE_ICONS = [
@@ -87,7 +90,8 @@ export interface SchemaPropertyOption {
 @Component({
   selector: 'app-page-wizard-form',
   standalone: true,
-  imports: [CommonModule, ReactiveFormsModule, MatIconModule],
+  imports: [CommonModule, ReactiveFormsModule, MatIconModule, ResourcePageContentComponent],
+  providers: [ResourcePageFacadeService],
   template: `
     <div class="wizard-container">
       <!-- Wizard Stepper Navigation Header -->
@@ -153,6 +157,19 @@ export interface SchemaPropertyOption {
         >
           <span class="step-badge">5</span>
           <span class="step-label">Filtros & Ações</span>
+        </button>
+
+        <div class="step-divider"></div>
+
+        <button
+          type="button"
+          class="step-tab"
+          [class.active]="currentStep() === 6"
+          (click)="goToStep(6)"
+          aria-label="Etapa 6: Prévia e Validação"
+        >
+          <span class="step-badge">6</span>
+          <span class="step-label">Prévia & Validação</span>
         </button>
       </nav>
 
@@ -1376,6 +1393,124 @@ export interface SchemaPropertyOption {
             </div>
           </section>
         }
+
+        <!-- ==================== ETAPA 6: PRÉVIA & VALIDAÇÃO ==================== -->
+        @if (currentStep() === 6) {
+          <section class="step-section preview-step-section" aria-label="Prévia e validação da página">
+            <div class="preview-control-bar">
+              <div class="preview-bar-left">
+                <div class="preview-status-pill">
+                  <span class="preview-live-dot" [class.is-live]="!previewFacade.isIdle() && !previewFacade.isError()"></span>
+                  <span class="preview-live-text">
+                    {{ previewFacade.isIdle() ? 'Prévia Segura (Modo Rascunho)' : (previewFacade.isLoading() ? 'Carregando Dados...' : (previewFacade.isError() ? 'Falha na Consulta' : 'Dados da API Conectada')) }}
+                  </span>
+                </div>
+                <span class="preview-route-pill font-mono">
+                  /dashboard/{{ form.get('slug')?.value || '...' }}
+                </span>
+                @if (previewFacade.lastExecutionDurationMs() !== undefined) {
+                  <span class="preview-latency-pill font-mono" title="Tempo de resposta da última requisição">
+                    <mat-icon>timer</mat-icon>
+                    {{ previewFacade.lastExecutionDurationMs() }}ms
+                  </span>
+                }
+              </div>
+
+              <div class="preview-bar-right">
+                <label class="checkbox-label safe-preview-toggle" title="Carregar os dados da API automaticamente ao abrir a prévia">
+                  <input
+                    type="checkbox"
+                    [checked]="previewAutoLoad()"
+                    (change)="togglePreviewAutoLoad($event)"
+                  />
+                  <span>Auto-carregar</span>
+                </label>
+
+                <button
+                  type="button"
+                  class="btn-execute-live"
+                  [disabled]="previewFacade.isLoading() || previewFacade.isRefreshing()"
+                  (click)="onExecutePreviewList()"
+                  title="Executar requisição de listagem real usando a definição OpenAPI"
+                  aria-label="Carregar dados reais da API"
+                >
+                  <mat-icon [class.rotating]="previewFacade.isRefreshing()">
+                    {{ previewFacade.isIdle() ? 'play_arrow' : 'refresh' }}
+                  </mat-icon>
+                  <span>{{ previewFacade.isIdle() ? 'Carregar Dados Reais' : (previewFacade.isRefreshing() ? 'Recarregando...' : 'Recarregar') }}</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- Readiness & Validation Alert inside Step 6 -->
+            @if (draftService.hasBlockingErrors()) {
+              <div class="preview-validation-card has-blocking">
+                <div class="validation-card-header">
+                  <mat-icon class="val-card-icon val-icon-error">error_outline</mat-icon>
+                  <strong>Existem erros impeditivos para publicação</strong>
+                </div>
+                <p class="val-card-desc">Corrija os campos obrigatórios ou conflitos de rota antes de publicar a página no dashboard.</p>
+              </div>
+            } @else {
+              <div class="preview-validation-card is-ready">
+                <div class="validation-card-header">
+                  <mat-icon class="val-card-icon val-icon-success">check_circle</mat-icon>
+                  <strong>Página pronta para publicação</strong>
+                </div>
+                <p class="val-card-desc">
+                  Recurso OpenAPI mapeado, slug exclusivo, colunas e filtros configurados. Você pode testar os filtros, busca e paginação abaixo antes de publicar.
+                </p>
+              </div>
+            }
+
+            @if (previewFacade.isIdle()) {
+              <div class="preview-safe-idle-notice">
+                <mat-icon class="notice-icon">shield</mat-icon>
+                <div class="notice-content">
+                  <strong class="notice-title">Modo Seguro: Chamada à API sob demanda</strong>
+                  <span class="notice-desc">
+                    Para não executar requisições desnecessárias durante a edição, a API não é chamada automaticamente por padrão. Clique em <strong>"Carregar Dados Reais"</strong> acima para testar a rota ao vivo através do ApiExecutorService.
+                  </span>
+                </div>
+              </div>
+            }
+
+            <!-- Real Rendered Resource Page Container -->
+            <div class="live-page-canvas-wrapper" [class.has-idle-shield]="previewFacade.isIdle()">
+              <app-resource-page-content
+                [page]="buildCurrentPageConfig()"
+                [resolvedPage]="previewFacade.resolvedPage()"
+                [items]="previewFacade.visibleItems()"
+                [totalCount]="previewFacade.totalCount()"
+                [status]="previewFacade.status()"
+                [error]="previewFacade.error()"
+                [columns]="previewInferredColumns()"
+                [rowActions]="previewRowActions()"
+                [lastExecutionDurationMs]="previewFacade.lastExecutionDurationMs()"
+                [isRefreshing]="previewFacade.isRefreshing()"
+                [searchTerm]="previewFacade.params().searchTerm"
+                [currentPage]="previewFacade.params().page"
+                [pageSize]="previewFacade.params().pageSize"
+                [totalPages]="previewFacade.totalPages()"
+                [pageSizeOptions]="previewFacade.paginationMeta().pageSizeOptions"
+                [filterBindings]="previewFacade.filterBindings()"
+                [activeFilters]="previewFacade.params().filters"
+                [sortField]="previewFacade.params().sortField ?? null"
+                [sortOrder]="previewFacade.params().sortOrder ?? null"
+                [hasActiveFilters]="previewFacade.hasActiveFilters()"
+                (refresh)="onPreviewRefresh()"
+                (retry)="onPreviewRetry()"
+                (editPage)="goToStep(1)"
+                (searchChange)="onPreviewSearchChange($event)"
+                (pageChange)="onPreviewPageChange($event)"
+                (pageSizeChange)="onPreviewPageSizeChange($event)"
+                (filterChange)="onPreviewFilterChange($event)"
+                (resetFilters)="onPreviewResetFilters()"
+                (sortChange)="onPreviewSortChange($event)"
+              />
+            </div>
+          </section>
+        }
       </form>
 
       <!-- Real-Time Validation Warnings / Errors Panel -->
@@ -2537,6 +2672,211 @@ export interface SchemaPropertyOption {
         }
       }
     }
+
+    /* Step 6 Preview Styles */
+    .preview-step-section {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      width: 100%;
+    }
+
+    .preview-control-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 8px;
+      padding: 8px 12px;
+      background: var(--canvas-surface);
+      border: 1px solid var(--canvas-border);
+      border-radius: var(--radius-sm);
+
+      .preview-bar-left, .preview-bar-right {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+    }
+
+    .preview-status-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 2px 8px;
+      background: var(--canvas-surface-elevated);
+      border: 1px solid var(--canvas-border-subtle);
+      border-radius: var(--radius-xs);
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--canvas-text-secondary);
+
+      .preview-live-dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: var(--canvas-text-muted);
+
+        &.is-live {
+          background: var(--color-success);
+          box-shadow: 0 0 6px var(--color-success);
+        }
+      }
+    }
+
+    .preview-route-pill {
+      font-size: 11px;
+      color: var(--canvas-text-link);
+      background: rgba(88, 166, 255, 0.1);
+      border: 1px solid rgba(88, 166, 255, 0.2);
+      padding: 2px 8px;
+      border-radius: var(--radius-xs);
+    }
+
+    .preview-latency-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      font-size: 11px;
+      color: var(--canvas-text-muted);
+
+      mat-icon {
+        font-size: 12px;
+        width: 12px;
+        height: 12px;
+      }
+    }
+
+    .safe-preview-toggle {
+      font-size: 11px;
+      color: var(--canvas-text-secondary);
+      user-select: none;
+      cursor: pointer;
+    }
+
+    .btn-execute-live {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      height: 28px;
+      padding: 0 10px;
+      background: var(--action-primary);
+      color: var(--action-primary-text);
+      border: 1px solid transparent;
+      border-radius: var(--radius-xs);
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.12s ease;
+
+      &:hover:not(:disabled) {
+        background: var(--action-primary-hover);
+      }
+
+      &:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+
+      mat-icon {
+        font-size: 14px;
+        width: 14px;
+        height: 14px;
+      }
+    }
+
+    .preview-validation-card {
+      padding: 10px 14px;
+      border-radius: var(--radius-sm);
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+
+      &.is-ready {
+        background: rgba(63, 185, 80, 0.08);
+        border: 1px solid rgba(63, 185, 80, 0.25);
+      }
+
+      &.has-blocking {
+        background: rgba(248, 81, 73, 0.08);
+        border: 1px solid rgba(248, 81, 73, 0.25);
+      }
+
+      .validation-card-header {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 12px;
+      }
+
+      .val-card-icon {
+        font-size: 16px;
+        width: 16px;
+        height: 16px;
+
+        &.val-icon-success {
+          color: var(--color-success);
+        }
+
+        &.val-icon-error {
+          color: var(--color-danger);
+        }
+      }
+
+      .val-card-desc {
+        margin: 0;
+        font-size: 11px;
+        color: var(--canvas-text-secondary);
+        line-height: 1.4;
+      }
+    }
+
+    .preview-safe-idle-notice {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 12px;
+      background: var(--canvas-surface-elevated);
+      border: 1px dashed var(--canvas-border);
+      border-radius: var(--radius-sm);
+
+      .notice-icon {
+        font-size: 20px;
+        width: 20px;
+        height: 20px;
+        color: var(--canvas-text-link);
+        flex-shrink: 0;
+      }
+
+      .notice-content {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+      }
+
+      .notice-title {
+        font-size: 11px;
+        font-weight: 600;
+        color: var(--canvas-text-primary);
+      }
+
+      .notice-desc {
+        font-size: 11px;
+        color: var(--canvas-text-secondary);
+        line-height: 1.3;
+      }
+    }
+
+    .live-page-canvas-wrapper {
+      border: 1px solid var(--canvas-border);
+      border-radius: var(--radius-sm);
+      background: var(--canvas-bg);
+      padding: 16px;
+      min-height: 380px;
+      box-sizing: border-box;
+      overflow-x: auto;
+    }
   `]
 })
 export class PageWizardFormComponent {
@@ -2545,12 +2885,14 @@ export class PageWizardFormComponent {
   readonly draftService = inject(PageDraftService);
   readonly matcher = inject(ResourceOperationMatcherService);
   readonly tableSchemaService = inject(TableSchemaService);
+  readonly previewFacade = inject(ResourcePageFacadeService);
 
   readonly availableIcons = AVAILABLE_PAGE_ICONS;
   readonly actionStyleOptions = ACTION_STYLE_OPTIONS;
   readonly actionIcons = ACTION_ICON_OPTIONS;
 
   readonly currentStep = signal<WizardStep>(1);
+  readonly previewAutoLoad = signal<boolean>(false);
 
   readonly formChange = output<Partial<UiPageConfiguration>>();
 
@@ -2566,6 +2908,80 @@ export class PageWizardFormComponent {
   });
 
   readonly currentValidation = this.draftService.validationResult;
+
+  /**
+   * Dynamically inferred columns for the active preview.
+   */
+  readonly previewInferredColumns = computed<TableColumnDescriptor[]>(() => {
+    const items = this.previewFacade.items();
+    const page = this.buildCurrentPageConfig();
+    const resolved = this.previewFacade.resolvedPage();
+    const schema = resolved?.list?.responses?.[0]?.schema;
+    const globalFields = this.draftService.draftConfig()?.fields;
+
+    const resConfig = page
+      ? {
+          list: {
+            columns: page.table?.columns?.map((c) => c.field)
+          }
+        }
+      : null;
+
+    return this.tableSchemaService.inferColumns(items, schema, resConfig, globalFields);
+  });
+
+  /**
+   * Action buttons for rows in the live preview.
+   */
+  readonly previewRowActions = computed<TableActionConfig[]>(() => {
+    const page = this.buildCurrentPageConfig();
+    const resolved = this.previewFacade.resolvedPage();
+    const rowCfg = page?.actions?.rowActions;
+
+    const actions: TableActionConfig[] = [];
+    if (resolved?.details && rowCfg?.viewDetails !== false) {
+      actions.push({
+        id: 'view',
+        label: rowCfg?.viewDetailsLabel || 'Ver detalhes',
+        icon: 'visibility',
+        tooltip: rowCfg?.viewDetailsTooltip || 'Ver detalhes',
+        visible: true
+      });
+    }
+    if (resolved?.update && rowCfg?.edit !== false) {
+      actions.push({
+        id: 'edit',
+        label: rowCfg?.editLabel || 'Editar',
+        icon: 'edit',
+        tooltip: rowCfg?.editTooltip || 'Editar registro',
+        visible: true
+      });
+    }
+    if (resolved?.customActions && resolved.customActions.length > 0) {
+      for (const customAct of resolved.customActions) {
+        actions.push({
+          id: customAct.id,
+          label: customAct.label,
+          icon: customAct.icon || 'bolt',
+          tooltip: customAct.tooltip || customAct.label,
+          danger: customAct.danger === true,
+          visible: true,
+          customAction: customAct
+        });
+      }
+    }
+    if (resolved?.delete && rowCfg?.delete !== false) {
+      actions.push({
+        id: 'delete',
+        label: rowCfg?.deleteLabel || 'Excluir',
+        icon: 'delete',
+        tooltip: rowCfg?.deleteTooltip || 'Excluir registro',
+        danger: true,
+        visible: true
+      });
+    }
+    return actions;
+  });
 
   readonly form: FormGroup = this.fb.group({
     id: [''],
@@ -2764,6 +3180,208 @@ export class PageWizardFormComponent {
 
   goToStep(step: WizardStep): void {
     this.currentStep.set(step);
+    if (step === 6) {
+      this.refreshPreview();
+    }
+  }
+
+  /**
+   * Toggles automatic data loading for the preview pane.
+   */
+  togglePreviewAutoLoad(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    this.previewAutoLoad.set(input.checked);
+    if (input.checked && this.previewFacade.isIdle()) {
+      this.refreshPreview();
+    }
+  }
+
+  /**
+   * Refreshes the preview facade with the current form values and OpenAPI definition.
+   */
+  refreshPreview(): void {
+    const pageConfig = this.buildCurrentPageConfig();
+    const apiDef = this.draftService.apiDefinition();
+    const resource = this.currentResource();
+    const resolvedPage = resource
+      ? this.matcher.resolveResourcePage({
+          resource,
+          pageConfig,
+          apiDefinition: apiDef || undefined
+        })
+      : null;
+
+    if (resolvedPage) {
+      this.previewFacade.loadPage(resolvedPage, {
+        autoLoad: this.previewAutoLoad(),
+        resetParams: true
+      });
+    } else if (pageConfig) {
+      this.previewFacade.loadPage(pageConfig, {
+        autoLoad: this.previewAutoLoad(),
+        resetParams: true
+      });
+    }
+  }
+
+  /**
+   * Manually executes the list API call for preview testing.
+   */
+  onExecutePreviewList(): void {
+    if (this.previewFacade.isIdle()) {
+      const pageConfig = this.buildCurrentPageConfig();
+      const apiDef = this.draftService.apiDefinition();
+      const resource = this.currentResource();
+      const resolvedPage = resource
+        ? this.matcher.resolveResourcePage({
+            resource,
+            pageConfig,
+            apiDefinition: apiDef || undefined
+          })
+        : null;
+
+      if (resolvedPage) {
+        this.previewFacade.loadPage(resolvedPage, { autoLoad: true, resetParams: true });
+      } else if (pageConfig) {
+        this.previewFacade.loadPage(pageConfig, { autoLoad: true, resetParams: true });
+      }
+    } else {
+      this.previewFacade.refresh();
+    }
+  }
+
+  onPreviewRefresh(): void {
+    this.previewFacade.refresh();
+  }
+
+  onPreviewRetry(): void {
+    this.previewFacade.retry();
+  }
+
+  onPreviewSearchChange(term: string): void {
+    this.previewFacade.setSearch(term);
+  }
+
+  onPreviewPageChange(page: number): void {
+    this.previewFacade.setPage(page);
+  }
+
+  onPreviewPageSizeChange(size: number): void {
+    this.previewFacade.setPageSize(size);
+  }
+
+  onPreviewFilterChange(event: { key: string; value: unknown }): void {
+    this.previewFacade.setFilter(event.key, event.value);
+  }
+
+  onPreviewResetFilters(): void {
+    this.previewFacade.resetParams();
+  }
+
+  onPreviewSortChange(event: { field: string | null; order: 'asc' | 'desc' | null }): void {
+    this.previewFacade.setSort(event.field, event.order);
+  }
+
+  /**
+   * Builds the current structured UiPageConfiguration from form values.
+   */
+  buildCurrentPageConfig(): UiPageConfiguration {
+    const val = this.form.value;
+    const existing = this.draftService.draftPages().find((p) => p.id === this.loadedPageId || p.id === val.id);
+
+    return {
+      id: val.id || existing?.id || `page-${Date.now()}`,
+      resourceId: val.resourceId,
+      title: val.title || 'Prévia de Página',
+      slug: val.slug || 'pagina-previa',
+      icon: val.icon || 'table_chart',
+      order: Number(val.order) || existing?.order || 1,
+      description: val.description || '',
+      isDefault: Boolean(val.isDefault),
+      default: Boolean(val.isDefault),
+      hidden: Boolean(val.hidden),
+      displayMode: 'dashboard',
+      dataPath: val.dataPath || undefined,
+      totalPath: val.totalPath || undefined,
+      operations: {
+        ...(existing?.operations || {}),
+        list: val.operationList || undefined,
+        create: val.operationCreate || undefined,
+        details: val.operationDetails || undefined,
+        update: val.operationUpdate || undefined,
+        delete: val.operationDelete || undefined
+      },
+      metrics: (val.metrics || []).map((m: any) => ({
+        id: m.id,
+        label: m.label,
+        type: m.type,
+        field: m.field || undefined,
+        matchingValue: m.matchingValue || undefined,
+        colorScheme: m.colorScheme,
+        format: m.format,
+        icon: m.icon
+      })),
+      table: {
+        ...(existing?.table || {}),
+        dataPath: val.dataPath || undefined,
+        totalPath: val.totalPath || undefined,
+        sortParam: val.sortParam || undefined,
+        orderParam: val.orderParam || undefined,
+        sortFormat: val.sortFormat || undefined,
+        pagination: {
+          ...(existing?.table?.pagination || {}),
+          pageParam: val.pageParam || undefined,
+          pageSizeParam: val.pageSizeParam || undefined,
+          pageSize: val.pageSize
+        },
+        columns: (val.columns || []).map((c: any) => ({
+          field: c.field,
+          label: c.label || undefined,
+          type: c.type,
+          sortable: c.sortable !== false,
+          hidden: Boolean(c.hidden)
+        })),
+        pageSize: val.pageSize || 10
+      },
+      pagination: {
+        ...(existing?.pagination || {}),
+        pageParam: val.pageParam || undefined,
+        pageSizeParam: val.pageSizeParam || undefined,
+        pageSize: val.pageSize
+      },
+      filters: {
+        ...(existing?.filters || {}),
+        searchParam: val.searchParam || undefined,
+        statusParam: val.statusParam || undefined,
+        dateParam: val.dateParam || undefined,
+        searchFields: val.searchFields,
+        searchPlaceholder: val.searchPlaceholder,
+        statusField: val.statusField || undefined,
+        dateField: val.dateField || undefined
+      },
+      actions: {
+        ...(existing?.actions || {}),
+        primaryCreateActionId: val.operationCreate || existing?.actions?.primaryCreateActionId,
+        primaryCreateLabel: val.primaryCreateLabel || undefined,
+        rowActions: {
+          ...(existing?.actions?.rowActions || {}),
+          viewDetails: val.actionViewDetails,
+          edit: val.actionEdit,
+          delete: val.actionDelete,
+          customActions: (val.customActions || []).map((a: any) => ({
+            id: a.id,
+            operationId: a.operationId,
+            label: a.label,
+            icon: a.icon || 'bolt',
+            tooltip: a.tooltip || undefined,
+            style: a.style || 'default',
+            danger: Boolean(a.danger),
+            confirmation: Boolean(a.confirmation),
+            inputMode: a.inputMode || 'auto'
+          }))
+        }
+      }
+    };
   }
 
   populateForm(page: UiPageConfiguration): void {
