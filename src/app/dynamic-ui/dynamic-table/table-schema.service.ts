@@ -264,4 +264,65 @@ export class TableSchemaService {
       .join(' ')
       .trim();
   }
+
+  /**
+   * Infers UI Column configurations with rich semantic rendering types (monospace, status_badge, currency, etc.).
+   */
+  inferUiColumns(
+    data: unknown[],
+    responseSchema?: ApiSchema | null,
+    resourceConfig?: UiResourceConfiguration | null,
+    globalFields?: Record<string, UiFieldConfiguration> | null
+  ): import('../../core/models/ui-configuration.model').UiColumnConfiguration[] {
+    const descriptors = this.inferColumns(data, responseSchema, resourceConfig, globalFields);
+    return descriptors.map((desc) => ({
+      field: desc.key,
+      label: desc.label,
+      type: this.inferSemanticColumnType(desc.key, desc.type, desc.format),
+      sortable: desc.sortable ?? true,
+      hidden: false
+    }));
+  }
+
+  /**
+   * Derives a specialized UI Column type from field key and OpenAPI schema metadata.
+   */
+  inferSemanticColumnType(
+    key: string,
+    rawType?: string,
+    format?: string
+  ): import('../../core/models/ui-configuration.model').UiColumnType {
+    const lower = key.toLowerCase();
+    if (lower === 'id' || lower.endsWith('_id') || lower === 'uuid' || lower === 'guid' || lower === 'sku') {
+      return 'monospace';
+    }
+    if (lower.includes('status') || lower.includes('state') || lower.includes('situacao')) {
+      return 'status_badge';
+    }
+    if (
+      lower.includes('price') ||
+      lower.includes('amount') ||
+      lower.includes('total') ||
+      lower.includes('cost') ||
+      lower.includes('valor') ||
+      lower.includes('saldo') ||
+      lower.includes('preco')
+    ) {
+      return 'currency';
+    }
+    if (format === 'date' || lower.endsWith('date') || lower === 'data') {
+      return 'date';
+    }
+    if (format === 'date-time' || lower.includes('at') || lower.includes('time') || lower.includes('hora')) {
+      return 'datetime';
+    }
+    if (rawType === 'number' || rawType === 'integer') {
+      return 'number';
+    }
+    if (rawType === 'boolean') {
+      return 'boolean';
+    }
+    return 'text';
+  }
 }
+

@@ -4,8 +4,10 @@ import { PageWizardFormComponent } from './page-wizard-form.component';
 import { PageDraftService } from '../../services/page-draft.service';
 import { UiConfigurationValidatorService } from '../../../../core/services/ui-configuration-validator.service';
 import { ResourceOperationMatcherService } from '../../../../core/services/resource-operation-matcher.service';
+import { TableSchemaService } from '../../../../dynamic-ui/dynamic-table/table-schema.service';
 import { ApiDefinition } from '../../../../core/models/api-definition.model';
 import { UiConfiguration } from '../../../../core/models/ui-configuration.model';
+
 
 describe('PageWizardFormComponent', () => {
   let component: PageWizardFormComponent;
@@ -186,7 +188,8 @@ describe('PageWizardFormComponent', () => {
       providers: [
         PageDraftService,
         UiConfigurationValidatorService,
-        ResourceOperationMatcherService
+        ResourceOperationMatcherService,
+        TableSchemaService
       ]
     }).compileComponents();
 
@@ -198,6 +201,7 @@ describe('PageWizardFormComponent', () => {
     router = TestBed.inject(Router);
     fixture.detectChanges();
   });
+
 
   it('1. should create and populate form from active editing page', () => {
     expect(component).toBeTruthy();
@@ -400,4 +404,134 @@ describe('PageWizardFormComponent', () => {
     expect(check.missingParams.map((p) => p.name)).toContain('reasonId');
     expect(component.formatMissingParams(check.missingParams)).toBe('reasonId');
   });
+
+  it('12. should allow adding, toggling visibility, reordering and removing columns in Step 4', () => {
+    component.goToStep(4);
+    component.restoreSchemaColumns();
+    fixture.detectChanges();
+
+    // Initial columns inferred from OpenAPI schema via TableSchemaService
+    const initialCount = component.columnsArray.length;
+    expect(initialCount).toBeGreaterThan(0);
+
+    // 1. Add new custom column
+    component.addColumn();
+    fixture.detectChanges();
+    expect(component.columnsArray.length).toBe(initialCount + 1);
+
+
+    const newColIndex = component.columnsArray.length - 1;
+    const newCol = component.columnsArray.at(newColIndex);
+    newCol.get('field')?.setValue('customer_note');
+    newCol.get('label')?.setValue('Observações do Cliente');
+    expect(newCol.get('hidden')?.value).toBe(false);
+
+    // 2. Toggle column visibility (hidden)
+    component.toggleColumnHidden(newColIndex);
+    fixture.detectChanges();
+    expect(newCol.get('hidden')?.value).toBe(true);
+
+    component.toggleColumnHidden(newColIndex);
+    fixture.detectChanges();
+    expect(newCol.get('hidden')?.value).toBe(false);
+
+    // 3. Move column up
+    component.moveColumn(newColIndex, 'up');
+    fixture.detectChanges();
+    expect(component.columnsArray.at(newColIndex - 1).get('field')?.value).toBe('customer_note');
+
+    // 4. Remove column
+    component.removeColumn(newColIndex - 1);
+    fixture.detectChanges();
+    expect(component.columnsArray.length).toBe(initialCount);
+  });
+
+  it('13. should allow adding, reordering and removing metric cards in Step 3', () => {
+    component.goToStep(3);
+    fixture.detectChanges();
+
+    const initialMetrics = component.metricsArray.length;
+
+    // 1. Add metric
+    component.addMetric();
+    fixture.detectChanges();
+    expect(component.metricsArray.length).toBe(initialMetrics + 1);
+
+    const addedMetric = component.metricsArray.at(component.metricsArray.length - 1);
+    addedMetric.get('label')?.setValue('Faturamento Total');
+    addedMetric.get('type')?.setValue('sum_field');
+    addedMetric.get('field')?.setValue('total');
+    addedMetric.get('format')?.setValue('currency');
+    addedMetric.get('colorScheme')?.setValue('success');
+
+    // 2. Add second metric and reorder
+    component.addMetric();
+    fixture.detectChanges();
+    const lastIndex = component.metricsArray.length - 1;
+    component.metricsArray.at(lastIndex).get('label')?.setValue('Pedidos Concluídos');
+
+    component.moveMetric(lastIndex, 'up');
+    fixture.detectChanges();
+    expect(component.metricsArray.at(lastIndex - 1).get('label')?.value).toBe('Pedidos Concluídos');
+
+    // 3. Remove metric
+    component.removeMetric(lastIndex - 1);
+    fixture.detectChanges();
+    expect(component.metricsArray.length).toBe(initialMetrics + 1);
+  });
+
+  it('14. should configure enveloped response paths (dataPath, totalPath) and query parameters in Step 4 and 5', () => {
+    component.goToStep(4);
+    fixture.detectChanges();
+
+    // Configure dataPath and totalPath
+    component.form.get('dataPath')?.setValue('data.items');
+    component.form.get('totalPath')?.setValue('meta.totalCount');
+    component.form.get('pageParam')?.setValue('_page');
+    component.form.get('pageSizeParam')?.setValue('_limit');
+    component.form.get('sortParam')?.setValue('_sort');
+    component.form.get('orderParam')?.setValue('_order');
+    component.form.get('sortFormat')?.setValue('separate');
+    component.markDirty();
+    fixture.detectChanges();
+
+    const page = draftService.draftPages().find((p) => p.id === 'orders-page');
+    expect(page?.dataPath).toBe('data.items');
+    expect(page?.totalPath).toBe('meta.totalCount');
+    expect(page?.table?.dataPath).toBe('data.items');
+    expect(page?.table?.totalPath).toBe('meta.totalCount');
+    expect(page?.table?.sortParam).toBe('_sort');
+    expect(page?.table?.orderParam).toBe('_order');
+    expect(page?.table?.pagination?.pageParam).toBe('_page');
+    expect(page?.table?.pagination?.pageSizeParam).toBe('_limit');
+
+    // Step 5 Query parameters
+    component.goToStep(5);
+    fixture.detectChanges();
+
+    component.form.get('searchParam')?.setValue('q');
+    component.form.get('statusParam')?.setValue('status');
+    component.markDirty();
+    fixture.detectChanges();
+
+    const updatedPage = draftService.draftPages().find((p) => p.id === 'orders-page');
+    expect(updatedPage?.filters?.searchParam).toBe('q');
+    expect(updatedPage?.filters?.statusParam).toBe('status');
+  });
+
+  it('15. should toggle search fields inclusion and reflect in draft', () => {
+    component.goToStep(5);
+    fixture.detectChanges();
+
+    expect(component.isSearchFieldSelected('id')).toBe(false);
+
+    component.toggleSearchField('id');
+    fixture.detectChanges();
+    expect(component.isSearchFieldSelected('id')).toBe(true);
+
+    component.toggleSearchField('id');
+    fixture.detectChanges();
+    expect(component.isSearchFieldSelected('id')).toBe(false);
+  });
 });
+

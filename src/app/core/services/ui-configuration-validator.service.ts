@@ -954,20 +954,48 @@ export class UiConfigurationValidatorService {
     const copy: UiPageConfiguration = {
       id: pageConfig.id,
       resourceId: pageConfig.resourceId,
-      title: pageConfig.title,
+      title: this.stripHtml(pageConfig.title),
       slug: this.sanitizeSlug(pageConfig.slug),
       icon: pageConfig.icon,
-      description: pageConfig.description,
+      description: this.stripHtml(pageConfig.description),
       order: pageConfig.order,
       hidden: pageConfig.hidden,
       displayMode: this.supportedDisplayModes.has(pageConfig.displayMode || '')
         ? pageConfig.displayMode
         : 'dashboard',
+      dataPath: this.stripHtml(pageConfig.dataPath),
+      totalPath: this.stripHtml(pageConfig.totalPath),
       metrics: pageConfig.metrics
-        ? pageConfig.metrics.filter((m) => Boolean(m.label))
+        ? pageConfig.metrics
+            .filter((m) => Boolean(m.label))
+            .map((m) => ({
+              ...m,
+              label: this.stripHtml(m.label) || m.label,
+              description: this.stripHtml(m.description)
+            }))
         : undefined,
-      filters: pageConfig.filters ? { ...pageConfig.filters } : undefined,
-      table: pageConfig.table ? { ...pageConfig.table } : undefined,
+      filters: pageConfig.filters
+        ? {
+            ...pageConfig.filters,
+            searchPlaceholder: this.stripHtml(pageConfig.filters.searchPlaceholder),
+            filterBindings: pageConfig.filters.filterBindings?.map((b) => ({
+              ...b,
+              label: this.stripHtml(b.label),
+              placeholder: this.stripHtml(b.placeholder)
+            }))
+          }
+        : undefined,
+      table: pageConfig.table
+        ? {
+            ...pageConfig.table,
+            dataPath: this.stripHtml(pageConfig.table.dataPath),
+            totalPath: this.stripHtml(pageConfig.table.totalPath),
+            columns: pageConfig.table.columns?.map((c) => ({
+              ...c,
+              label: this.stripHtml(c.label)
+            }))
+          }
+        : undefined,
       pagination: pageConfig.pagination ? { ...pageConfig.pagination } : undefined
     };
 
@@ -976,7 +1004,10 @@ export class UiConfigurationValidatorService {
     }
 
     if (pageConfig.actions) {
-      copy.actions = { ...pageConfig.actions };
+      copy.actions = {
+        ...pageConfig.actions,
+        primaryCreateLabel: this.stripHtml(pageConfig.actions.primaryCreateLabel)
+      };
       if (
         pageConfig.actions.primaryCreateActionId &&
         apiDefinition &&
@@ -995,21 +1026,33 @@ export class UiConfigurationValidatorService {
         };
       }
 
-      if (pageConfig.actions.rowActions?.customActions && apiDefinition) {
+      if (pageConfig.actions.rowActions?.customActions) {
         copy.actions.rowActions = {
           ...copy.actions.rowActions,
-          customActions: pageConfig.actions.rowActions.customActions.filter((desc) =>
-            Boolean(this.findOperationInScope(desc.operationId || desc.id || '', resource, apiDefinition))
-          )
+          customActions: pageConfig.actions.rowActions.customActions
+            .filter((desc) =>
+              !apiDefinition || Boolean(this.findOperationInScope(desc.operationId || desc.id || '', resource, apiDefinition))
+            )
+            .map((desc) => ({
+              ...desc,
+              label: this.stripHtml(desc.label) || desc.label,
+              tooltip: this.stripHtml(desc.tooltip)
+            }))
         };
       }
 
-      if (pageConfig.actions.rowActions?.actions && apiDefinition) {
+      if (pageConfig.actions.rowActions?.actions) {
         copy.actions.rowActions = {
           ...copy.actions.rowActions,
-          actions: pageConfig.actions.rowActions.actions.filter((desc) =>
-            Boolean(this.findOperationInScope(desc.operationId || desc.id || '', resource, apiDefinition))
-          )
+          actions: pageConfig.actions.rowActions.actions
+            .filter((desc) =>
+              !apiDefinition || Boolean(this.findOperationInScope(desc.operationId || desc.id || '', resource, apiDefinition))
+            )
+            .map((desc) => ({
+              ...desc,
+              label: this.stripHtml(desc.label) || desc.label,
+              tooltip: this.stripHtml(desc.tooltip)
+            }))
         };
       }
     }
@@ -1053,4 +1096,19 @@ export class UiConfigurationValidatorService {
       .replace(/-+/g, '-')
       .replace(/^-|-$/g, '');
   }
+
+  /**
+   * Strips HTML markup, scripts, and unsafe tags from arbitrary text configurations.
+   */
+  stripHtml(text?: string | null): string | undefined {
+    if (!text || typeof text !== 'string') return undefined;
+    const cleaned = text
+      .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+      .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, '')
+      .replace(/<iframe\b[^<]*(?:(?!<\/iframe>)<[^<]*)*<\/iframe>/gi, '')
+      .replace(/<\/?[a-z][a-z0-9]*\b[^>]*>/gi, '')
+      .trim();
+    return cleaned;
+  }
 }
+

@@ -13,6 +13,7 @@ import { ApiSchema } from '../../../core/models/api-schema.model';
 import { UiConfigurationValidatorService } from '../../../core/services/ui-configuration-validator.service';
 import { UiValidationResult } from '../../../core/models/ui-validation.model';
 import { ResourceOperationMatcherService } from '../../../core/services/resource-operation-matcher.service';
+import { TableSchemaService } from '../../../dynamic-ui/dynamic-table/table-schema.service';
 
 export type PageConfigMode = 'create' | 'edit' | 'manage';
 
@@ -20,6 +21,7 @@ export type PageConfigMode = 'create' | 'edit' | 'manage';
 export class PageDraftService {
   private readonly validator = inject(UiConfigurationValidatorService);
   private readonly matcher = inject(ResourceOperationMatcherService);
+  private readonly tableSchemaService = inject(TableSchemaService);
 
   private readonly _publishedConfig = signal<UiConfiguration | null>(null);
   private readonly _draftConfig = signal<UiConfiguration>({
@@ -532,31 +534,22 @@ export class PageDraftService {
         })
       : null;
 
-    // 1. Infer columns from response schema or fallback properties
+    // 1. Infer columns using TableSchemaService from response schema or fallback properties
     const rawSchema = resolvedPage?.list?.responses?.[0]?.schema;
     const properties = this.extractSchemaProperties(rawSchema);
-    const columns: UiColumnConfiguration[] = [];
-
-    if (properties && Object.keys(properties).length > 0) {
-      for (const [field, fieldSchema] of Object.entries(properties)) {
-        columns.push({
-          field,
-          label: this.formatLabel(field),
-          type: this.inferColumnType(field, fieldSchema),
-          sortable: true
-        });
-      }
-    }
+    let columns = this.tableSchemaService.inferUiColumns([], rawSchema);
 
     // Default fallback columns if schema has no properties
     if (columns.length === 0) {
-      columns.push(
-        { field: 'id', label: 'ID', type: 'monospace', sortable: true },
-        { field: 'title', label: 'Título', type: 'text', sortable: true },
-        { field: 'status', label: 'Status', type: 'status_badge', sortable: true },
-        { field: 'createdAt', label: 'Criado em', type: 'datetime', sortable: true }
-      );
+      columns = [
+        { field: 'id', label: 'ID', type: 'monospace', sortable: true, hidden: false },
+        { field: 'title', label: 'Título', type: 'text', sortable: true, hidden: false },
+        { field: 'status', label: 'Status', type: 'status_badge', sortable: true, hidden: false },
+        { field: 'createdAt', label: 'Criado em', type: 'datetime', sortable: true, hidden: false }
+      ];
     }
+
+
 
     // 2. Infer default metrics
     const metrics: UiMetricConfiguration[] = [

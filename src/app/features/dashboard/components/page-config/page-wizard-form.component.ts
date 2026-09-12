@@ -26,8 +26,10 @@ import { ApiSchema } from '../../../../core/models/api-schema.model';
 import { ApiOperation } from '../../../../core/models/api-operation.model';
 import { ApiParameter } from '../../../../core/models/api-parameter.model';
 import { ResourceOperationMatcherService } from '../../../../core/services/resource-operation-matcher.service';
+import { TableSchemaService } from '../../../../dynamic-ui/dynamic-table/table-schema.service';
 
 export type WizardStep = 1 | 2 | 3 | 4 | 5;
+
 
 export const AVAILABLE_PAGE_ICONS = [
   'table_chart',
@@ -848,17 +850,26 @@ export interface SchemaPropertyOption {
                 <thead>
                   <tr>
                     <th class="col-th-reorder">#</th>
+                    <th style="width: 60px; text-align: center;">Visível</th>
                     <th>Campo no Registro (Key)</th>
                     <th>Rótulo da Coluna</th>
                     <th>Tipo de Exibição</th>
-                    <th>Ordenável</th>
+                    <th style="width: 70px; text-align: center;">Ordenável</th>
                     <th class="col-th-actions">Ações</th>
                   </tr>
                 </thead>
                 <tbody>
                   @for (cCtrl of columnsArray.controls; track cCtrl; let i = $index) {
-                    <tr [formGroupName]="i">
+                    <tr [formGroupName]="i" [class.row-hidden]="cCtrl.get('hidden')?.value">
                       <td class="col-td-reorder font-mono text-muted">{{ i + 1 }}</td>
+                      <td class="text-center">
+                        <input
+                          type="checkbox"
+                          [checked]="!cCtrl.get('hidden')?.value"
+                          (change)="toggleColumnHidden(i)"
+                          title="Exibir coluna na listagem (desmarque para ocultar)"
+                        />
+                      </td>
                       <td>
                         <input
                           type="text"
@@ -929,8 +940,40 @@ export interface SchemaPropertyOption {
               </table>
             </div>
 
-            <!-- Page Size -->
-            <div class="form-grid" style="margin-top: 16px;">
+            <!-- Enveloped Response & Paths Section -->
+            <div class="section-lead" style="margin-top: 14px;">
+              <h5 class="lead-title">Respostas Envelopadas & Paginação da API</h5>
+              <p class="lead-desc">Configure caminhos de extração de dados caso a API retorne objetos aninhados (ex: <code>data.items</code> ou <code>meta.total</code>).</p>
+            </div>
+
+            <div class="form-grid">
+              <!-- Data Path -->
+              <div class="form-field">
+                <label class="field-label">Caminho do Array de Registros (dataPath)</label>
+                <input
+                  type="text"
+                  formControlName="dataPath"
+                  class="form-control font-mono"
+                  placeholder="Ex: data, items, result.records (vazio = raiz)"
+                  (input)="markDirty()"
+                />
+                <span class="field-hint">Notação de ponto para extrair a lista se envelopada no JSON.</span>
+              </div>
+
+              <!-- Total Path -->
+              <div class="form-field">
+                <label class="field-label">Caminho da Contagem Total (totalPath)</label>
+                <input
+                  type="text"
+                  formControlName="totalPath"
+                  class="form-control font-mono"
+                  placeholder="Ex: total, meta.pagination.total, totalCount"
+                  (input)="markDirty()"
+                />
+                <span class="field-hint">Notação de ponto para o total server-side na paginação.</span>
+              </div>
+
+              <!-- Page Size -->
               <div class="form-field">
                 <label class="field-label">Itens por Página Padrão</label>
                 <select formControlName="pageSize" class="form-control" (change)="markDirty()">
@@ -939,6 +982,64 @@ export interface SchemaPropertyOption {
                   <option [value]="25">25 registros</option>
                   <option [value]="50">50 registros</option>
                   <option [value]="100">100 registros</option>
+                </select>
+              </div>
+
+              <!-- Page Query Param -->
+              <div class="form-field">
+                <label class="field-label">Query Param: Página (pageParam)</label>
+                <input
+                  type="text"
+                  formControlName="pageParam"
+                  class="form-control font-mono"
+                  placeholder="Ex: page, _page, pageIndex"
+                  (input)="markDirty()"
+                />
+              </div>
+
+              <!-- Page Size Query Param -->
+              <div class="form-field">
+                <label class="field-label">Query Param: Limite (pageSizeParam)</label>
+                <input
+                  type="text"
+                  formControlName="pageSizeParam"
+                  class="form-control font-mono"
+                  placeholder="Ex: pageSize, limit, per_page, size"
+                  (input)="markDirty()"
+                />
+              </div>
+
+              <!-- Sort Field Query Param -->
+              <div class="form-field">
+                <label class="field-label">Query Param: Ordenação (sortParam)</label>
+                <input
+                  type="text"
+                  formControlName="sortParam"
+                  class="form-control font-mono"
+                  placeholder="Ex: sort, sortBy, _sort, orderBy"
+                  (input)="markDirty()"
+                />
+              </div>
+
+              <!-- Sort Order Query Param -->
+              <div class="form-field">
+                <label class="field-label">Query Param: Direção (orderParam)</label>
+                <input
+                  type="text"
+                  formControlName="orderParam"
+                  class="form-control font-mono"
+                  placeholder="Ex: order, sortOrder, _order, direction"
+                  (input)="markDirty()"
+                />
+              </div>
+
+              <!-- Sort Format -->
+              <div class="form-field">
+                <label class="field-label">Formato de Envio da Ordenação</label>
+                <select formControlName="sortFormat" class="form-control" (change)="markDirty()">
+                  <option value="separate">Separado (sort=campo&order=asc)</option>
+                  <option value="prefixed">Prefixo com sinal (sort=+campo ou sort=-campo)</option>
+                  <option value="combined">Combinado por vírgula (sort=campo,asc)</option>
                 </select>
               </div>
             </div>
@@ -952,6 +1053,19 @@ export interface SchemaPropertyOption {
               <h5 class="lead-title">Filtros Rápidos e Ações Operacionais</h5>
               <p class="lead-desc">Configure os controles de busca, filtros rápidos, ações padrão e ações customizadas da linha.</p>
             </div>
+
+            @if (availableListQueryParams().length > 0) {
+              <div class="unadded-props-box">
+                <span class="unadded-label">Query Parameters detectados na operação GET:</span>
+                <div class="props-chips-wrapper">
+                  @for (param of availableListQueryParams(); track param.name) {
+                    <span class="prop-chip font-mono" [title]="param.description || param.name">
+                      {{ param.name }}
+                    </span>
+                  }
+                </div>
+              </div>
+            }
 
             <div class="form-grid">
               <!-- Search Fields -->
@@ -984,11 +1098,47 @@ export interface SchemaPropertyOption {
                 />
               </div>
 
+              <!-- Search Query Param -->
+              <div class="form-field">
+                <label class="field-label">Query Param: Busca Server-Side (searchParam)</label>
+                <input
+                  type="text"
+                  formControlName="searchParam"
+                  class="form-control font-mono"
+                  placeholder="Ex: q, search, query, filter"
+                  (input)="markDirty()"
+                />
+                <span class="field-hint">Envia o texto digitado como query parameter na requisição remota.</span>
+              </div>
+
               <!-- Status Filter Field -->
               <div class="form-field">
                 <label class="field-label">Campo do Filtro Rápido de Status</label>
                 <select formControlName="statusField" class="form-control font-mono" (change)="markDirty()">
                   <option value="">Nenhum filtro de status</option>
+                  @for (prop of availablePropertyKeys(); track prop) {
+                    <option [value]="prop">{{ prop }}</option>
+                  }
+                </select>
+              </div>
+
+              <!-- Status Query Param -->
+              <div class="form-field">
+                <label class="field-label">Query Param: Status Server-Side (statusParam)</label>
+                <input
+                  type="text"
+                  formControlName="statusParam"
+                  class="form-control font-mono"
+                  placeholder="Ex: status, state, situation"
+                  (input)="markDirty()"
+                />
+              </div>
+
+              <!-- Date Filter Field -->
+              <div class="form-field">
+                <label class="field-label">Campo de Filtro de Data</label>
+                <select formControlName="dateField" class="form-control font-mono" (change)="markDirty()">
+                  <option value="">Nenhum filtro de data</option>
                   @for (prop of availablePropertyKeys(); track prop) {
                     <option [value]="prop">{{ prop }}</option>
                   }
@@ -1037,6 +1187,7 @@ export interface SchemaPropertyOption {
                 </div>
               </div>
             </div>
+
 
             <!-- ==================== CUSTOM ACTIONS / RPC SECTION ==================== -->
             <div class="custom-actions-container">
@@ -2139,6 +2290,11 @@ export interface SchemaPropertyOption {
         &.col-th-actions { width: 92px; text-align: right; }
       }
 
+      tr.row-hidden {
+        opacity: 0.55;
+        background: rgba(0, 0, 0, 0.15);
+      }
+
       td {
         padding: 6px 8px;
         border-bottom: 1px solid var(--canvas-border-subtle);
@@ -2147,6 +2303,7 @@ export interface SchemaPropertyOption {
         &.col-td-reorder { text-align: center; }
         &.col-td-actions { text-align: right; }
       }
+
 
       .table-input, .table-select {
         width: 100%;
@@ -2387,6 +2544,7 @@ export class PageWizardFormComponent {
   private readonly router = inject(Router, { optional: true });
   readonly draftService = inject(PageDraftService);
   readonly matcher = inject(ResourceOperationMatcherService);
+  readonly tableSchemaService = inject(TableSchemaService);
 
   readonly availableIcons = AVAILABLE_PAGE_ICONS;
   readonly actionStyleOptions = ACTION_STYLE_OPTIONS;
@@ -2420,6 +2578,16 @@ export class PageWizardFormComponent {
     isDefault: [false],
     hidden: [false],
     pageSize: [10],
+    dataPath: [''],
+    totalPath: [''],
+    searchParam: [''],
+    statusParam: [''],
+    dateParam: [''],
+    pageParam: [''],
+    pageSizeParam: [''],
+    sortParam: [''],
+    orderParam: [''],
+    sortFormat: ['separate'],
     searchPlaceholder: [''],
     statusField: [''],
     dateField: [''],
@@ -2455,6 +2623,17 @@ export class PageWizardFormComponent {
     if (!resId) return null;
     return this.availableResources().find((r) => r.id === resId || r.name === resId) ?? null;
   });
+
+  /**
+   * Available query parameters from the active list GET operation for suggestions.
+   */
+  readonly availableListQueryParams = computed<ApiParameter[]>(() => {
+    const listOpId = this.form.get('operationList')?.value;
+    if (!listOpId) return [];
+    const op = this.getOperationDetails(listOpId);
+    return op?.parameters?.filter((p) => p.location === 'query') ?? [];
+  });
+
 
   /**
    * Compatible operations lists for each CRUD role.
@@ -2616,6 +2795,16 @@ export class PageWizardFormComponent {
         isDefault: page.isDefault ?? page.default ?? false,
         hidden: page.hidden ?? false,
         pageSize: page.table?.pageSize ?? 10,
+        dataPath: page.table?.dataPath || page.dataPath || '',
+        totalPath: page.table?.totalPath || page.totalPath || '',
+        searchParam: page.filters?.searchParam || '',
+        statusParam: page.filters?.statusParam || '',
+        dateParam: page.filters?.dateParam || '',
+        sortParam: page.table?.sortParam || '',
+        orderParam: page.table?.orderParam || '',
+        sortFormat: page.table?.sortFormat || 'separate',
+        pageParam: page.table?.pagination?.pageParam || page.pagination?.pageParam || '',
+        pageSizeParam: page.table?.pagination?.pageSizeParam || page.pagination?.pageSizeParam || '',
         searchPlaceholder: page.filters?.searchPlaceholder || '',
         statusField: page.filters?.statusField || '',
         dateField: page.filters?.dateField || '',
@@ -2726,8 +2915,18 @@ export class PageWizardFormComponent {
       field: [c?.field || '', Validators.required],
       label: [c?.label || (c?.field ? this.formatLabel(c.field) : '')],
       type: [c?.type || 'text'],
-      sortable: [c?.sortable ?? true]
+      sortable: [c?.sortable ?? true],
+      hidden: [Boolean(c?.hidden)]
     });
+  }
+
+  toggleColumnHidden(index: number): void {
+    const ctrl = this.columnsArray.at(index);
+    if (ctrl) {
+      const currentHidden = Boolean(ctrl.get('hidden')?.value);
+      ctrl.get('hidden')?.setValue(!currentHidden);
+      this.markDirty();
+    }
   }
 
   private createCustomActionGroup(a?: UiCustomActionDescriptor): FormGroup {
@@ -2770,7 +2969,8 @@ export class PageWizardFormComponent {
         field: '',
         label: '',
         type: 'text',
-        sortable: true
+        sortable: true,
+        hidden: false
       })
     );
     this.markDirty();
@@ -2781,8 +2981,9 @@ export class PageWizardFormComponent {
       this.createColumnGroup({
         field: prop.key,
         label: prop.label,
-        type: this.inferColumnTypeFromSchema(prop.key, prop.schema),
-        sortable: true
+        type: this.tableSchemaService.inferSemanticColumnType(prop.key, prop.type, prop.schema?.format),
+        sortable: true,
+        hidden: false
       })
     );
     this.markDirty();
@@ -2804,6 +3005,7 @@ export class PageWizardFormComponent {
   }
 
   removeColumn(index: number): void {
+
     this.columnsArray.removeAt(index);
     this.markDirty();
   }
@@ -3039,6 +3241,8 @@ export class PageWizardFormComponent {
       default: val.isDefault,
       hidden: val.hidden,
       resourceId: val.resourceId,
+      dataPath: val.dataPath || undefined,
+      totalPath: val.totalPath || undefined,
       operations: {
         ...(existing?.operations || {}),
         list: val.operationList || undefined,
@@ -3059,16 +3263,37 @@ export class PageWizardFormComponent {
       })),
       table: {
         ...(existing?.table || {}),
+        dataPath: val.dataPath || undefined,
+        totalPath: val.totalPath || undefined,
+        sortParam: val.sortParam || undefined,
+        orderParam: val.orderParam || undefined,
+        sortFormat: val.sortFormat || undefined,
+        pagination: {
+          ...(existing?.table?.pagination || {}),
+          pageParam: val.pageParam || undefined,
+          pageSizeParam: val.pageSizeParam || undefined,
+          pageSize: val.pageSize
+        },
         columns: (val.columns || []).map((c: any) => ({
           field: c.field,
           label: c.label || undefined,
           type: c.type,
-          sortable: c.sortable
+          sortable: c.sortable,
+          hidden: Boolean(c.hidden)
         })),
+        pageSize: val.pageSize
+      },
+      pagination: {
+        ...(existing?.pagination || {}),
+        pageParam: val.pageParam || undefined,
+        pageSizeParam: val.pageSizeParam || undefined,
         pageSize: val.pageSize
       },
       filters: {
         ...(existing?.filters || {}),
+        searchParam: val.searchParam || undefined,
+        statusParam: val.statusParam || undefined,
+        dateParam: val.dateParam || undefined,
         searchFields: val.searchFields,
         searchPlaceholder: val.searchPlaceholder,
         statusField: val.statusField || undefined,
@@ -3103,36 +3328,9 @@ export class PageWizardFormComponent {
   }
 
   private inferColumnTypeFromSchema(field: string, schema?: ApiSchema): UiColumnConfiguration['type'] {
-    const lower = field.toLowerCase();
-    if (lower === 'id' || lower.endsWith('_id') || lower === 'uuid' || lower === 'guid' || lower === 'sku') {
-      return 'monospace';
-    }
-    if (lower.includes('status') || lower.includes('state')) {
-      return 'status_badge';
-    }
-    if (
-      lower.includes('price') ||
-      lower.includes('amount') ||
-      lower.includes('total') ||
-      lower.includes('cost') ||
-      lower.includes('valor')
-    ) {
-      return 'currency';
-    }
-    if (schema?.type === 'integer' || schema?.type === 'number') {
-      return 'number';
-    }
-    if (schema?.type === 'boolean') {
-      return 'boolean';
-    }
-    if (schema?.format === 'date' || lower.endsWith('date') || lower === 'data') {
-      return 'date';
-    }
-    if (schema?.format === 'date-time' || lower.includes('at') || lower.includes('time')) {
-      return 'datetime';
-    }
-    return 'text';
+    return this.tableSchemaService.inferSemanticColumnType(field, schema?.type, schema?.format);
   }
+
 
   private formatLabel(key: string): string {
     if (!key) return '';

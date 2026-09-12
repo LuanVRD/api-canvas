@@ -587,5 +587,51 @@ describe('UiConfigurationValidatorService', () => {
       const futureWarn = result.warnings.find((w) => w.code === 'FUTURE_VERSION');
       expect(futureWarn).toBeDefined();
     });
+
+    it('should strip malicious and arbitrary HTML markup from titles, labels and tooltips', () => {
+      const configWithHtml: UiConfiguration = {
+        version: 1,
+        title: '<script>alert("xss")</script>Painel Seguro',
+        pages: {
+          'test-page': {
+            id: 'test-page',
+            resourceId: 'orders',
+            title: '<b>Pedidos</b> <iframe src="evil.com"></iframe>',
+            description: '<style>body{display:none}</style>Descrição limpa',
+
+            metrics: [
+              { label: '<span>Total</span>', type: 'count_all' }
+            ],
+            table: {
+              columns: [
+                { field: 'id', label: '<strong>ID</strong>' }
+              ]
+            },
+            actions: {
+              primaryCreateLabel: '<em>+ Novo</em>',
+              rowActions: {
+                customActions: [
+                  { operationId: 'updateProduct', label: '<script>hack()</script>Aprovar', tooltip: '<div class="tip">Ajuda</div>' }
+                ]
+              }
+            }
+
+          }
+        }
+      };
+
+      const sanitized = validator.sanitizeConfiguration(configWithHtml, mockApiDefinition);
+      const page = sanitized?.pages?.['test-page'];
+
+      expect(page?.title).toBe('Pedidos');
+      expect(page?.description).toBe('Descrição limpa');
+      expect(page?.metrics?.[0]?.label).toBe('Total');
+      expect(page?.table?.columns?.[0]?.label).toBe('ID');
+      expect(page?.actions?.primaryCreateLabel).toBe('+ Novo');
+      expect(page?.actions?.rowActions?.customActions?.[0]?.label).toBe('Aprovar');
+      expect(page?.actions?.rowActions?.customActions?.[0]?.tooltip).toBe('Ajuda');
+    });
   });
 });
+
+
