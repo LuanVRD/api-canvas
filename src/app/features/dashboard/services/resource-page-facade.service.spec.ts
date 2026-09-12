@@ -737,5 +737,124 @@ describe('ResourcePageFacadeService', () => {
       expect(capturedInput.query['sortDirection']).toBe('asc');
     });
   });
+
+  describe('Enveloped Payloads and Coordinated Mutation Lifecycle', () => {
+    it('should extract items and total count from standard envelope ({ data: [...], total: N })', async () => {
+      const envelopePayload = {
+        data: [
+          { orderId: 'ORD-101', customerName: 'Alice', totalAmount: 150, status: 'PAID' },
+          { orderId: 'ORD-102', customerName: 'Bruno', totalAmount: 89, status: 'PENDING' }
+        ],
+        total: 50,
+        page: 1,
+        limit: 10
+      };
+
+      vi.spyOn(apiExecutor, 'execute').mockReturnValue(
+        of({
+          status: 200,
+          statusText: 'OK',
+          data: envelopePayload,
+          duration: 15,
+          isSuccess: true,
+          timestamp: Date.now()
+        })
+      );
+
+      facade.loadPage(mockOrdersPageConfig);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+
+      expect(facade.items().length).toBe(2);
+      expect(facade.totalCount()).toBe(50);
+      expect(facade.visibleItems().length).toBe(2);
+      expect((facade.visibleItems()[0] as any).customerName).toBe('Alice');
+    });
+
+    it('should extract items and total count from nested envelope ({ result: { items: [...], pagination: { totalCount: N } } })', async () => {
+      const nestedEnvelope = {
+        result: {
+          items: [
+            { orderId: 'ORD-201', customerName: 'Carla', totalAmount: 320, status: 'SHIPPED' }
+          ],
+          pagination: {
+            totalCount: 88,
+            currentPage: 1
+          }
+        }
+      };
+
+      vi.spyOn(apiExecutor, 'execute').mockReturnValue(
+        of({
+          status: 200,
+          statusText: 'OK',
+          data: nestedEnvelope,
+          duration: 15,
+          isSuccess: true,
+          timestamp: Date.now()
+        })
+      );
+
+      const customEnvelopeConfig: UiPageConfiguration = {
+        ...mockOrdersPageConfig,
+        table: {
+          ...mockOrdersPageConfig.table,
+          dataPath: 'result.items',
+          totalPath: 'result.pagination.totalCount'
+        }
+      };
+
+      facade.loadPage(customEnvelopeConfig);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+
+      expect(facade.items().length).toBe(1);
+      expect(facade.totalCount()).toBe(88);
+      expect((facade.visibleItems()[0] as any).customerName).toBe('Carla');
+    });
+
+    it('should coordinate reload lifecycle and update metrics when session signals mutation', async () => {
+      let callCount = 0;
+      vi.spyOn(apiExecutor, 'execute').mockImplementation(() => {
+        callCount++;
+        return of({
+          status: 200,
+          statusText: 'OK',
+          data: [{ orderId: `ORD-${callCount}`, totalAmount: 100 * callCount, status: 'PAID' }],
+          duration: 10,
+          isSuccess: true,
+          timestamp: Date.now()
+        });
+      });
+
+      facade.loadPage(mockOrdersPageConfig);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(callCount).toBe(1);
+      expect((facade.visibleItems()[0] as any).orderId).toBe('ORD-1');
+
+      // Trigger mutation notification via ApiSessionService
+      sessionService.notifyResourceMutation('orders', 'create');
+      await new Promise((resolve) => setTimeout(resolve, 20));
+
+      expect(callCount).toBe(2);
+      expect((facade.visibleItems()[0] as any).orderId).toBe('ORD-2');
+    });
+
+    it('should gracefully handle HTTP errors during loading without crashing and display error state', async () => {
+      vi.spyOn(apiExecutor, 'execute').mockReturnValue(
+        throwError(() => ({
+          status: 500,
+          statusText: 'Internal Server Error',
+          message: 'Database connection failed'
+        }))
+      );
+
+      facade.loadPage(mockOrdersPageConfig);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+
+      expect(facade.isLoading()).toBe(false);
+      expect(facade.isError()).toBe(true);
+      expect(facade.error()?.message).toBeTruthy();
+      expect(facade.items().length).toBe(0);
+    });
+  });
 });
 

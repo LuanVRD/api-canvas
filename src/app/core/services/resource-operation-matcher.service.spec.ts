@@ -909,5 +909,132 @@ describe('ResourceOperationMatcherService', () => {
       expect(checkCancelComplete.missingParams.length).toBe(0);
     });
   });
+
+  describe('Non-ID and Arbitrary Parameter Resolution Strategies', () => {
+    it('should resolve parameter by exact match when parameter name is slug ({slug})', () => {
+      const articleOp: ApiOperation = {
+        id: 'getArticleBySlug',
+        method: 'GET',
+        path: '/articles/{slug}',
+        type: 'details',
+        parameters: [
+          { name: 'slug', location: 'path', required: true, schema: { type: 'string' } }
+        ],
+        responses: []
+      };
+
+      const record = { slug: 'como-configurar-api-canvas', title: 'Tutorial', status: 'PUBLISHED' };
+      const res = service.resolveParameters(articleOp, record);
+
+      expect(res.canAutoResolve).toBe(true);
+      expect(res.resolvedParams['slug']).toBe('como-configurar-api-canvas');
+      expect(res.missingParams.length).toBe(0);
+    });
+
+    it('should resolve parameter by uuid ({uuid}) when record has uuid or id property', () => {
+      const uuidOp: ApiOperation = {
+        id: 'getRecordByUuid',
+        method: 'GET',
+        path: '/tenants/{uuid}/config',
+        type: 'details',
+        parameters: [
+          { name: 'uuid', location: 'path', required: true, schema: { type: 'string' } }
+        ],
+        responses: []
+      };
+
+      const recordWithUuid = { uuid: 'c9bf9e57-1685-4c89-bafb-ff5af830be8a', name: 'Tenant A' };
+      const res1 = service.resolveParameters(uuidOp, recordWithUuid);
+      expect(res1.canAutoResolve).toBe(true);
+      expect(res1.resolvedParams['uuid']).toBe('c9bf9e57-1685-4c89-bafb-ff5af830be8a');
+
+      // Fallback to id if uuid is omitted but single path param
+      const recordWithId = { id: 'c9bf9e57-1685-4c89-bafb-ff5af830be8a', name: 'Tenant B' };
+      const res2 = service.resolveParameters(uuidOp, recordWithId);
+      expect(res2.canAutoResolve).toBe(true);
+      expect(res2.resolvedParams['uuid']).toBe('c9bf9e57-1685-4c89-bafb-ff5af830be8a');
+    });
+
+    it('should resolve multi-segment nested path parameters combining context and record', () => {
+      const nestedOp: ApiOperation = {
+        id: 'getStoreOrderItem',
+        method: 'GET',
+        path: '/stores/{storeId}/orders/{orderId}/items/{itemId}',
+        type: 'details',
+        parameters: [
+          { name: 'storeId', location: 'path', required: true, schema: { type: 'string' } },
+          { name: 'orderId', location: 'path', required: true, schema: { type: 'string' } },
+          { name: 'itemId', location: 'path', required: true, schema: { type: 'string' } }
+        ],
+        responses: []
+      };
+
+      const activeContext = { storeId: 'store-sp-01', orderId: 'ord-888' };
+      const rowRecord = { itemId: 'item-99', name: 'Teclado Mecânico', price: 299.9 };
+
+      const res = service.resolveParameters(nestedOp, rowRecord, activeContext);
+      expect(res.canAutoResolve).toBe(true);
+      expect(res.resolvedParams['storeId']).toBe('store-sp-01');
+      expect(res.resolvedParams['orderId']).toBe('ord-888');
+      expect(res.resolvedParams['itemId']).toBe('item-99');
+      expect(res.missingParams.length).toBe(0);
+    });
+
+    it('should resolve status PATCH and action POST parameters accurately without hardcoding id', () => {
+      const statusPatchOp: ApiOperation = {
+        id: 'updateOrderStatus',
+        method: 'PATCH',
+        path: '/orders/{orderId}/status',
+        type: 'action',
+        parameters: [
+          { name: 'orderId', location: 'path', required: true, schema: { type: 'string' } }
+        ],
+        responses: []
+      };
+
+      const cancelPostOp: ApiOperation = {
+        id: 'cancelOrder',
+        method: 'POST',
+        path: '/orders/{orderId}/cancel',
+        type: 'action',
+        parameters: [
+          { name: 'orderId', location: 'path', required: true, schema: { type: 'string' } }
+        ],
+        responses: []
+      };
+
+      const orderRecord = { orderId: 'ORD-777', customerName: 'Carlos', status: 'PENDING' };
+
+      const patchRes = service.resolveParameters(statusPatchOp, orderRecord);
+      expect(patchRes.canAutoResolve).toBe(true);
+      expect(patchRes.resolvedParams['orderId']).toBe('ORD-777');
+
+      const cancelRes = service.resolveParameters(cancelPostOp, orderRecord);
+      expect(cancelRes.canAutoResolve).toBe(true);
+      expect(cancelRes.resolvedParams['orderId']).toBe('ORD-777');
+    });
+
+    it('should identify missing parameters when record does not contain candidate matching values', () => {
+      const complexOp: ApiOperation = {
+        id: 'dispatchBatch',
+        method: 'POST',
+        path: '/warehouses/{warehouseCode}/shipments/{trackingNumber}',
+        type: 'action',
+        parameters: [
+          { name: 'warehouseCode', location: 'path', required: true, schema: { type: 'string' } },
+          { name: 'trackingNumber', location: 'path', required: true, schema: { type: 'string' } }
+        ],
+        responses: []
+      };
+
+      const incompleteRecord = { description: 'Pacote sem tracking' };
+      const res = service.resolveParameters(complexOp, incompleteRecord);
+
+      expect(res.canAutoResolve).toBe(false);
+      expect(res.missingParams.length).toBe(2);
+      expect(res.missingParams.map((p) => p.name)).toContain('warehouseCode');
+      expect(res.missingParams.map((p) => p.name)).toContain('trackingNumber');
+    });
+  });
 });
 

@@ -704,6 +704,211 @@ describe('UiConfigurationService', () => {
       expect(pages[2].title).toBe('Catálogo de Produtos');
     });
   });
+
+  describe('Exhaustive Configuration States: Missing, Partial, Complete, Legacy and Invalid', () => {
+    const sampleResourceConfig: UiResourceConfiguration = {
+      label: 'Pedidos'
+    };
+
+    it('1. State: MISSING / NULL / UNDEFINED configuration', () => {
+      // Normalization
+      expect(service.normalizeConfiguration(null)).toBeNull();
+      expect(service.normalizeConfiguration(undefined)).toBeNull();
+
+      // Page resolution
+      const safeConfig = service.getSafeResolvedPageConfig(null, sampleResourceConfig, null);
+      expect(safeConfig).toBeDefined();
+      expect(safeConfig.title).toBe('Pedidos');
+      expect(safeConfig.displayMode).toBe('dashboard');
+
+      // Custom pages list
+      expect(service.getCustomPages(null)).toEqual([]);
+      expect(service.getCustomPages(undefined)).toEqual([]);
+
+      // Resource config query
+      expect(service.getResourceConfig(null, 'orders')).toBeNull();
+      expect(service.getPageConfig(null, 'orders')).toBeNull();
+    });
+
+    it('2. State: PARTIAL configuration (missing operations, table columns or metrics)', () => {
+      const partialConfig: UiConfiguration = {
+        pages: {
+          'minimal-orders': {
+            id: 'minimal-orders',
+            resourceId: 'orders',
+            title: 'Pedidos Parcial'
+            // Omitted: operations, table, metrics, actions, slug
+          }
+        }
+      };
+
+      const normalized = service.normalizeConfiguration(partialConfig);
+      expect(normalized).toBeDefined();
+      expect(normalized?.version).toBe(CURRENT_UI_CONFIGURATION_VERSION);
+
+      const page = service.getPageConfig(normalized, 'minimal-orders');
+      expect(page).toBeDefined();
+      expect(page?.title).toBe('Pedidos Parcial');
+
+      // Safe resolution merges smart defaults
+      const resolved = service.getSafeResolvedPageConfig(page, sampleResourceConfig, null);
+      expect(resolved.id).toBe('minimal-orders');
+      expect(resolved.displayMode).toBe('dashboard');
+      expect(resolved.hidden).toBe(false);
+    });
+
+    it('3. State: COMPLETE configuration (multi-page, custom actions, filtered metrics, column maps)', () => {
+      const completeConfig: UiConfiguration = {
+        version: 1,
+        title: 'Enterprise ERP Suite',
+        pages: {
+          'orders-page': {
+            id: 'orders-page',
+            resourceId: 'orders',
+            slug: 'pedidos-gerais',
+            title: 'Gestão de Pedidos',
+            icon: 'receipt_long',
+            displayMode: 'dashboard',
+            order: 1,
+            operations: {
+              list: 'listOrders',
+              create: 'createOrder',
+              details: 'getOrderById',
+              update: 'updateOrder',
+              delete: 'deleteOrder'
+            },
+            metrics: [
+              { id: 'm1', label: 'Total Pedidos', type: 'count_all', colorScheme: 'primary', icon: 'shopping_bag' },
+              { id: 'm2', label: 'Faturamento', type: 'sum_field', field: 'totalAmount', format: 'currency', colorScheme: 'success' },
+              { id: 'm3', label: 'Pendentes', type: 'count_matching', field: 'status', matchingValue: 'PENDING', colorScheme: 'warning' },
+              { id: 'm4', label: 'Ticket Médio', type: 'sum_field', field: 'totalAmount', format: 'currency', colorScheme: 'info' }
+            ],
+            table: {
+              columns: [
+                { field: 'orderId', label: 'Código', type: 'monospace', sortable: true },
+                { field: 'customerName', label: 'Cliente', type: 'text', sortable: true },
+                { field: 'totalAmount', label: 'Valor', type: 'currency', sortable: true },
+                {
+                  field: 'status',
+                  label: 'Situação',
+                  type: 'status_badge',
+                  statusBadgeMap: {
+                    PAID: { label: 'Pago', color: 'success' },
+                    PENDING: { label: 'Pendente', color: 'warning' },
+                    CANCELLED: { label: 'Cancelado', color: 'danger' }
+                  }
+                }
+              ],
+              pageSize: 25,
+              pageSizeOptions: [10, 25, 50, 100],
+              defaultSortField: 'totalAmount',
+              defaultSortOrder: 'desc'
+            },
+            actions: {
+              primaryCreateLabel: '+ Novo Pedido',
+              rowActions: {
+                viewDetails: true,
+                edit: true,
+                delete: true,
+                customActions: [
+                  {
+                    id: 'act-cancel',
+                    operationId: 'cancelOrder',
+                    label: 'Cancelar',
+                    style: 'danger',
+                    danger: true,
+                    confirmation: true,
+                    icon: 'cancel'
+                  },
+                  {
+                    id: 'act-dispatch',
+                    operationId: 'dispatchOrder',
+                    label: 'Despachar',
+                    style: 'default',
+                    icon: 'local_shipping'
+                  }
+                ]
+              }
+            }
+          }
+        }
+      };
+
+      const normalized = service.normalizeConfiguration(completeConfig);
+      expect(normalized?.version).toBe(1);
+      expect(normalized?.title).toBe('Enterprise ERP Suite');
+
+      const page = service.getPageConfig(normalized, 'pedidos-gerais');
+      expect(page?.id).toBe('orders-page');
+      expect(page?.metrics?.length).toBe(4);
+      expect(page?.table?.columns?.length).toBe(4);
+      expect(page?.actions?.rowActions?.customActions?.length).toBe(2);
+
+      const customPages = service.getCustomPages(normalized);
+      expect(customPages.length).toBe(1);
+      expect(customPages[0].title).toBe('Gestão de Pedidos');
+    });
+
+    it('4. State: LEGACY / OLD configuration (unversioned, embedded page, deprecated structures)', () => {
+      const legacyConfig: UiConfiguration = {
+        title: 'Legacy System v0',
+        // version intentionally missing
+        resources: {
+          orders: {
+            label: 'Pedidos Legados',
+            order: 2,
+            page: {
+              id: 'resource-orders',
+              title: 'Pedidos Legados'
+            },
+            list: {
+              columns: ['orderId', 'customerName', 'totalAmount']
+            }
+          }
+        }
+      };
+
+      const normalized = service.normalizeConfiguration(legacyConfig);
+      expect(normalized?.version).toBe(CURRENT_UI_CONFIGURATION_VERSION);
+      expect(normalized?.title).toBe('Legacy System v0');
+
+      const resConfig = service.getResourceConfig(normalized, 'orders');
+      expect(resConfig?.label).toBe('Pedidos Legados');
+
+      const customPages = service.getCustomPages(normalized);
+      expect(customPages.length).toBe(1);
+      expect(customPages[0].id).toBe('resource-orders');
+      expect(customPages[0].title).toBe('Pedidos Legados');
+    });
+
+    it('5. State: INVALID / CORRUPTED configuration', () => {
+      const corruptedConfig: UiConfiguration = {
+        title: 'Corrupted Config',
+        pages: {
+          'broken-page': {
+            id: 'broken-page',
+            slug: '///invalid slug///',
+            operations: {
+              list: 'non_existent_op_999'
+            },
+            metrics: [
+              { label: 'Broken Metric', type: 'invalid_type' as unknown as 'count_all' }
+            ]
+          }
+        }
+      };
+
+      const validation = service.validateConfiguration(corruptedConfig, null);
+      expect(validation.valid).toBe(false);
+      expect(validation.hasErrors).toBe(true);
+      expect(validation.errors.length).toBeGreaterThan(0);
+
+      // Sanitization repairs what it can and ensures safe fallback
+      const sanitized = service.sanitizeConfiguration(corruptedConfig, null);
+      expect(sanitized).toBeDefined();
+      expect(sanitized?.pages?.['broken-page']?.slug).toBe('invalid-slug');
+    });
+  });
 });
 
 
