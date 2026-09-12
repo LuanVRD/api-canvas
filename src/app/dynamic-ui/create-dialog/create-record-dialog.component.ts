@@ -2,9 +2,11 @@ import {
   Component,
   computed,
   EventEmitter,
+  HostListener,
   inject,
   Input,
   OnChanges,
+  OnDestroy,
   OnInit,
   Output,
   signal,
@@ -42,7 +44,7 @@ import { JsonViewerComponent } from '../../shared/components/json-viewer/json-vi
     JsonViewerComponent
   ],
   template: `
-    <div class="dialog-backdrop" (click)="onBackdropClick($event)">
+    <div class="dialog-backdrop" (click)="onBackdropClick($event)" role="presentation">
       <div class="dialog-panel font-sans" role="dialog" aria-modal="true" aria-labelledby="create-dialog-title">
         <!-- Dialog Header -->
         <header class="dialog-header">
@@ -57,19 +59,21 @@ import { JsonViewerComponent } from '../../shared/components/json-viewer/json-vi
               type="button"
               class="icon-action-btn"
               (click)="onOpenFullOperation()"
-              title="Open full operation workbench in generic interface"
+              title="Abrir no Workbench"
+              aria-label="Abrir operação completa no workbench"
             >
-              <mat-icon class="icon-sm">open_in_new</mat-icon>
+              <mat-icon class="icon-sm" aria-hidden="true">open_in_new</mat-icon>
               <span>Workbench</span>
             </button>
 
             <button
               type="button"
               class="icon-action-btn close-btn"
-              (click)="close.emit()"
-              title="Cancel and close (Esc)"
+              (click)="onClose()"
+              title="Cancelar e fechar (Esc)"
+              aria-label="Cancelar e fechar"
             >
-              <mat-icon class="icon-sm">close</mat-icon>
+              <mat-icon class="icon-sm" aria-hidden="true">close</mat-icon>
             </button>
           </div>
         </header>
@@ -662,7 +666,7 @@ import { JsonViewerComponent } from '../../shared/components/json-viewer/json-vi
     }
   `]
 })
-export class CreateRecordDialogComponent implements OnInit, OnChanges {
+export class CreateRecordDialogComponent implements OnInit, OnChanges, OnDestroy {
   private readonly session = inject(ApiSessionService);
   private readonly executor = inject(ApiExecutorService);
   private readonly uiConfigService = inject(UiConfigurationService);
@@ -700,6 +704,15 @@ export class CreateRecordDialogComponent implements OnInit, OnChanges {
   readonly validationError = signal<string | null>(null);
   readonly isErrorExpanded = signal<boolean>(false);
 
+  private previouslyFocusedElement: HTMLElement | null = null;
+
+  @HostListener('document:keydown.escape')
+  onEscapePressed(): void {
+    if (!this.isExecuting()) {
+      this.onClose();
+    }
+  }
+
   readonly activeMissingParams = computed<ApiParameter[]>(() => {
     if (this.missingParams && this.missingParams.length > 0) {
       return this.missingParams;
@@ -724,7 +737,26 @@ export class CreateRecordDialogComponent implements OnInit, OnChanges {
   });
 
   ngOnInit(): void {
+    if (typeof document !== 'undefined') {
+      this.previouslyFocusedElement = document.activeElement as HTMLElement | null;
+    }
     this.initComponentState();
+  }
+
+  ngOnDestroy(): void {
+    this.restoreFocus();
+  }
+
+  private restoreFocus(): void {
+    if (this.previouslyFocusedElement && typeof this.previouslyFocusedElement.focus === 'function') {
+      this.previouslyFocusedElement.focus();
+      this.previouslyFocusedElement = null;
+    }
+  }
+
+  onClose(): void {
+    this.restoreFocus();
+    this.close.emit();
   }
 
   ngOnChanges(changes: SimpleChanges): void {
@@ -767,14 +799,7 @@ export class CreateRecordDialogComponent implements OnInit, OnChanges {
 
   onRawJsonChange(text: string): void {
     this.rawJsonText.set(text);
-    try {
-      const parsed = JSON.parse(text);
-      if (parsed && typeof parsed === 'object') {
-        this.formCurrentValue.set(parsed as Record<string, unknown>);
-      }
-    } catch {
-      // Keep previous formCurrentValue
-    }
+    this.validationError.set(null);
   }
 
   areAllMissingParamsProvided(): boolean {
@@ -853,7 +878,7 @@ export class CreateRecordDialogComponent implements OnInit, OnChanges {
           const resourceId = res?.id || (op as { resourceId?: string }).resourceId || '';
           this.session.notifyResourceMutation(resourceId, op.id, result);
           this.created.emit(result);
-          this.close.emit();
+          this.onClose();
         }
       },
       error: (err: unknown) => {
@@ -888,13 +913,15 @@ export class CreateRecordDialogComponent implements OnInit, OnChanges {
   onOpenFullOperation(): void {
     const op = this.activeOperation();
     const opId = op.operationId || op.id;
-    this.close.emit();
+    this.onClose();
     this.router.navigate(['/operation', opId]);
   }
 
   onBackdropClick(event: MouseEvent): void {
     if ((event.target as HTMLElement).classList.contains('dialog-backdrop')) {
-      this.close.emit();
+      if (!this.isExecuting()) {
+        this.onClose();
+      }
     }
   }
 

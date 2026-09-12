@@ -1,4 +1,4 @@
-import { Component, computed, inject, output, signal } from '@angular/core';
+import { Component, computed, HostListener, inject, output, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { MatIconModule } from '@angular/material/icon';
 import { PageDraftService } from '../../services/page-draft.service';
@@ -22,7 +22,7 @@ import { UiPageConfiguration } from '../../../../core/models/ui-configuration.mo
           (click)="onCreatePage()"
           aria-label="Criar nova página"
         >
-          <mat-icon class="btn-icon">add</mat-icon>
+          <mat-icon class="btn-icon" aria-hidden="true">add</mat-icon>
           <span>Nova página</span>
         </button>
       </div>
@@ -54,20 +54,20 @@ import { UiPageConfiguration } from '../../../../core/models/ui-configuration.mo
                           class="btn-icon-action"
                           [disabled]="isFirst"
                           (click)="onMoveOrder(page.id!, 'up')"
-                          title="Mover para cima"
-                          aria-label="Mover página para cima"
+                          [title]="'Mover ' + (page.title || page.id) + ' para cima'"
+                          [attr.aria-label]="'Mover ' + (page.title || page.id) + ' para cima'"
                         >
-                          <mat-icon>keyboard_arrow_up</mat-icon>
+                          <mat-icon aria-hidden="true">keyboard_arrow_up</mat-icon>
                         </button>
                         <button
                           type="button"
                           class="btn-icon-action"
                           [disabled]="isLast"
                           (click)="onMoveOrder(page.id!, 'down')"
-                          title="Mover para baixo"
-                          aria-label="Mover página para baixo"
+                          [title]="'Mover ' + (page.title || page.id) + ' para baixo'"
+                          [attr.aria-label]="'Mover ' + (page.title || page.id) + ' para baixo'"
                         >
-                          <mat-icon>keyboard_arrow_down</mat-icon>
+                          <mat-icon aria-hidden="true">keyboard_arrow_down</mat-icon>
                         </button>
                       </div>
                     </div>
@@ -77,7 +77,7 @@ import { UiPageConfiguration } from '../../../../core/models/ui-configuration.mo
                   <td>
                     <div class="page-cell">
                       <div class="page-icon-wrapper">
-                        <mat-icon class="page-icon">{{ page.icon || 'table_chart' }}</mat-icon>
+                        <mat-icon class="page-icon" aria-hidden="true">{{ page.icon || 'table_chart' }}</mat-icon>
                       </div>
                       <div class="page-meta">
                         <span class="page-title">{{ page.title || page.id }}</span>
@@ -97,12 +97,12 @@ import { UiPageConfiguration } from '../../../../core/models/ui-configuration.mo
                   <td>
                     @if (page.hidden) {
                       <span class="status-badge badge-muted">
-                        <mat-icon class="badge-icon">visibility_off</mat-icon>
+                        <mat-icon class="badge-icon" aria-hidden="true">visibility_off</mat-icon>
                         <span>Oculta</span>
                       </span>
                     } @else {
                       <span class="status-badge badge-success">
-                        <mat-icon class="badge-icon">visibility</mat-icon>
+                        <mat-icon class="badge-icon" aria-hidden="true">visibility</mat-icon>
                         <span>Ativa</span>
                       </span>
                     }
@@ -112,7 +112,7 @@ import { UiPageConfiguration } from '../../../../core/models/ui-configuration.mo
                   <td>
                     @if (page.isDefault || page.default) {
                       <span class="status-badge badge-primary">
-                        <mat-icon class="badge-icon">star</mat-icon>
+                        <mat-icon class="badge-icon" aria-hidden="true">star</mat-icon>
                         <span>Padrão</span>
                       </span>
                     } @else {
@@ -120,10 +120,10 @@ import { UiPageConfiguration } from '../../../../core/models/ui-configuration.mo
                         type="button"
                         class="btn-set-default"
                         (click)="onSetDefault(page.id!)"
-                        title="Tornar página padrão ao abrir o dashboard"
-                        aria-label="Definir como página padrão"
+                        [title]="'Definir ' + (page.title || page.id) + ' como página padrão'"
+                        [attr.aria-label]="'Definir ' + (page.title || page.id) + ' como página padrão'"
                       >
-                        <mat-icon>star_border</mat-icon>
+                        <mat-icon aria-hidden="true">star_border</mat-icon>
                         <span>Definir</span>
                       </button>
                     }
@@ -136,10 +136,10 @@ import { UiPageConfiguration } from '../../../../core/models/ui-configuration.mo
                         type="button"
                         class="btn-action-compact"
                         (click)="onEditPage(page.id!)"
-                        title="Editar configurações da página"
-                        aria-label="Editar página"
+                        [title]="'Editar ' + (page.title || page.id)"
+                        [attr.aria-label]="'Editar ' + (page.title || page.id)"
                       >
-                        <mat-icon>edit</mat-icon>
+                        <mat-icon aria-hidden="true">edit</mat-icon>
                         <span>Editar</span>
                       </button>
 
@@ -147,30 +147,30 @@ import { UiPageConfiguration } from '../../../../core/models/ui-configuration.mo
                         type="button"
                         class="btn-icon-action"
                         (click)="onDuplicatePage(page.id!)"
-                        title="Duplicar página"
-                        aria-label="Duplicar página"
+                        [title]="'Duplicar ' + (page.title || page.id)"
+                        [attr.aria-label]="'Duplicar ' + (page.title || page.id)"
                       >
-                        <mat-icon>content_copy</mat-icon>
+                        <mat-icon aria-hidden="true">content_copy</mat-icon>
                       </button>
 
                       <button
                         type="button"
                         class="btn-icon-action"
-                        [title]="page.hidden ? 'Exibir na navegação' : 'Ocultar da navegação'"
+                        [title]="page.hidden ? 'Exibir ' + (page.title || page.id) + ' na navegação' : 'Ocultar ' + (page.title || page.id) + ' da navegação'"
                         (click)="onToggleVisibility(page.id!)"
-                        [attr.aria-label]="page.hidden ? 'Exibir na navegação' : 'Ocultar da navegação'"
+                        [attr.aria-label]="page.hidden ? 'Exibir ' + (page.title || page.id) + ' na navegação' : 'Ocultar ' + (page.title || page.id) + ' da navegação'"
                       >
-                        <mat-icon>{{ page.hidden ? 'visibility_off' : 'visibility' }}</mat-icon>
+                        <mat-icon aria-hidden="true">{{ page.hidden ? 'visibility_off' : 'visibility' }}</mat-icon>
                       </button>
 
                       <button
                         type="button"
                         class="btn-icon-action btn-danger-action"
                         (click)="onPromptDelete(page)"
-                        title="Excluir página"
-                        aria-label="Excluir página"
+                        [title]="'Excluir ' + (page.title || page.id)"
+                        [attr.aria-label]="'Excluir ' + (page.title || page.id)"
                       >
-                        <mat-icon>delete</mat-icon>
+                        <mat-icon aria-hidden="true">delete</mat-icon>
                       </button>
                     </div>
                   </td>
@@ -182,7 +182,7 @@ import { UiPageConfiguration } from '../../../../core/models/ui-configuration.mo
       } @else {
         <!-- Empty State -->
         <div class="empty-state" role="status">
-          <mat-icon class="empty-icon">dashboard_customize</mat-icon>
+          <mat-icon class="empty-icon" aria-hidden="true">dashboard_customize</mat-icon>
           <h5 class="empty-title">Nenhuma página configurada</h5>
           <p class="empty-description">
             Crie sua primeira página operacional para visualizar recursos, configurar tabelas e cards de métricas.
@@ -193,7 +193,7 @@ import { UiPageConfiguration } from '../../../../core/models/ui-configuration.mo
             (click)="onCreatePage()"
             aria-label="Criar primeira página"
           >
-            <mat-icon class="btn-icon">add</mat-icon>
+            <mat-icon class="btn-icon" aria-hidden="true">add</mat-icon>
             <span>Criar primeira página</span>
           </button>
         </div>
@@ -211,7 +211,7 @@ import { UiPageConfiguration } from '../../../../core/models/ui-configuration.mo
           >
             <div class="delete-header">
               <div class="delete-icon-badge">
-                <mat-icon>delete_forever</mat-icon>
+                <mat-icon aria-hidden="true">delete_forever</mat-icon>
               </div>
               <h4 id="delete-dialog-title" class="delete-title">Excluir página</h4>
             </div>
@@ -346,13 +346,16 @@ import { UiPageConfiguration } from '../../../../core/models/ui-configuration.mo
     .order-controls {
       display: inline-flex;
       align-items: center;
-      gap: 4px;
+      gap: 6px;
+      justify-content: center;
+      vertical-align: middle;
 
       .order-num {
-        font-size: 11px;
-        color: var(--canvas-text-muted);
+        font-size: 12px;
+        color: var(--canvas-text-secondary);
         min-width: 16px;
         text-align: center;
+        line-height: 1;
       }
 
       .order-buttons {
@@ -361,14 +364,19 @@ import { UiPageConfiguration } from '../../../../core/models/ui-configuration.mo
         gap: 1px;
 
         .btn-icon-action {
-          width: 18px;
+          width: 20px;
           height: 14px;
           padding: 0;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          line-height: 1;
 
           mat-icon {
-            font-size: 12px;
-            width: 12px;
-            height: 12px;
+            font-size: 14px;
+            width: 14px;
+            height: 14px;
+            line-height: 1;
           }
         }
       }
@@ -380,8 +388,8 @@ import { UiPageConfiguration } from '../../../../core/models/ui-configuration.mo
       gap: 10px;
 
       .page-icon-wrapper {
-        width: 28px;
-        height: 28px;
+        width: 32px;
+        height: 32px;
         border-radius: var(--radius-sm);
         background: var(--canvas-surface-elevated);
         border: 1px solid var(--canvas-border-subtle);
@@ -391,9 +399,10 @@ import { UiPageConfiguration } from '../../../../core/models/ui-configuration.mo
         flex-shrink: 0;
 
         .page-icon {
-          font-size: 15px;
-          width: 15px;
-          height: 15px;
+          font-size: 18px;
+          width: 18px;
+          height: 18px;
+          line-height: 1;
           color: var(--canvas-text-link);
         }
       }
@@ -435,13 +444,15 @@ import { UiPageConfiguration } from '../../../../core/models/ui-configuration.mo
       gap: 4px;
       font-size: 11px;
       font-weight: 600;
-      padding: 2px 6px;
+      padding: 2px 8px;
       border-radius: var(--radius-sm);
+      line-height: 1.5;
 
       .badge-icon {
-        font-size: 13px;
-        width: 13px;
-        height: 13px;
+        font-size: 14px;
+        width: 14px;
+        height: 14px;
+        line-height: 1;
       }
 
       &.badge-success {
@@ -467,8 +478,8 @@ import { UiPageConfiguration } from '../../../../core/models/ui-configuration.mo
       display: inline-flex;
       align-items: center;
       gap: 4px;
-      height: 22px;
-      padding: 0 6px;
+      height: 24px;
+      padding: 0 8px;
       background: transparent;
       border: 1px dashed var(--canvas-border);
       border-radius: var(--radius-sm);
@@ -484,9 +495,10 @@ import { UiPageConfiguration } from '../../../../core/models/ui-configuration.mo
       }
 
       mat-icon {
-        font-size: 12px;
-        width: 12px;
-        height: 12px;
+        font-size: 14px;
+        width: 14px;
+        height: 14px;
+        line-height: 1;
       }
     }
 
@@ -501,7 +513,7 @@ import { UiPageConfiguration } from '../../../../core/models/ui-configuration.mo
       display: inline-flex;
       align-items: center;
       gap: 4px;
-      height: 24px;
+      height: 26px;
       padding: 0 8px;
       background: var(--canvas-surface-elevated);
       border: 1px solid var(--canvas-border);
@@ -517,9 +529,10 @@ import { UiPageConfiguration } from '../../../../core/models/ui-configuration.mo
       }
 
       mat-icon {
-        font-size: 13px;
-        width: 13px;
-        height: 13px;
+        font-size: 14px;
+        width: 14px;
+        height: 14px;
+        line-height: 1;
         color: var(--canvas-text-muted);
       }
     }
@@ -528,8 +541,9 @@ import { UiPageConfiguration } from '../../../../core/models/ui-configuration.mo
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      width: 24px;
-      height: 24px;
+      width: 26px;
+      height: 26px;
+      padding: 0;
       background: transparent;
       border: 1px solid transparent;
       border-radius: var(--radius-sm);
@@ -555,9 +569,10 @@ import { UiPageConfiguration } from '../../../../core/models/ui-configuration.mo
       }
 
       mat-icon {
-        font-size: 14px;
-        width: 14px;
-        height: 14px;
+        font-size: 16px;
+        width: 16px;
+        height: 16px;
+        line-height: 1;
       }
     }
 
@@ -565,8 +580,8 @@ import { UiPageConfiguration } from '../../../../core/models/ui-configuration.mo
       display: inline-flex;
       align-items: center;
       gap: 6px;
-      height: 28px;
-      padding: 0 10px;
+      height: 30px;
+      padding: 0 12px;
       background: var(--action-primary);
       color: var(--action-primary-text);
       border: 1px solid transparent;
@@ -580,10 +595,11 @@ import { UiPageConfiguration } from '../../../../core/models/ui-configuration.mo
         background: var(--action-primary-hover);
       }
 
-      .btn-icon {
-        font-size: 14px;
-        width: 14px;
-        height: 14px;
+      .btn-icon, mat-icon {
+        font-size: 16px;
+        width: 16px;
+        height: 16px;
+        line-height: 1;
       }
     }
 
@@ -770,6 +786,13 @@ export class PageManagerListComponent {
 
   onPromptDelete(page: UiPageConfiguration): void {
     this.pendingDeletePage.set(page);
+  }
+
+  @HostListener('document:keydown.escape')
+  onEscape(): void {
+    if (this.pendingDeletePage()) {
+      this.cancelDelete();
+    }
   }
 
   cancelDelete(): void {

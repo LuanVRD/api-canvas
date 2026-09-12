@@ -2,8 +2,10 @@ import {
   Component,
   computed,
   EventEmitter,
+  HostListener,
   inject,
   Input,
+  OnDestroy,
   OnInit,
   Output,
   signal
@@ -39,8 +41,8 @@ import { JsonViewerComponent } from '../../shared/components/json-viewer/json-vi
     JsonViewerComponent
   ],
   template: `
-    <div class="drawer-backdrop" (click)="onBackdropClick($event)">
-      <div class="drawer-panel font-sans" role="dialog" aria-label="Record Details">
+    <div class="drawer-backdrop" (click)="onBackdropClick($event)" role="presentation">
+      <div class="drawer-panel font-sans" role="dialog" aria-modal="true" aria-label="Detalhes do Registro">
         <!-- Drawer Header -->
         <header class="drawer-header">
           <div class="header-left">
@@ -60,10 +62,11 @@ import { JsonViewerComponent } from '../../shared/components/json-viewer/json-vi
                 type="button"
                 class="icon-action-btn edit-action-btn"
                 (click)="onEditRecord()"
-                title="Edit this record"
+                title="Editar este registro"
+                aria-label="Editar este registro"
               >
-                <mat-icon class="icon-sm">edit</mat-icon>
-                <span>Edit</span>
+                <mat-icon class="icon-sm" aria-hidden="true">edit</mat-icon>
+                <span>Editar</span>
               </button>
             }
 
@@ -71,19 +74,21 @@ import { JsonViewerComponent } from '../../shared/components/json-viewer/json-vi
               type="button"
               class="icon-action-btn"
               (click)="onOpenFullOperation()"
-              title="Open full operation workbench in new view"
+              title="Abrir no Workbench"
+              aria-label="Abrir operação completa no workbench"
             >
-              <mat-icon class="icon-sm">open_in_new</mat-icon>
+              <mat-icon class="icon-sm" aria-hidden="true">open_in_new</mat-icon>
               <span>Workbench</span>
             </button>
 
             <button
               type="button"
               class="icon-action-btn close-btn"
-              (click)="close.emit()"
-              title="Close details (Esc)"
+              (click)="onClose()"
+              title="Fechar detalhes (Esc)"
+              aria-label="Fechar detalhes"
             >
-              <mat-icon class="icon-sm">close</mat-icon>
+              <mat-icon class="icon-sm" aria-hidden="true">close</mat-icon>
             </button>
           </div>
         </header>
@@ -740,7 +745,7 @@ import { JsonViewerComponent } from '../../shared/components/json-viewer/json-vi
     }
   `]
 })
-export class RecordDetailsDrawerComponent implements OnInit {
+export class RecordDetailsDrawerComponent implements OnInit, OnDestroy {
   private readonly session = inject(ApiSessionService);
   private readonly executor = inject(ApiExecutorService);
   private readonly matcher = inject(ResourceOperationMatcherService);
@@ -766,6 +771,13 @@ export class RecordDetailsDrawerComponent implements OnInit {
   viewMode = signal<'visual' | 'raw'>('visual');
   copied = signal<boolean>(false);
 
+  private previouslyFocusedElement: HTMLElement | null = null;
+
+  @HostListener('document:keydown.escape')
+  onEscapePressed(): void {
+    this.onClose();
+  }
+
   readonly hasMissingParams = computed<boolean>(() => {
     return this.missingParams.length > 0;
   });
@@ -790,12 +802,32 @@ export class RecordDetailsDrawerComponent implements OnInit {
   });
 
   ngOnInit(): void {
+    if (typeof document !== 'undefined') {
+      this.previouslyFocusedElement = document.activeElement as HTMLElement | null;
+    }
+
     this.userParamValues.set({ ...this.initialParams });
 
     // Auto-fetch if no missing parameters required
     if (!this.hasMissingParams()) {
       this.fetchDetails();
     }
+  }
+
+  ngOnDestroy(): void {
+    this.restoreFocus();
+  }
+
+  private restoreFocus(): void {
+    if (this.previouslyFocusedElement && typeof this.previouslyFocusedElement.focus === 'function') {
+      this.previouslyFocusedElement.focus();
+      this.previouslyFocusedElement = null;
+    }
+  }
+
+  onClose(): void {
+    this.restoreFocus();
+    this.close.emit();
   }
 
   onParamInputChange(paramName: string, value: string): void {
@@ -849,14 +881,14 @@ export class RecordDetailsDrawerComponent implements OnInit {
 
   onBackdropClick(event: MouseEvent): void {
     if ((event.target as HTMLElement).classList.contains('drawer-backdrop')) {
-      this.close.emit();
+      this.onClose();
     }
   }
 
   onOpenFullOperation(): void {
     const targetId = this.operation.operationId || this.operation.id;
     this.router.navigate(['/operation', targetId]);
-    this.close.emit();
+    this.onClose();
   }
 
   onCopyPayload(): void {

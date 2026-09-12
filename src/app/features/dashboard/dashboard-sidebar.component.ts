@@ -13,12 +13,29 @@ import { UiPageConfiguration } from '../../core/models/ui-configuration.model';
     MatIconModule
   ],
   template: `
-    <aside class="sidebar-container" aria-label="Navegação de Páginas do Dashboard">
+    <aside
+      class="sidebar-container"
+      [class.collapsed]="isCollapsed()"
+      aria-label="Navegação de Páginas do Dashboard"
+    >
       <!-- Header: Title, Total Badge, and New Page Action -->
       <div class="sidebar-header">
         <div class="header-top">
-          <span class="header-title">PÁGINAS</span>
-          <span class="count-badge font-mono" aria-label="Total de páginas">{{ pages().length }}</span>
+          @if (!isCollapsed()) {
+            <span class="header-title">PÁGINAS</span>
+            <span class="count-badge font-mono" aria-label="Total de páginas">{{ pages().length }}</span>
+          }
+          <button
+            type="button"
+            class="toggle-collapse-btn"
+            (click)="toggleCollapse()"
+            [attr.aria-label]="isCollapsed() ? 'Expandir barra lateral' : 'Recolher barra lateral'"
+            [title]="isCollapsed() ? 'Expandir barra lateral' : 'Recolher barra lateral'"
+          >
+            <mat-icon class="toggle-icon" aria-hidden="true">
+              {{ isCollapsed() ? 'menu' : 'menu_open' }}
+            </mat-icon>
+          </button>
         </div>
 
         <button
@@ -26,14 +43,17 @@ import { UiPageConfiguration } from '../../core/models/ui-configuration.model';
           class="new-page-btn"
           (click)="onNewPage()"
           aria-label="Criar nova página"
+          [title]="isCollapsed() ? 'Criar nova página' : ''"
         >
-          <mat-icon class="btn-icon">add</mat-icon>
-          <span>Nova página</span>
+          <mat-icon class="btn-icon" aria-hidden="true">add</mat-icon>
+          @if (!isCollapsed()) {
+            <span>Nova página</span>
+          }
         </button>
 
-        @if (pages().length > 5) {
+        @if (!isCollapsed() && pages().length > 5) {
           <div class="search-box">
-            <mat-icon class="search-icon">search</mat-icon>
+            <mat-icon class="search-icon" aria-hidden="true">search</mat-icon>
             <input
               type="text"
               class="search-input"
@@ -44,7 +64,7 @@ import { UiPageConfiguration } from '../../core/models/ui-configuration.model';
             />
             @if (filterQuery()) {
               <button class="clear-btn" (click)="filterQuery.set('')" aria-label="Limpar filtro">
-                <mat-icon>close</mat-icon>
+                <mat-icon aria-hidden="true">close</mat-icon>
               </button>
             }
           </div>
@@ -53,23 +73,26 @@ import { UiPageConfiguration } from '../../core/models/ui-configuration.model';
 
       <!-- Custom Pages Navigation List -->
       <nav class="page-list" role="list" aria-label="Lista de páginas personalizadas">
-        @for (page of filteredPages(); track page.id || page.slug) {
+        @for (page of filteredPages(); track page.id || page.slug; let idx = $index) {
           <button
             type="button"
             role="listitem"
             class="page-item"
             [class.active]="isPageActive(page)"
             [attr.aria-current]="isPageActive(page) ? 'page' : null"
+            [attr.aria-label]="page.title || page.id"
+            [title]="isCollapsed() ? (page.title || page.id) : ''"
             (click)="selectPage(page)"
-            (keydown.enter)="selectPage(page)"
-            (keydown.space)="selectPage(page); $event.preventDefault()"
+            (keydown)="onItemKeydown($event, idx)"
           >
             <div class="page-main">
-              <mat-icon class="page-icon">{{ page.icon || 'table_chart' }}</mat-icon>
-              <span class="page-name" [title]="page.title || page.id">{{ page.title || page.id }}</span>
+              <mat-icon class="page-icon" aria-hidden="true">{{ page.icon || 'table_chart' }}</mat-icon>
+              @if (!isCollapsed()) {
+                <span class="page-name" [title]="page.title || page.id">{{ page.title || page.id }}</span>
+              }
             </div>
 
-            @if (pageCounts()[page.id!] !== undefined) {
+            @if (!isCollapsed() && pageCounts()[page.id!] !== undefined) {
               <span class="page-count font-mono" [title]="pageCounts()[page.id!] + ' registros'">
                 {{ pageCounts()[page.id!] }}
               </span>
@@ -79,12 +102,16 @@ import { UiPageConfiguration } from '../../core/models/ui-configuration.model';
 
         @if (pages().length === 0) {
           <div class="empty-state" role="status">
-            <mat-icon class="empty-icon">dashboard_customize</mat-icon>
-            <span>Nenhuma página configurada</span>
+            <mat-icon class="empty-icon" aria-hidden="true">dashboard_customize</mat-icon>
+            @if (!isCollapsed()) {
+              <span>Nenhuma página configurada</span>
+            }
           </div>
         } @else if (filteredPages().length === 0) {
           <div class="empty-state" role="status">
-            <span>Nenhuma página encontrada</span>
+            @if (!isCollapsed()) {
+              <span>Nenhuma página encontrada</span>
+            }
           </div>
         }
       </nav>
@@ -96,9 +123,12 @@ import { UiPageConfiguration } from '../../core/models/ui-configuration.model';
           class="configure-pages-btn"
           (click)="onConfigurePages()"
           aria-label="Configurar páginas"
+          [title]="isCollapsed() ? 'Configurar páginas' : ''"
         >
-          <mat-icon class="footer-icon">settings</mat-icon>
-          <span>Configurar páginas</span>
+          <mat-icon class="footer-icon" aria-hidden="true">settings</mat-icon>
+          @if (!isCollapsed()) {
+            <span>Configurar páginas</span>
+          }
         </button>
       </div>
     </aside>
@@ -114,6 +144,78 @@ import { UiPageConfiguration } from '../../core/models/ui-configuration.model';
       display: flex;
       flex-direction: column;
       user-select: none;
+      transition: width 0.15s ease, min-width 0.15s ease;
+
+      &.collapsed {
+        width: 52px;
+        min-width: 52px;
+        max-width: 52px;
+
+        .sidebar-header {
+          padding: 8px 6px;
+        }
+
+        .header-top {
+          justify-content: center;
+        }
+
+        .new-page-btn {
+          padding: 0;
+          justify-content: center;
+        }
+
+        .page-list {
+          padding: 6px 4px;
+        }
+
+        .page-item {
+          padding: 7px 0;
+          justify-content: center;
+
+          .page-main {
+            justify-content: center;
+          }
+        }
+
+        .sidebar-footer {
+          padding: 8px 4px;
+
+          .configure-pages-btn {
+            padding: 0;
+            justify-content: center;
+          }
+        }
+      }
+    }
+
+    .toggle-collapse-btn {
+      background: transparent;
+      border: none;
+      color: var(--canvas-text-muted);
+      cursor: pointer;
+      padding: 4px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: var(--radius-sm);
+      transition: color 0.12s ease, background-color 0.12s ease;
+
+      &:hover, &:focus-visible {
+        color: var(--canvas-text-primary);
+        background-color: var(--canvas-surface-elevated);
+      }
+
+      &:focus-visible {
+        outline: 2px solid var(--canvas-text-link);
+        outline-offset: -1px;
+      }
+
+      .toggle-icon {
+        font-size: 16px;
+        width: 16px;
+        height: 16px;
+        line-height: 1;
+      }
     }
 
     .sidebar-header {
@@ -177,9 +279,10 @@ import { UiPageConfiguration } from '../../core/models/ui-configuration.model';
       }
 
       .btn-icon {
-        font-size: 14px;
-        width: 14px;
-        height: 14px;
+        font-size: 16px;
+        width: 16px;
+        height: 16px;
+        line-height: 1;
         color: var(--canvas-text-muted);
       }
     }
@@ -192,9 +295,10 @@ import { UiPageConfiguration } from '../../core/models/ui-configuration.model';
       .search-icon {
         position: absolute;
         left: 6px;
-        font-size: 14px;
-        width: 14px;
-        height: 14px;
+        font-size: 15px;
+        width: 15px;
+        height: 15px;
+        line-height: 1;
         color: var(--canvas-text-muted);
         pointer-events: none;
       }
@@ -240,6 +344,7 @@ import { UiPageConfiguration } from '../../core/models/ui-configuration.model';
           font-size: 14px;
           width: 14px;
           height: 14px;
+          line-height: 1;
         }
       }
     }
@@ -298,9 +403,10 @@ import { UiPageConfiguration } from '../../core/models/ui-configuration.model';
         flex: 1;
 
         .page-icon {
-          font-size: 15px;
-          width: 15px;
-          height: 15px;
+          font-size: 16px;
+          width: 16px;
+          height: 16px;
+          line-height: 1;
           color: var(--canvas-text-muted);
           flex-shrink: 0;
         }
@@ -339,6 +445,7 @@ import { UiPageConfiguration } from '../../core/models/ui-configuration.model';
         font-size: 20px;
         width: 20px;
         height: 20px;
+        line-height: 1;
         color: var(--canvas-text-muted);
       }
     }
@@ -376,9 +483,10 @@ import { UiPageConfiguration } from '../../core/models/ui-configuration.model';
         }
 
         .footer-icon {
-          font-size: 15px;
-          width: 15px;
-          height: 15px;
+          font-size: 16px;
+          width: 16px;
+          height: 16px;
+          line-height: 1;
           color: var(--canvas-text-muted);
         }
       }
@@ -396,15 +504,45 @@ export class DashboardSidebarComponent {
   readonly configurePagesClick = output<void>();
 
   readonly filterQuery = signal<string>('');
+  readonly isCollapsed = signal<boolean>(false);
+
+  toggleCollapse(): void {
+    this.isCollapsed.update((v) => !v);
+  }
+
+  onItemKeydown(event: KeyboardEvent, index: number): void {
+    const list = this.filteredPages();
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      if (list[index]) {
+        this.selectPage(list[index]);
+      }
+    } else if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      const nextIndex = (index + 1) % list.length;
+      const buttons = document.querySelectorAll<HTMLButtonElement>('.page-item');
+      buttons[nextIndex]?.focus();
+    } else if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      const prevIndex = (index - 1 + list.length) % list.length;
+      const buttons = document.querySelectorAll<HTMLButtonElement>('.page-item');
+      buttons[prevIndex]?.focus();
+    }
+  }
 
   isPageActive(page: UiPageConfiguration): boolean {
-    const activeKey = this.selectedPageSlug() || this.selectedPageId();
-    if (!activeKey) return false;
-    const target = activeKey.toLowerCase();
+    const activeSlug = this.selectedPageSlug()?.toLowerCase();
+    const activeId = this.selectedPageId()?.toLowerCase();
+    if (!activeSlug && !activeId) return false;
+
+    const pageSlug = page.slug?.toLowerCase();
+    const pageId = page.id?.toLowerCase();
+
     return Boolean(
-      (page.slug && page.slug.toLowerCase() === target) ||
-      (page.id && page.id.toLowerCase() === target) ||
-      (page.resourceId && page.resourceId.toLowerCase() === target)
+      (activeId && pageId && activeId === pageId) ||
+      (activeSlug && pageSlug && activeSlug === pageSlug) ||
+      (activeSlug && pageId && activeSlug === pageId) ||
+      (activeId && pageSlug && activeId === pageSlug)
     );
   }
 

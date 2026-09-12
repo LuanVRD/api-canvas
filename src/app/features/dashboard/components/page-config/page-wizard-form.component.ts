@@ -3731,10 +3731,10 @@ export class PageWizardFormComponent {
     const titleVal = this.form.get('title')?.value;
     const currentSlug = this.form.get('slug')?.value;
     if (!currentSlug || currentSlug === this.slugify(titleVal.slice(0, -1))) {
-      this.form.get('slug')?.setValue(this.slugify(titleVal));
-      this.form.get('slug')?.updateValueAndValidity();
+      this.autoGenerateSlug();
+    } else {
+      this.markDirty();
     }
-    this.markDirty();
   }
 
   onSlugInput(): void {
@@ -3753,7 +3753,15 @@ export class PageWizardFormComponent {
 
   autoGenerateSlug(): void {
     const title = this.form.get('title')?.value || this.form.get('resourceId')?.value || 'pagina';
-    this.form.get('slug')?.setValue(this.slugify(title));
+    const baseSlug = this.slugify(title);
+    let candidateSlug = baseSlug;
+    let counter = 1;
+    const editingId = this.draftService.editingPageId() || this.loadedPageId;
+    while (this.draftService.isSlugConflict(candidateSlug, editingId || undefined)) {
+      counter++;
+      candidateSlug = `${baseSlug}-${counter}`;
+    }
+    this.form.get('slug')?.setValue(candidateSlug);
     this.form.get('slug')?.updateValueAndValidity();
     this.markDirty();
   }

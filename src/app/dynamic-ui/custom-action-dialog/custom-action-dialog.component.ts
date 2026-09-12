@@ -2,9 +2,11 @@ import {
   Component,
   computed,
   EventEmitter,
+  HostListener,
   inject,
   Input,
   OnChanges,
+  OnDestroy,
   OnInit,
   Output,
   signal,
@@ -49,7 +51,7 @@ export interface KeyValueSummary {
     JsonViewerComponent
   ],
   template: `
-    <div class="dialog-backdrop" (click)="onBackdropClick($event)">
+    <div class="dialog-backdrop" (click)="onBackdropClick($event)" role="presentation">
       <div class="dialog-panel font-sans" role="dialog" aria-modal="true" aria-labelledby="action-dialog-title">
         <!-- Dialog Header -->
         <header class="dialog-header">
@@ -70,19 +72,21 @@ export interface KeyValueSummary {
               type="button"
               class="icon-action-btn"
               (click)="onOpenFullOperation()"
-              title="Abrir operação no API Explorer (Workbench)"
+              title="Abrir no Workbench"
+              aria-label="Abrir operação no workbench"
             >
-              <mat-icon class="icon-sm">open_in_new</mat-icon>
+              <mat-icon class="icon-sm" aria-hidden="true">open_in_new</mat-icon>
               <span>Workbench</span>
             </button>
 
             <button
               type="button"
               class="icon-action-btn close-btn"
-              (click)="close.emit()"
+              (click)="onClose()"
               title="Cancelar e fechar (Esc)"
+              aria-label="Cancelar e fechar"
             >
-              <mat-icon class="icon-sm">close</mat-icon>
+              <mat-icon class="icon-sm" aria-hidden="true">close</mat-icon>
             </button>
           </div>
         </header>
@@ -875,7 +879,7 @@ export interface KeyValueSummary {
     }
   `]
 })
-export class CustomActionDialogComponent implements OnInit, OnChanges {
+export class CustomActionDialogComponent implements OnInit, OnChanges, OnDestroy {
   private readonly session = inject(ApiSessionService);
   private readonly executor = inject(ApiExecutorService);
   private readonly uiConfigService = inject(UiConfigurationService);
@@ -896,6 +900,15 @@ export class CustomActionDialogComponent implements OnInit, OnChanges {
   isExecuting = signal<boolean>(false);
   executionResult = signal<ApiExecutionResult | null>(null);
   isErrorExpanded = signal<boolean>(false);
+
+  private previouslyFocusedElement: HTMLElement | null = null;
+
+  @HostListener('document:keydown.escape')
+  onEscapePressed(): void {
+    if (!this.isExecuting()) {
+      this.onClose();
+    }
+  }
 
   readonly operation = computed<ApiOperation>(() => {
     return this.action.operation;
@@ -1054,8 +1067,27 @@ export class CustomActionDialogComponent implements OnInit, OnChanges {
   });
 
   ngOnInit(): void {
+    if (typeof document !== 'undefined') {
+      this.previouslyFocusedElement = document.activeElement as HTMLElement | null;
+    }
     this.userParamValues.set({ ...this.initialParams });
     this.dynamicFormValue.set({ ...this.initialFormValue() });
+  }
+
+  ngOnDestroy(): void {
+    this.restoreFocus();
+  }
+
+  private restoreFocus(): void {
+    if (this.previouslyFocusedElement && typeof this.previouslyFocusedElement.focus === 'function') {
+      this.previouslyFocusedElement.focus();
+      this.previouslyFocusedElement = null;
+    }
+  }
+
+  onClose(): void {
+    this.restoreFocus();
+    this.close.emit();
   }
 
   ngOnChanges(changes: SimpleChanges): void {
@@ -1116,7 +1148,7 @@ export class CustomActionDialogComponent implements OnInit, OnChanges {
 
         if (result.isSuccess) {
           this.executed.emit(result);
-          this.close.emit();
+          this.onClose();
         }
       },
       error: (err: unknown) => {
@@ -1152,7 +1184,7 @@ export class CustomActionDialogComponent implements OnInit, OnChanges {
   onBackdropClick(event: MouseEvent): void {
     if ((event.target as HTMLElement).classList.contains('dialog-backdrop')) {
       if (!this.isExecuting()) {
-        this.close.emit();
+        this.onClose();
       }
     }
   }
@@ -1160,7 +1192,7 @@ export class CustomActionDialogComponent implements OnInit, OnChanges {
   onOpenFullOperation(): void {
     const targetId = this.operation().operationId || this.operation().id;
     this.router.navigate(['/operation', targetId]);
-    this.close.emit();
+    this.onClose();
   }
 
   getErrorMessage(): string {

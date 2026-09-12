@@ -182,18 +182,40 @@ export class PageDraftService {
     }
 
     const defaultPage = this.inferPageDefaultsFromResource(targetResource, existingPages.length + 1);
-    const id = defaultPage.id || `page-${Date.now()}`;
+    
+    // Ensure unique ID and slug compared to all existing pages and dictionary keys
+    const baseSlug = defaultPage.slug || 'pagina';
+    const baseId = defaultPage.id || `${baseSlug}-page`;
+    let uniqueSlug = baseSlug;
+    let uniqueId = baseId;
+    let counter = 1;
+
+    const currentPagesMap = this._draftConfig().pages || {};
+    while (
+      existingPages.some((p) => p.id === uniqueId || p.slug === uniqueSlug) ||
+      currentPagesMap[uniqueId] !== undefined
+    ) {
+      counter++;
+      uniqueSlug = `${baseSlug}-${counter}`;
+      uniqueId = `${baseId}-${counter}`;
+    }
+
+    defaultPage.id = uniqueId;
+    defaultPage.slug = uniqueSlug;
+    if (counter > 1) {
+      defaultPage.title = `${defaultPage.title} (${counter})`;
+    }
 
     // Add to draft pages
     this._draftConfig.update((prev) => ({
       ...prev,
       pages: {
         ...(prev.pages || {}),
-        [id]: defaultPage
+        [uniqueId]: defaultPage
       }
     }));
 
-    this._editingPageId.set(id);
+    this._editingPageId.set(uniqueId);
     this._activeMode.set('create');
     this._isDirty.set(true);
 

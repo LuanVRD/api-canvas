@@ -423,4 +423,29 @@ describe('PageDraftService', () => {
     expect(pages2.map((p) => p.id)).toEqual(['page1', 'page2', 'page4', 'page3']);
     expect(pages2.map((p) => p.order)).toEqual([1, 2, 3, 4]);
   });
+
+  it('17. should generate unique ID and slug when creating multiple pages for the same resource without overwriting existing page', () => {
+    service.initDraft(initialPublishedConfig, mockApiDefinition, 'manage');
+
+    expect(service.draftPages().length).toBe(1);
+    expect(service.draftPages()[0].id).toBe('orders-page');
+
+    // Create a new page explicitly for 'orders' (same resource as existing page)
+    const newPage = service.startCreatePage('orders');
+    expect(newPage).toBeDefined();
+    expect(newPage.id).toBe('orders-page-2');
+    expect(newPage.slug).toBe('orders-2');
+    expect(service.draftPages().length).toBe(2);
+
+    // Verify both pages exist in draft
+    const pageIds = service.draftPages().map((p) => p.id);
+    expect(pageIds).toContain('orders-page');
+    expect(pageIds).toContain('orders-page-2');
+
+    // Create a 3rd page for 'orders'
+    const newPage3 = service.startCreatePage('orders');
+    expect(newPage3.id).toBe('orders-page-3');
+    expect(newPage3.slug).toBe('orders-3');
+    expect(service.draftPages().length).toBe(3);
+  });
 });

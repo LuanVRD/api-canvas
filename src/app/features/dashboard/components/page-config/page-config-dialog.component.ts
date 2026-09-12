@@ -1,4 +1,4 @@
-import { Component, computed, inject, input, OnInit, output, signal, ViewChild } from '@angular/core';
+import { Component, computed, HostListener, inject, input, OnDestroy, OnInit, output, signal, ViewChild } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { MatIconModule } from '@angular/material/icon';
 import { PageConfigMode, PageDraftService } from '../../services/page-draft.service';
@@ -32,7 +32,7 @@ import { ApiDefinition } from '../../../../core/models/api-definition.model';
         <header class="dialog-header">
           <div class="header-left">
             <div class="header-icon-box">
-              <mat-icon>{{ getHeaderIcon() }}</mat-icon>
+              <mat-icon aria-hidden="true">{{ getHeaderIcon() }}</mat-icon>
             </div>
             <div class="header-title-meta">
               <h3 id="dialog-title" class="dialog-title">{{ getHeaderTitle() }}</h3>
@@ -54,7 +54,7 @@ import { ApiDefinition } from '../../../../core/models/api-definition.model';
               (click)="onAttemptClose()"
               aria-label="Fechar modal de configuração"
             >
-              <mat-icon>close</mat-icon>
+              <mat-icon aria-hidden="true">close</mat-icon>
             </button>
           </div>
         </header>
@@ -306,9 +306,10 @@ import { ApiDefinition } from '../../../../core/models/api-definition.model';
         }
 
         mat-icon {
-          font-size: 16px;
-          width: 16px;
-          height: 16px;
+          font-size: 18px;
+          width: 18px;
+          height: 18px;
+          line-height: 1;
         }
       }
     }
@@ -339,9 +340,10 @@ import { ApiDefinition } from '../../../../core/models/api-definition.model';
         }
 
         mat-icon {
-          font-size: 14px;
-          width: 14px;
-          height: 14px;
+          font-size: 15px;
+          width: 15px;
+          height: 15px;
+          line-height: 1;
         }
       }
 
@@ -381,9 +383,9 @@ import { ApiDefinition } from '../../../../core/models/api-definition.model';
       .btn-cancel, .btn-secondary {
         display: inline-flex;
         align-items: center;
-        gap: 4px;
-        height: 28px;
-        padding: 0 10px;
+        gap: 6px;
+        height: 30px;
+        padding: 0 12px;
         background: var(--canvas-surface);
         border: 1px solid var(--canvas-border);
         border-radius: var(--radius-sm);
@@ -398,21 +400,22 @@ import { ApiDefinition } from '../../../../core/models/api-definition.model';
         }
 
         mat-icon {
-          font-size: 14px;
-          width: 14px;
-          height: 14px;
+          font-size: 16px;
+          width: 16px;
+          height: 16px;
+          line-height: 1;
           color: var(--canvas-text-muted);
         }
       }
 
       .btn-discard {
-        height: 28px;
-        padding: 0 10px;
+        height: 30px;
+        padding: 0 12px;
         background: transparent;
         border: 1px solid rgba(248, 81, 73, 0.3);
         border-radius: var(--radius-sm);
         color: var(--color-danger);
-        font-size: 11px;
+        font-size: 12px;
         font-weight: 500;
         cursor: pointer;
         transition: background 0.12s ease;
@@ -426,8 +429,8 @@ import { ApiDefinition } from '../../../../core/models/api-definition.model';
         display: inline-flex;
         align-items: center;
         gap: 6px;
-        height: 28px;
-        padding: 0 12px;
+        height: 30px;
+        padding: 0 14px;
         background: var(--action-primary);
         color: var(--action-primary-text);
         border: 1px solid transparent;
@@ -447,9 +450,10 @@ import { ApiDefinition } from '../../../../core/models/api-definition.model';
         }
 
         mat-icon {
-          font-size: 15px;
-          width: 15px;
-          height: 15px;
+          font-size: 16px;
+          width: 16px;
+          height: 16px;
+          line-height: 1;
         }
       }
     }
@@ -465,7 +469,7 @@ import { ApiDefinition } from '../../../../core/models/api-definition.model';
     }
   `]
 })
-export class PageConfigDialogComponent implements OnInit {
+export class PageConfigDialogComponent implements OnInit, OnDestroy {
   readonly initialMode = input<PageConfigMode>('manage');
   readonly initialPageId = input<string | undefined>(undefined);
   readonly publishedConfiguration = input<UiConfiguration | null>(null);
@@ -480,13 +484,36 @@ export class PageConfigDialogComponent implements OnInit {
 
   readonly isUnsavedDialogOpen = signal<boolean>(false);
 
+  private previouslyFocusedElement: HTMLElement | null = null;
+
+  @HostListener('document:keydown.escape')
+  onEscapePressed(): void {
+    if (!this.isUnsavedDialogOpen()) {
+      this.onAttemptClose();
+    }
+  }
+
   ngOnInit(): void {
+    if (typeof document !== 'undefined') {
+      this.previouslyFocusedElement = document.activeElement as HTMLElement | null;
+    }
     this.draftService.initDraft(
       this.publishedConfiguration(),
       this.apiDefinition(),
       this.initialMode(),
       this.initialPageId()
     );
+  }
+
+  ngOnDestroy(): void {
+    this.restoreFocus();
+  }
+
+  private restoreFocus(): void {
+    if (this.previouslyFocusedElement && typeof this.previouslyFocusedElement.focus === 'function') {
+      this.previouslyFocusedElement.focus();
+      this.previouslyFocusedElement = null;
+    }
   }
 
   getHeaderIcon(): string {
@@ -546,7 +573,7 @@ export class PageConfigDialogComponent implements OnInit {
   onDiscardAndClose(): void {
     this.draftService.resetDraft();
     this.isUnsavedDialogOpen.set(false);
-    this.close.emit();
+    this.onClose();
   }
 
   onAttemptClose(): void {
@@ -558,6 +585,7 @@ export class PageConfigDialogComponent implements OnInit {
   }
 
   onClose(): void {
+    this.restoreFocus();
     this.close.emit();
   }
 
@@ -565,6 +593,6 @@ export class PageConfigDialogComponent implements OnInit {
     if (this.draftService.hasBlockingErrors()) return;
     const committed = this.draftService.commitDraft();
     this.save.emit(committed);
-    this.close.emit();
+    this.onClose();
   }
 }

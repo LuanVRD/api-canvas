@@ -95,6 +95,27 @@ describe('DashboardSidebarComponent', () => {
     expect(items[0].classList.contains('active')).toBe(false);
   });
 
+  it('should not activate all sibling pages that share the same resourceId when first page is selected', () => {
+    const pagesWithSameResource: UiPageConfiguration[] = [
+      { id: 'orders-page', title: 'Orders', slug: 'orders', resourceId: 'orders', order: 1 },
+      { id: 'orders-page-2', title: 'Orders (2)', slug: 'orders-2', resourceId: 'orders', order: 2 },
+      { id: 'orders-page-3', title: 'Orders (3)', slug: 'orders-3', resourceId: 'orders', order: 3 }
+    ];
+
+    fixture.componentRef.setInput('pages', pagesWithSameResource);
+    fixture.componentRef.setInput('selectedPageSlug', 'orders');
+    fixture.componentRef.setInput('selectedPageId', 'orders-page');
+    fixture.detectChanges();
+
+    const el: HTMLElement = fixture.nativeElement;
+    const items = el.querySelectorAll('.page-item');
+    expect(items.length).toBe(3);
+
+    expect(items[0].classList.contains('active')).toBe(true);
+    expect(items[1].classList.contains('active')).toBe(false);
+    expect(items[2].classList.contains('active')).toBe(false);
+  });
+
   it('should emit pageSelect event when a page item is clicked', () => {
     fixture.componentRef.setInput('pages', mockPages);
     fixture.detectChanges();

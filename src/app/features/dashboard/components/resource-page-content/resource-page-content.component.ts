@@ -55,7 +55,7 @@ import { ResolvedFilterBinding } from '../../../../core/services/list-query-bind
       <header class="resource-header">
         <div class="header-left">
           <div class="title-row">
-            <mat-icon class="title-icon">{{ page().icon || 'table_chart' }}</mat-icon>
+            <mat-icon class="title-icon" aria-hidden="true">{{ page().icon || 'table_chart' }}</mat-icon>
             <h1 class="page-title">{{ page().title || 'Recurso' }}</h1>
             @if (page().resourceId) {
               <span class="resource-badge font-mono">{{ page().resourceId }}</span>
@@ -74,7 +74,7 @@ import { ResolvedFilterBinding } from '../../../../core/services/list-query-bind
             aria-label="Editar página"
             title="Editar configuração da página"
           >
-            <mat-icon class="action-btn-icon">tune</mat-icon>
+            <mat-icon class="action-btn-icon" aria-hidden="true">tune</mat-icon>
             <span>Editar página</span>
           </button>
 
@@ -89,6 +89,7 @@ import { ResolvedFilterBinding } from '../../../../core/services/list-query-bind
             <mat-icon
               class="action-btn-icon"
               [class.rotating]="isRefreshing()"
+              aria-hidden="true"
             >refresh</mat-icon>
             <span>{{ isRefreshing() ? 'Recarregando...' : 'Recarregar' }}</span>
           </button>
@@ -100,7 +101,7 @@ import { ResolvedFilterBinding } from '../../../../core/services/list-query-bind
               (click)="createItem.emit()"
               [attr.aria-label]="createButtonLabel()"
             >
-              <mat-icon class="action-btn-icon">add</mat-icon>
+              <mat-icon class="action-btn-icon" aria-hidden="true">add</mat-icon>
               <span>{{ createButtonLabel() }}</span>
             </button>
           }
@@ -114,7 +115,7 @@ import { ResolvedFilterBinding } from '../../../../core/services/list-query-bind
             <div class="metric-card">
               <div class="metric-header">
                 @if (metric.icon) {
-                  <mat-icon class="metric-icon" [ngClass]="metric.colorClass">{{ metric.icon }}</mat-icon>
+                  <mat-icon class="metric-icon" [ngClass]="metric.colorClass" aria-hidden="true">{{ metric.icon }}</mat-icon>
                 }
                 <span class="metric-label">{{ metric.label }}</span>
               </div>
@@ -134,7 +135,7 @@ import { ResolvedFilterBinding } from '../../../../core/services/list-query-bind
         <div class="toolbar-left">
           <!-- Busca Textual com Debounce -->
           <div class="search-box">
-            <mat-icon class="search-icon">search</mat-icon>
+            <mat-icon class="search-icon" aria-hidden="true">search</mat-icon>
             <input
               type="text"
               class="search-input"
@@ -151,7 +152,7 @@ import { ResolvedFilterBinding } from '../../../../core/services/list-query-bind
                 aria-label="Limpar busca"
                 title="Limpar busca"
               >
-                <mat-icon>close</mat-icon>
+                <mat-icon aria-hidden="true">close</mat-icon>
               </button>
             }
           </div>
@@ -190,7 +191,7 @@ import { ResolvedFilterBinding } from '../../../../core/services/list-query-bind
               title="Limpar todos os filtros e ordenações"
               aria-label="Limpar filtros"
             >
-              <mat-icon class="reset-icon">filter_alt_off</mat-icon>
+              <mat-icon class="reset-icon" aria-hidden="true">filter_alt_off</mat-icon>
               <span>Limpar filtros</span>
             </button>
           }
@@ -214,7 +215,7 @@ import { ResolvedFilterBinding } from '../../../../core/services/list-query-bind
           <!-- Error State com Retry e Link para API Explorer -->
           <div class="error-state-card" role="alert">
             <div class="error-icon-box">
-              <mat-icon class="error-hero-icon">error_outline</mat-icon>
+              <mat-icon class="error-hero-icon" aria-hidden="true">error_outline</mat-icon>
             </div>
             <h3 class="error-title">Falha ao carregar registros</h3>
             <p class="error-message">{{ error()?.message || 'Ocorreu um erro ao processar a requisição.' }}</p>
@@ -228,7 +229,7 @@ import { ResolvedFilterBinding } from '../../../../core/services/list-query-bind
                 (click)="retry.emit()"
                 aria-label="Tentar novamente"
               >
-                <mat-icon class="action-btn-icon">refresh</mat-icon>
+                <mat-icon class="action-btn-icon" aria-hidden="true">refresh</mat-icon>
                 <span>Tentar novamente</span>
               </button>
               <button
@@ -237,7 +238,7 @@ import { ResolvedFilterBinding } from '../../../../core/services/list-query-bind
                 (click)="openExplorer.emit()"
                 aria-label="Abrir no API Explorer"
               >
-                <mat-icon class="action-btn-icon">code</mat-icon>
+                <mat-icon class="action-btn-icon" aria-hidden="true">code</mat-icon>
                 <span>Abrir no API Explorer</span>
               </button>
             </div>
@@ -256,7 +257,7 @@ import { ResolvedFilterBinding } from '../../../../core/services/list-query-bind
                 (click)="refresh.emit()"
                 aria-label="Carregar dados agora"
               >
-                <mat-icon class="action-btn-icon">refresh</mat-icon>
+                <mat-icon class="action-btn-icon" aria-hidden="true">refresh</mat-icon>
                 <span>Carregar dados</span>
               </button>
             </app-empty-state>
@@ -277,7 +278,7 @@ import { ResolvedFilterBinding } from '../../../../core/services/list-query-bind
                     (click)="createItem.emit()"
                     aria-label="Adicionar registro"
                   >
-                    <mat-icon class="action-btn-icon">add</mat-icon>
+                    <mat-icon class="action-btn-icon" aria-hidden="true">add</mat-icon>
                     <span>{{ createButtonLabel() }}</span>
                   </button>
                 }
@@ -288,7 +289,7 @@ import { ResolvedFilterBinding } from '../../../../core/services/list-query-bind
                     (click)="resetFilters.emit()"
                     aria-label="Limpar filtros aplicados"
                   >
-                    <mat-icon class="action-btn-icon">filter_alt_off</mat-icon>
+                    <mat-icon class="action-btn-icon" aria-hidden="true">filter_alt_off</mat-icon>
                     <span>Limpar Filtros</span>
                   </button>
                 }
@@ -298,7 +299,7 @@ import { ResolvedFilterBinding } from '../../../../core/services/list-query-bind
                   (click)="openExplorer.emit()"
                   aria-label="Inspecionar no API Explorer"
                 >
-                  <mat-icon class="action-btn-icon">code</mat-icon>
+                  <mat-icon class="action-btn-icon" aria-hidden="true">code</mat-icon>
                   <span>Inspecionar no Explorer</span>
                 </button>
               </div>
@@ -365,7 +366,7 @@ import { ResolvedFilterBinding } from '../../../../core/services/list-query-bind
                     aria-label="Página anterior"
                     title="Página anterior"
                   >
-                    <mat-icon>chevron_left</mat-icon>
+                    <mat-icon aria-hidden="true">chevron_left</mat-icon>
                   </button>
 
                   <span class="page-number-display font-mono">
@@ -380,7 +381,7 @@ import { ResolvedFilterBinding } from '../../../../core/services/list-query-bind
                     aria-label="Próxima página"
                     title="Próxima página"
                   >
-                    <mat-icon>chevron_right</mat-icon>
+                    <mat-icon aria-hidden="true">chevron_right</mat-icon>
                   </button>
                 </div>
               </div>
@@ -512,18 +513,18 @@ import { ResolvedFilterBinding } from '../../../../core/services/list-query-bind
       gap: 6px;
       height: 28px;
       padding: 0 12px;
-      background: var(--color-info, #1f6feb);
-      color: #ffffff;
+      background: var(--action-primary, #238636);
+      color: var(--action-primary-text, #ffffff);
       border: 1px solid transparent;
       border-radius: var(--radius-sm, 4px);
       font-size: 12px;
       font-weight: 600;
       cursor: pointer;
-      transition: opacity 0.12s ease, filter 0.12s ease;
+      transition: background-color 0.12s ease;
       outline: none;
 
       &:hover:not(:disabled) {
-        filter: brightness(1.1);
+        background: var(--action-primary-hover, #2ea043);
       }
 
       &:disabled {
@@ -552,7 +553,7 @@ import { ResolvedFilterBinding } from '../../../../core/services/list-query-bind
     /* --- Grid de Métricas --- */
     .metrics-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
       gap: 12px;
       flex-shrink: 0;
     }
@@ -561,15 +562,15 @@ import { ResolvedFilterBinding } from '../../../../core/services/list-query-bind
       background: var(--canvas-surface, #161b22);
       border: 1px solid var(--canvas-border, #30363d);
       border-radius: var(--radius-md, 6px);
-      padding: 12px 14px;
+      padding: 14px 16px;
       display: flex;
       flex-direction: column;
-      gap: 4px;
+      gap: 6px;
 
       .metric-header {
         display: flex;
         align-items: center;
-        gap: 6px;
+        gap: 8px;
 
         .metric-icon {
           font-size: 16px;
@@ -585,9 +586,10 @@ import { ResolvedFilterBinding } from '../../../../core/services/list-query-bind
       }
 
       .metric-value {
-        font-size: 20px;
+        font-size: 24px;
         font-weight: 700;
-        line-height: 1.2;
+        line-height: 1.1;
+        font-family: var(--font-mono);
         color: var(--canvas-text-primary, #e6edf3);
       }
 
@@ -608,7 +610,7 @@ import { ResolvedFilterBinding } from '../../../../core/services/list-query-bind
       color: var(--color-warning, #d29922);
     }
     .color-info {
-      color: var(--color-info, #58a6ff);
+      color: var(--canvas-text-link, #58a6ff);
     }
     .color-success {
       color: var(--color-success, #2ea043);

@@ -628,12 +628,9 @@ export class DashboardPage implements OnInit, OnDestroy {
     }
     const target = slug.toLowerCase().trim();
     return (
-      list.find(
-        (p) =>
-          p.slug?.toLowerCase() === target ||
-          p.id?.toLowerCase() === target ||
-          p.resourceId?.toLowerCase() === target
-      ) ?? null
+      list.find((p) => p.slug?.toLowerCase() === target || p.id?.toLowerCase() === target) ??
+      list.find((p) => p.resourceId?.toLowerCase() === target) ??
+      null
     );
   });
 

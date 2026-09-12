@@ -236,7 +236,7 @@ describe('PageWizardFormComponent', () => {
     fixture.detectChanges();
 
     expect(component.form.get('title')?.value).toBe('Clientes');
-    expect(component.form.get('slug')?.value).toBe('clientes');
+    expect(component.form.get('slug')?.value).toBe('clientes-2');
     expect(component.form.get('icon')?.value).toBe('people');
     expect(component.form.get('description')?.value).toContain('clientes');
     expect(component.form.get('operationList')?.value).toBe('listCustomers');

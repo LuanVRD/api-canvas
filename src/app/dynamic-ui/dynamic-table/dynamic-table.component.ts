@@ -66,7 +66,7 @@ export interface TableActionConfig {
         <!-- Technical Table -->
         @if (data.length > 0 && columns.length > 0) {
           <div class="table-scroll-wrapper">
-            <table mat-table [dataSource]="data" class="mat-elevation-z0 technical-table">
+            <table mat-table [dataSource]="data" class="mat-elevation-z0 technical-table" role="table">
               @for (col of columns; track col.key) {
                 <ng-container [matColumnDef]="col.key">
                   <th
@@ -75,19 +75,25 @@ export interface TableActionConfig {
                     class="table-header"
                     [class.sortable]="col.sortable !== false"
                     [class.sorted]="sortField === col.key && !!sortOrder"
+                    [attr.tabindex]="col.sortable !== false ? 0 : null"
+                    [attr.role]="col.sortable !== false ? 'button' : null"
+                    [attr.aria-sort]="getAriaSort(col)"
                     (click)="onHeaderClick(col)"
-                    [attr.title]="col.sortable !== false ? 'Clique para ordenar por ' + col.label : (col.description || col.label)"
+                    (keydown.enter)="onHeaderClick(col)"
+                    (keydown.space)="onHeaderClick(col); $event.preventDefault()"
+                    [attr.title]="col.sortable !== false ? 'Clique ou pressione Enter para ordenar por ' + col.label : (col.description || col.label)"
+                    [attr.aria-label]="col.sortable !== false ? 'Coluna ' + col.label + ', ordenar' : col.label"
                   >
                     <div class="header-inner">
                       <span class="header-label">{{ col.label }}</span>
                       <span class="header-type font-mono">&lt;{{ col.type }}&gt;</span>
                       @if (col.sortable !== false) {
                         @if (sortField === col.key && sortOrder) {
-                          <mat-icon class="sort-icon active font-mono">
+                          <mat-icon class="sort-icon active font-mono" aria-hidden="true">
                             {{ sortOrder === 'desc' ? 'arrow_downward' : 'arrow_upward' }}
                           </mat-icon>
                         } @else {
-                          <mat-icon class="sort-icon idle font-mono">unfold_more</mat-icon>
+                          <mat-icon class="sort-icon idle font-mono" aria-hidden="true">unfold_more</mat-icon>
                         }
                       }
                     </div>
@@ -111,7 +117,7 @@ export interface TableActionConfig {
                     class="table-header actions-header"
                     [class.sticky-action-header]="stickyActions"
                   >
-                    Actions
+                    Ações
                   </th>
                   <td
                     mat-cell
@@ -135,7 +141,7 @@ export interface TableActionConfig {
                             [attr.aria-label]="getActionAriaLabel(action)"
                             (click)="onActionTriggered($event, action, element)"
                           >
-                            <mat-icon class="action-icon">{{ action.icon || 'settings' }}</mat-icon>
+                            <mat-icon class="action-icon" aria-hidden="true">{{ action.icon || 'settings' }}</mat-icon>
                           </button>
                         }
                       }
@@ -156,7 +162,7 @@ export interface TableActionConfig {
         } @else {
           <!-- Empty State -->
           <div class="empty-state">
-            <mat-icon class="empty-icon">{{ emptyIcon }}</mat-icon>
+            <mat-icon class="empty-icon" aria-hidden="true">{{ emptyIcon }}</mat-icon>
             <span class="empty-title font-mono">{{ emptyTitle }}</span>
             <p class="empty-desc">{{ emptyDescription }}</p>
           </div>
@@ -583,6 +589,15 @@ export class DynamicTableComponent {
     }
 
     this.sortChange.emit({ field: nextField, order: nextOrder });
+  }
+
+  getAriaSort(col: TableColumnDescriptor): string {
+    if (col.sortable === false) return 'none';
+    if (this.sortField === col.key) {
+      if (this.sortOrder === 'asc') return 'ascending';
+      if (this.sortOrder === 'desc') return 'descending';
+    }
+    return 'none';
   }
 
   get effectiveLayoutMode(): TableLayoutMode {
