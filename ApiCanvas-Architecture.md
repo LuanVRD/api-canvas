@@ -1570,3 +1570,35 @@ Após a conclusão e revisão técnica do núcleo funcional, foram consolidadas 
 - **Status HTTP**: Avaliação baseada na faixa de sucesso `2xx` (`status >= 200 && status < 300`) com suporte contextual a respostas sem corpo (`204 No Content`, `304 Not Modified`).
 - **Polimorfismo de Resposta**: Detecção e renderização automática de coleções (tabela), objetos estruturados (detalhes), primitivas, payloads vazios e visualização bruta JSON.
 
+---
+
+## 32. Arquitetura Unificada: Dashboard, Configurador de Páginas e API Explorer
+
+A evolução do ApiCanvas estabeleceu um **núcleo técnico único e reutilizável**, compartilhado entre todas as features da aplicação (Dashboard, Gerenciador/Wizard de Configuração de Páginas e API Explorer).
+
+### 32.1. Matriz de Compartilhamento do Núcleo Técnico
+
+| Capacidade | API Explorer (`OperationPage`) | Dashboard (`DashboardPage` / `ResourcePageContent`) | Configurador (`PageConfigDialog` / `PageWizardForm`) |
+| :--- | :--- | :--- | :--- |
+| **Parsing OpenAPI** | `OpenApiParserService` | `OpenApiParserService` | `OpenApiParserService` |
+| **Sessão & Mutações** | `ApiSessionService` | `ApiSessionService` | `ApiSessionService` |
+| **Resolução de Operações** | `ResourceOperationMatcherService` | `ResourceOperationMatcherService` | `ResourceOperationMatcherService` |
+| **Binding de Query Params** | `ListQueryBindingService` | `ListQueryBindingService` | `ListQueryBindingService` |
+| **Execução HTTP** | `ApiExecutorService` | `ApiExecutorService` (via Facade) | `ApiExecutorService` (via Facade) |
+| **Formulários Dinâmicos** | `DynamicFormComponent` + `FormSchemaService` | `DynamicFormComponent` (Dialogs CRUD/Ações) | `DynamicFormComponent` (Preview de ações) |
+| **Tabelas Dinâmicas** | `DynamicTableComponent` + `TableSchemaService` | `DynamicTableComponent` + `TableSchemaService` | `DynamicTableComponent` (Preview de Lista) |
+| **Renderização de Células** | `ValueRendererComponent` | `ValueRendererComponent` | `ValueRendererComponent` |
+| **Diálogos de Detalhe/Edição/Exclusão** | `RecordDetailsDrawer`, `EditRecordDialog`, `DeleteConfirmDialog` | `RecordDetailsDrawer`, `EditRecordDialog`, `DeleteConfirmDialog` | — |
+| **Avaliação de Métricas/KPIs** | — | `UiMetricEvaluatorService` | `UiMetricEvaluatorService` (Preview) |
+| **Validação de Configurações** | — | `UiConfigurationValidatorService` | `UiConfigurationValidatorService` |
+
+### 32.2. Princípios de Isolamento e Não-Duplicação
+
+1. **Zero Chamadas HTTP fora do `ApiExecutorService`**: Todas as requisições para a API inspecionada trafegam pelo executor único, que aplica tratamento de CORS, injeção de autenticação, montagem de URL absoluta e unificação de erros em `ApiExecutionResult`.
+2. **Zero Inferência de Schema em Componentes**: Componentes visuais apenas consomem contratos prontos (`TableColumnDescriptor[]`, `FormGroup`, etc.) providos pelos serviços de schema do `dynamic-ui`.
+3. **Desacoplamento de Estado com Scoped Facades**:
+   - `ResourcePageFacadeService`: Provido no nível do componente de página/wizard, encapsula paginação, busca debounced, ordenação, caching de métricas e subscrição a mutações globais do `ApiSessionService`.
+   - `PageDraftService`: Provido no nível do diálogo de configuração, isola modificações em rascunho de páginas até a confirmação explícita de salvamento.
+4. **Resolução Semântica Agnóstica**: Heurísticas baseadas puramente na estrutura da URL, parâmetros e schemas OpenAPI, eliminando quaisquer regras específicas de domínio ou entidades particulares.
+
+

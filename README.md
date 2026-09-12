@@ -1,270 +1,281 @@
 # ApiCanvas
 
-> Frontend dinâmico orientado a metadados OpenAPI para exploração, depuração e operação de APIs RESTful.
+> Frontend dinâmico e agnóstico orientado a metadados OpenAPI para exploração técnica e operação de APIs RESTful.
 
 ---
 
-## 1. O Problema
+## 1. Visão Geral e Propósito
 
-Durante o ciclo de desenvolvimento de APIs (seja em .NET, Java/Spring, Node.js, Python/FastAPI ou Go), engenheiros frequentemente enfrentam um dilema:
+Durante o ciclo de vida e sustentação de APIs (em .NET, Java/Spring, Node.js, Python/FastAPI, Go ou Rust), desenvolvedores e times de produto lidam com dois desafios fundamentais:
 
-* **Swagger UI / OpenAPI docs padrão**: Focam na documentação crua da rota e na invocação isolada endpoint a endpoint, exigindo preenchimento manual repetitivo de payloads JSON, sem visão de coleção ou fluxo de trabalho.
-* **Ferramentas de teste HTTP (Postman, Insomnia, curl)**: Excelentes para requisições pontuais, mas exigem configuração manual de coleções, variáveis de ambiente e não geram interfaces estruturadas de dados.
-* **Criação de Frontends Administrativos ad-hoc**: Escrever telas CRUD completas em Angular/React apenas para testar ou operar um serviço em desenvolvimento consome tempo desnecessário.
+1. **Inspeção Técnica de Baixo Nível**: Depurar rotas isoladas, testar parâmetros específicos, inspecionar headers HTTP, validar códigos de retorno e examinar schemas JSON brutos.
+2. **Operação e Gestão de Dados**: Visualizar coleções em tabelas funcionais, filtrar e buscar registros, acompanhar métricas/KPIs em tempo real, executar fluxos CRUD completos e disparar ações de negócio parametrizadas (ex.: cancelar pedidos, despachar itens, alterar status) sem precisar desenvolver painéis administrativos manuais.
 
-O **ApiCanvas** resolve esse problema ao atuar como um **motor de UI declarativo acoplado a especificações OpenAPI (3.x e Swagger 2.0)**: você fornece o endpoint do OpenAPI/Swagger JSON e a aplicação gera instantaneamente um painel operacional com navegação por recursos, tabelas de dados, formulários dinâmicos tipados, gavetas de detalhes e ações contextuais.
-
----
-
-## 2. Fluxo de Transformação
+O **ApiCanvas** resolve ambos os cenários através de um **núcleo técnico unificado acoplado a especificações OpenAPI (3.x e Swagger 2.0)**, fornecendo dois modos complementares de visualização:
 
 ```
-  ┌─────────────────────────┐
-  │   OpenAPI Spec (JSON)   │
-  └────────────┬────────────┘
-               │ (HTTP Fetch + Parser + Ref Resolver)
-               ▼
-  ┌─────────────────────────┐
-  │   Resource Discovery    │ ───► Agrupamento por tags, prefixos de path e convenções CRUD
-  └────────────┬────────────┘
-               │
-      ┌────────┴──────────────────────────┐
-      ▼                                   ▼
-┌──────────────┐                 ┌─────────────────┐
-│ GET (List)   │                 │ POST/PUT/PATCH  │
-└──────┬───────┘                 └────────┬────────┘
-       ▼                                  ▼
-┌─────────────────────────┐      ┌─────────────────────────┐
-│ Dynamic Table           │      │ Dynamic Form            │
-│ (Inferência de colunas, │      │ (Inputs, Selects, Enums,│
-│  Formatters, Badges)    │      │  Validações JSON Schema)│
-└──────┬──────────────────┘      └────────┬────────────────┘
-       │                                  │
-       ▼                                  ▼
-┌─────────────────────────┐      ┌─────────────────────────┐
-│ Context Actions         │      │ HTTP API Executor       │
-│ (View Detail, Edit, Del)│      │ (Headers, Auth, Query)  │
-└─────────────────────────┘      └─────────────────────────┘
+                                  ┌─────────────────────────┐
+                                  │   OpenAPI Spec (JSON)   │
+                                  └────────────┬────────────┘
+                                               │
+                                               ▼
+                                  ┌─────────────────────────┐
+                                  │   ApiCanvas Core        │
+                                  │   (Parser, Matched CRUD,│
+                                  │    Dynamic Forms/Tables)│
+                                  └──────┬───────────┬──────┘
+                                         │           │
+                     ┌───────────────────┘           └───────────────────┐
+                     ▼                                                   ▼
+       ┌───────────────────────────┐                       ┌───────────────────────────┐
+       │       API EXPLORER        │                       │         DASHBOARD         │
+       │    (Visão Técnica)        │                       │    (Visão Operacional)    │
+       ├───────────────────────────┤                       ├───────────────────────────┤
+       │ • Inspeção rota a rota    │                       │ • Páginas por Recurso     │
+       │ • Teste manual de métodos │                       │ • Cards de Métricas/KPIs  │
+       │ • Payloads JSON e Headers │                       │ • Tabelas customizadas    │
+       │ • Schemas e Parâmetros    │                       │ • Ações CRUD e Custom RPC │
+       │ • Ideal para depuração    │                       │ • Filtros e Busca Rápida  │
+       └───────────────────────────┘                       └───────────────────────────┘
 ```
 
-1. **Ingestão & Resolução**: A especificação OpenAPI é carregada via HTTP, seus schemas e referências `$ref` internos são resolvidos.
-2. **Mapeamento de Recursos**: As operações são classificadas em recursos (`Resources`) e operações atômicas (`list`, `detail`, `create`, `update`, `patch`, `delete`, `custom`).
-3. **Geração Dinâmica de UI**:
-   - Rotas `GET` que retornam coleções são transformadas em **tabelas responsivas com ordenação e formatação contextual**.
-   - Rotas com `requestBody` ou parâmetros são mapeadas para **formulários reativos tipados** com validação baseada em schema.
-   - Registros individuais em tabelas ganham ações acopladas para **Visualizar Detalhes (Drawer lateral)**, **Editar Registro (Dialog pré-preenchido)** e **Excluir (Dialog com confirmação)**.
+---
+
+## 2. API Explorer vs. Dashboard
+
+| Aspecto | API Explorer (`/workspace` e `/operation/:id`) | Dashboard (`/dashboard/:pageSlug`) |
+| :--- | :--- | :--- |
+| **Foco Principal** | Técnico e centrado no contrato de rotas HTTP. | Operacional e centrado no fluxo de dados de negócio. |
+| **Ponto de Partida** | Navegação por endpoints agrupados por tags/recursos. | Páginas operacionais customizadas com URLs amigáveis. |
+| **Execução de Métodos** | Invocação direta de qualquer método (`GET`, `POST`, `PUT`, `PATCH`, `DELETE`). | Execução contextual automática da lista com ações in-line por registro. |
+| **Apresentação de Dados** | Visualizador polimórfico (tabela ou JSON bruto) do retorno direto. | Tabelas configuradas com formatação, ordenação, badges semânticos e paginação. |
+| **Métricas e KPIs** | Não aplicável (inspeção de resposta individual). | Cards de métricas avaliados em tempo real (`COUNT`, `SUM`, `AVG`, etc.). |
+| **Formulários** | Formulário dinâmico puro baseado no `requestBody` da operação. | Diálogos modais e drawers integrados com pré-população automática de chaves. |
+| **Personalização** | Não requer configuração prévia. | Configurador visual (Wizard) para colunas, métricas, ações e rótulos. |
 
 ---
 
-## 3. Recursos do MVP e Funcionalidades Suportadas
+## 3. Recursos e Capacidades
 
-- [x] **Conexão OpenAPI**: Suporte a URLs remotas ou locais de especificações OpenAPI 3.0, 3.1 e Swagger 2.0.
-- [x] **Histórico de APIs Recentes**: Persistência local (LocalStorage) de endpoints e sessões acessadas recentemente.
-- [x] **Resource Discovery Heurístico**: Agrupamento automático por Tags e fallback inteligente por segmentos de rota.
-- [x] **Tabelas Dinâmicas**:
-  - Detecção automática de schemas de resposta em array ou envelopados (ex: `{ data: [...] }`, `{ items: [...] }`).
-  - Formatação inteligente por tipo de dado (UUID, timestamps ISO, booleanos, números, enums).
-- [x] **Formulários Dinâmicos**:
-  - Geração baseada em JSON Schema (strings, inteiros, números, booleanos, enums/selects, campos aninhados).
-  - Validações de obrigatoriedade (`required`), valores mínimos/máximos, pattern e limites de tamanho.
-- [x] **Ações CRUD Contextuais**:
-  - **Visualização de Detalhes**: Drawer lateral com busca automática via endpoint `GET /{id}` usando valores da linha.
-  - **Edição**: Modal de atualização (`PUT` / `PATCH`) pré-preenchido com os dados do registro selecionado.
-  - **Exclusão**: Modal de confirmação com target id e auto-refresh da listagem após exclusão.
-- [x] **Autenticação Integrada**:
-  - Suporte a **Bearer Token** (`Authorization: Bearer <token>`).
-  - Suporte a **API Key** (injetada via Header customizado ou Query parameter).
-  - Detecção automática dos esquemas de segurança declarados no `components.securitySchemes`.
-- [x] **Customização de UI**: Configuração de densidade, paginação padrão e visualização raw de JSON.
-- [x] **Design Minimalista Dark Mode**: Interface inspirada em developer tools sóbrias (sem distrações visuais ou elementos decorativos supérfluos).
+- **Conexão OpenAPI Flexível**: Suporte a URLs remotas ou locais de especificações OpenAPI 3.0, 3.1 e Swagger 2.0.
+- **Descoberta Heurística de Recursos**: Agrupamento automático por Tags e identificação de operações canônicas (`list`, `details`, `create`, `update`, `delete`).
+- **Dashboard Operacional Personalizável**:
+  - Wizard em 6 etapas para criação e edição de páginas.
+  - Cards de KPIs e métricas agregadas (`COUNT`, `SUM`, `AVG`, `MIN`, `MAX`) com filtros contextuais.
+  - Configuração de colunas de tabela (visibilidade, formatação de moeda/data/badge, largura e alinhamento).
+  - Ações customizadas (RPC) com estilos de destaque (`danger`, `primary`, `success`, `warning`), ícones e confirmação.
+- **Tabelas Dinâmicas Inteligentes**:
+  - Detecção de coleções em raiz ou envelopadas (`data`, `items`, `results`, `content`).
+  - Formatação inteligente por tipo (UUIDs, timestamps ISO, booleanos, números, enums).
+  - Ordenação por coluna, busca com debounce e suporte a paginação (`limit`/`offset`, `page`/`size`).
+- **Formulários Dinâmicos Tipados**:
+  - Geração automática a partir de JSON Schema com validação reativa (`required`, `min`/`max`, `pattern`).
+- **Ações CRUD Contextuais**:
+  - **Visualizar Detalhes**: Drawer lateral com busca automática via rota `details` usando chaves da linha.
+  - **Editar Registro**: Modal de atualização (`PUT`/`PATCH`) com preenchimento prévio dos dados da linha.
+  - **Excluir Registro**: Modal de confirmação com target ID e auto-refresh reativo da lista.
+- **Autenticação Segura em Sessão**:
+  - Suporte a **Bearer Token** e **API Key** (Header ou Query).
+  - **Zero persistência de credenciais em disco** — tokens são mantidos exclusivamente em memória.
+- **Design Minimalista Dark Mode**: Interface técnica compacta inspirada em IDEs e developer tools (sem gradientes decorativos ou distrações visuais).
 
 ---
 
-## 4. Requisitos de Ambiente
+## 4. Guia do Dashboard: Criação e Gestão de Páginas
 
+O Dashboard permite criar visões de alta produtividade para qualquer recurso da sua API através de um **Wizard de Configuração em 6 Etapas**:
+
+### 4.1. Passo a Passo do Wizard
+
+1. **Dados Gerais**:
+   - Escolha o **Recurso OpenAPI** base (ex.: `Orders`, `Products`, `Users`).
+   - Defina o **Título da Página** e o **Slug de URL** (ex.: `/dashboard/pedidos`).
+   - Selecione o **Ícone de Identificação** e se a página deve ser a padrão ao acessar o Dashboard.
+2. **Operações da Página**:
+   - **Associação Automática**: O `ResourceOperationMatcherService` infere as operações canônicas (`list`, `details`, `create`, `update`, `delete`).
+   - **Sobrescrita Explícita**: Caso sua API utilize convenções não-padrão (ex.: `POST /orders/search` para listar ou `PATCH /orders/quick-edit` para atualizar), você pode selecionar manualmente qualquer endpoint compatível da lista.
+3. **Métricas e KPIs**:
+   - Crie cards de resumo agregadores para exibir no topo da página.
+   - Configure o **Tipo de Agregação** (`count`, `sum`, `avg`, `min`, `max`), o **Campo Alvo** (ex.: `totalAmount`) e **Condições de Filtro** (ex.: `status == 'pending'`).
+   - Defina a cor de destaque (`default`, `primary`, `success`, `warning`, `danger`, `info`).
+4. **Colunas da Tabela**:
+   - Reordene, ative ou oculte colunas inferidas do schema OpenAPI.
+   - Personalize **Rótulos de Cabeçalho**, **Largura Mínima**, **Alinhamento** (`left`, `center`, `right`) e **Formatador Visual** (`text`, `number`, `currency`, `date`, `datetime`, `badge`, `boolean`).
+5. **Ações Customizadas (RPC)**:
+   - Adicione botões de ação para operações que não sejam o CRUD básico (ex.: `POST /orders/{id}/cancel`, `POST /orders/{id}/dispatch`).
+   - Configure estilo visual, ícone, mensagem de confirmação e formulário dinâmico de entrada.
+6. **Preview em Tempo Real e Publicação**:
+   - Teste a página com dados reais da API ou utilize o modo de simulação.
+   - Ao clicar em **Publicar**, a configuração é salva localmente e aplicada instantaneamente ao Dashboard.
+
+### 4.2. Gerenciamento e Remoção de Páginas
+
+- Através do botão **"Configurar Páginas"** na sidebar do Dashboard, você pode reordenar páginas, alternar visibilidade, editar parâmetros existentes ou **excluir páginas** que não sejam mais necessárias.
+
+---
+
+## 5. Exemplo de Configuração Declarativa (Página "Pedidos")
+
+Abaixo está um exemplo de configuração de página em formato JSON.
+
+> **Nota de Generalização**: O exemplo abaixo utiliza a entidade hipotética `Orders`, mas a mesma estrutura declarativa aplica-se a **qualquer recurso** de qualquer API (ex.: Produtos, Usuários, Faturas, Tarefas, Pets, Dispositivos IoT):
+
+```json
+{
+  "version": 1,
+  "pages": {
+    "pedidos": {
+      "id": "pedidos",
+      "slug": "pedidos",
+      "title": "Pedidos de Venda",
+      "icon": "receipt_long",
+      "resourceId": "Orders",
+      "order": 1,
+      "isDefault": true,
+      "operations": {
+        "list": "listOrders",
+        "create": "createOrder",
+        "details": "getOrderById",
+        "update": "updateOrder",
+        "delete": "deleteOrder"
+      },
+      "metrics": [
+        {
+          "id": "m_total",
+          "title": "Total de Pedidos",
+          "type": "count",
+          "icon": "receipt_long",
+          "color": "default"
+        },
+        {
+          "id": "m_revenue",
+          "title": "Faturamento Aprovado",
+          "type": "sum",
+          "field": "totalAmount",
+          "formatter": "currency",
+          "currencyCode": "BRL",
+          "icon": "payments",
+          "color": "success",
+          "filter": {
+            "field": "status",
+            "operator": "eq",
+            "value": "completed"
+          }
+        },
+        {
+          "id": "m_pending",
+          "title": "Pedidos Pendentes",
+          "type": "count",
+          "icon": "hourglass_empty",
+          "color": "warning",
+          "filter": {
+            "field": "status",
+            "operator": "eq",
+            "value": "pending"
+          }
+        }
+      ],
+      "table": {
+        "columns": [
+          { "field": "orderId", "header": "Código", "type": "text", "width": "120px" },
+          { "field": "customerName", "header": "Cliente", "type": "text" },
+          { "field": "totalAmount", "header": "Valor Total", "type": "currency", "align": "right" },
+          { "field": "status", "header": "Status", "type": "badge", "align": "center" },
+          { "field": "createdAt", "header": "Data de Criação", "type": "datetime" }
+        ],
+        "defaultPageSize": 10
+      },
+      "actions": {
+        "customActions": [
+          {
+            "id": "dispatchOrder",
+            "operationId": "dispatchOrder",
+            "label": "Despachar",
+            "icon": "local_shipping",
+            "style": "primary",
+            "confirmation": true
+          },
+          {
+            "id": "cancelOrder",
+            "operationId": "cancelOrder",
+            "label": "Cancelar",
+            "icon": "cancel",
+            "style": "danger",
+            "confirmation": true
+          }
+        ]
+      }
+    }
+  }
+}
+```
+
+---
+
+## 6. Persistência Local e Garantias de Segurança
+
+### O Que É Persistido
+- **Configurações de UI**: Layouts de páginas, colunas personalizadas, filtros e métricas são salvos no `localStorage` sob o namespace `apicanvas_uiconfig_<hash-da-api>`.
+- **Histórico de URLs Recentes**: URLs de especificações OpenAPI conectadas recentemente.
+
+### O Que NÃO É Persistido (Segurança Estrita)
+- **Tokens de Autenticação (Bearer / JWT)**: Armazenados estritamente na memória de execução da sessão (`ApiSessionService`). Fechar a aba ou recarregar a aplicação elimina as credenciais.
+- **API Keys e Segredos**: Nunca são gravados no `localStorage` nem enviados a qualquer serviço externo que não seja o backend da própria API consumida.
+- **Rascunhos não publicados**: Alterações no Wizard são mantidas em um serviço de rascunho em memória (`PageDraftService`) até a confirmação explícita de publicação.
+
+---
+
+## 7. Limitações Conhecidas e Fallback para o API Explorer
+
+Embora o Dashboard atenda com excelência à maioria dos recursos RESTful, certos padrões de API possuem características especiais:
+
+1. **APIs com Rotas Não-REST ou RPC Puras**: Rotas que não retornam coleções de entidades ou exigem parâmetros múltiplos no path são melhor operadas através do **API Explorer**.
+2. **Payloads Sem Schema Declarado (`type: object` vazio)**: Quando a documentação OpenAPI omite a declaração de propriedades, a inferência de colunas da tabela exibirá o visualizador JSON genérico.
+3. **Múltiplos Níveis de Path Parameters**: Rotas aninhadas complexas (ex.: `/orgs/{orgId}/repos/{repoId}/issues/{issueId}/comments`) são totalmente funcionais no API Explorer e podem ser configuradas no Dashboard associando os parâmetros conhecidos.
+
+> **Dica de Navegação**: A qualquer momento, utilize o botão **"Abrir no API Explorer"** para inspecionar e executar a rota diretamente em baixo nível.
+
+---
+
+## 8. Identidade Visual e Protótipo de Referência
+
+O ApiCanvas implementa a identidade visual **Technical Dark UI**, definida em [`VISUAL_IDENTITY.md`](./VISUAL_IDENTITY.md):
+
+* **Fundo Grafite Profundo**: `#0d1117` e superfícies em `#161b22` / `#21262d`.
+* **Tipografia Técnica**: Inter para interface e JetBrains Mono / Fira Code para dados, identificadores e status.
+* **Layout Compacto e Sóbrio**: Focado em dados e densidade informacional sem ornamentos supérfluos.
+* **Protótipo de Referência**: Consulte [`docs/prototypes/dashboard-pedidos-crud.png`](./docs/prototypes/dashboard-pedidos-crud.png) para visualizar a referência visual canônica do Dashboard.
+
+---
+
+## 9. Instalação e Execução
+
+### Pré-requisitos
 - **Node.js**: `v18.x`, `v20.x` (LTS) ou superior.
-- **Gerenciador de Pacotes**: `npm` (v9 ou superior).
+- **npm**: `v9.x` ou superior.
 
----
-
-## 5. Instalação e Execução Local
-
-### Clonar o repositório e instalar dependências
+### Comandos Principais
 
 ```bash
-git clone https://github.com/LuanVRD/api-canvas.git
-cd api-canvas
+# Instalar dependências
 npm install
-```
 
-### Iniciar servidor de desenvolvimento
-
-```bash
+# Iniciar servidor de desenvolvimento (http://localhost:4200/)
 npm start
-```
 
-A aplicação estará disponível em `http://localhost:4200/`.
-
-### Executar suite de testes unitários
-
-O projeto conta com mais de 400 testes unitários cobrindo serviços, mappers, parsers e componentes dinâmicos:
-
-```bash
+# Executar suite completa de testes unitários (725+ testes)
 npm test -- --watch=false
-```
 
-### Build de Produção
-
-Para gerar o bundle de produção otimizado na pasta `dist/apicanvas`:
-
-```bash
+# Gerar bundle otimizado de produção
 npm run build
 ```
 
 ---
 
-## 6. APIs de Exemplo para Teste
-
-Você pode testar o ApiCanvas imediatamente utilizando especificações públicas de referência ou APIs locais:
-
-| API / Exemplo | URL da Especificação OpenAPI | Descrição |
-| :--- | :--- | :--- |
-| **JSONPlaceholder (OpenAPI)** | `https://api.apis.guru/v2/specs/jsonplaceholder.typicode.com/1.0.0/openapi.json` | Posts, Users, Comments e Albuns |
-| **GitHub REST API (Subset)** | `https://api.apis.guru/v2/specs/github.com/1.1.4/openapi.json` | API pública robusta para exploração de recursos |
-| **Backend Local (.NET / Java / Node)** | `http://localhost:5000/swagger/v1/swagger.json` | Swagger gerado pelo Swashbuckle, Springdoc ou Swagger-UI |
-
----
-
-## 7. Limitações de CORS no Navegador
-
-Como o ApiCanvas é executado diretamente no navegador do usuário, as requisições HTTP (tanto para baixar o arquivo `swagger.json` quanto para invocar os endpoints da sua API) estão sujeitas às **políticas de CORS (Cross-Origin Resource Sharing)**.
-
-### Por que o erro de CORS acontece?
-Se o seu backend estiver rodando em `http://localhost:5000` e o ApiCanvas em `http://localhost:4200`, o navegador bloqueará requisições a menos que o servidor de destino responda com os cabeçalhos apropriados.
-
-### Como resolver no seu Backend Local:
-
-* **ASP.NET Core**:
-  ```csharp
-  builder.Services.AddCors(options => {
-      options.AddDefaultPolicy(policy => {
-          policy.AllowAnyOrigin().AllowAnyHeader().AllowAnyMethod();
-      });
-  });
-  // No pipeline:
-  app.UseCors();
-  ```
-
-* **Node.js (Express)**:
-  ```javascript
-  import cors from 'cors';
-  app.use(cors({ origin: '*' }));
-  ```
-
-* **FastAPI (Python)**:
-  ```python
-  from fastapi.middleware.cors import CORSMiddleware
-  app.add_middleware(
-      CORSMiddleware,
-      allow_origins=["*"],
-      allow_methods=["*"],
-      allow_headers=["*"],
-  )
-  ```
-
-* **Spring Boot (Java)**:
-  ```java
-  @CrossOrigin(origins = "*")
-  ```
-
-> **Dica para APIs externas de terceiros**: Caso queira consumir uma API pública que não envia cabeçalhos CORS permissivos, utilize uma extensão de navegador para desenvolvimento (ex: *Allow CORS*) ou um proxy reverso local (como Nginx ou Caddy).
-
----
-
-## 8. Limitações Conhecidas de OpenAPI / JSON Schema
-
-O motor dinâmico do ApiCanvas suporta especificações padrão OpenAPI 3.x e Swagger 2.0. No entanto, algumas construções avançadas possuem tratamento específico:
-
-1. **Polimorfismo (`oneOf`, `anyOf`)**: Campos polimórficos complexos onde o discriminator não está explicitamente tipado são renderizados com fallback em editor de JSON Raw para manter a integridade dos dados.
-2. **Upload Binário (`multipart/form-data`)**: Upload avançado com múltiplos streams binários em lote está em fase de planejamento; tipos `string (binary)` simples são mapeados para file inputs básicos.
-3. **Schemas não estruturados (`type: object` sem `properties`)**: Quando uma API não declara propriedades em seu schema OpenAPI, o ApiCanvas gera um campo de entrada de objeto/JSON genérico.
-
----
-
-## 9. Arquitetura em Alto Nível
-
-O ApiCanvas foi projetado com forte desacoplamento entre a camada de interpretação do contrato OpenAPI e a camada de renderização visual:
-
-```text
-src/app/
-├── core/                  # Serviços fundamentais, interceptors, autenticação e execução HTTP
-│   ├── guards/            # ApiSessionGuard para controle de rotas ativas
-│   ├── interceptors/      # Injeção de auth headers e tratamento global de erros
-│   └── services/          # ApiExecutor, ApiRequestBuilder, ApiSession, Storage
-├── openapi/               # Camada agnóstica de parsing e mapeamento OpenAPI
-│   ├── mappers/           # ResourceMapper, OperationMapper, SchemaMapper
-│   ├── models/            # Tipos normalizados (ApiResource, ApiOperation, ApiSchema)
-│   └── services/          # OpenApiParserService, SchemaResolverService, OperationClassifier
-├── dynamic-ui/            # Componentes reutilizáveis de UI declarativa
-│   ├── dynamic-form/      # Motor de formulário reativo baseado em JSON Schema
-│   ├── dynamic-table/     # Tabela de dados dinâmica com ordenação e badges
-│   ├── object-details/    # Drawer lateral e visualizador de entidades
-│   ├── edit-dialog/       # Modal de edição in-place
-│   └── delete-dialog/     # Modal de confirmação de exclusão
-├── features/              # Páginas e fluxos principais
-│   ├── api-connect/       # Conexão, input de URL e histórico de APIs
-│   ├── workspace/         # Layout principal, navegação por recursos e configuração de Auth
-│   └── operation/         # Área de execução técnica, visualização de tabelas e formulários
-└── shared/                # Componentes utilitários (JsonViewer, StatusBadges, EmptyStates)
-```
-
-Para detalhes minuciosos sobre convenções de código, decisões arquiteturais, heurísticas de agrupamento e roadmap, consulte a documentação técnica dedicada:
-* [Especificação de Arquitetura Completa (`ApiCanvas-Architecture.md`)](./ApiCanvas-Architecture.md)
-* [Heurísticas de Resource Discovery (`docs/heuristics/resource-discovery.md`)](./docs/heuristics/resource-discovery.md)
-
----
-
-## 10. Demonstração Visual
-
-Abaixo encontram-se representações visuais dos fluxos de trabalho da aplicação:
-
-### Conexão e Descoberta de Recursos
-Apresenta a tela de inicialização com histórico de APIs acessadas e detecção instantânea de esquemas e rotas.
-
-```text
-┌─────────────────────────────────────────────────────────────────────────────┐
-│  ApiCanvas  /  Connect API                                      [Theme: Dark]│
-│                                                                             │
-│  OpenAPI Specification URL                                                  │
-│  [ https://api.example.com/v1/openapi.json                      ] [Connect] │
-│                                                                             │
-│  Recent APIs:                                                               │
-│  • OrderFlow API (http://localhost:5000/swagger/v1/swagger.json)             │
-│  • E-Commerce Billing Service (https://api.example.com/billing.json)        │
-└─────────────────────────────────────────────────────────────────────────────┘
-```
-
-### Exploração de Coleções e Ações In-Place
-Tabela gerada automaticamente com badges de status, formatação de dados e gatilhos para Drawer de Detalhes, Edição e Exclusão.
-
-```text
-┌──────────────┬──────────────────────────────────────────────────────────────┐
-│ RESOURCES    │ GET /api/v1/orders                                 [Run GET] │
-│              ├──────────────────────────────────────────────────────────────┤
-│ ▸ Customers  │ ID     CUSTOMER       TOTAL     STATUS      ACTIONS          │
-│ ▾ Orders     │ 1001   Alice Smith    $124.50   [COMPLETED] [View] [Edit] [X]│
-│   • List     │ 1002   Bob Johnson    $89.00    [PENDING]   [View] [Edit] [X]│
-│   • Create   │ 1003   Carol White    $412.10   [PROCESSING][View] [Edit] [X]│
-│ ▸ Products   │                                                              │
-└──────────────┴──────────────────────────────────────────────────────────────┘
-```
-
----
-
-## 11. Licença
+## 10. Licença
 
 Este projeto é disponibilizado sob a licença [Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International (CC BY-NC-SA 4.0)](./LICENSE).
 
-* **Uso Não Comercial**: Proibida a venda ou exploração comercial direta do código.
-* **Compartilhamento Igualitário (ShareAlike)**: Qualquer modificação ou trabalho derivado deve ser obrigatoriamente mantido aberto sob estes mesmos termos.
+* **Uso Não Comercial**: Proibida a comercialização direta da ferramenta.
+* **Compartilhamento Igualitário**: Obras derivadas devem ser mantidas abertas sob a mesma licença.
 * **Atribuição**: Exige menção e créditos aos autores originais.
