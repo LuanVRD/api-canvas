@@ -251,7 +251,7 @@ O ApiCanvas implementa a identidade visual **Technical Dark UI**, definida em [`
 ## 9. Instalação e Execução
 
 ### Pré-requisitos
-- **Node.js**: `v18.x`, `v20.x` (LTS) ou superior.
+- **Node.js**: `v20.19+`, `v22.12+` ou `v24+` (a CI utiliza Node.js 22).
 - **npm**: `v9.x` ou superior.
 
 ### Comandos Principais
@@ -269,6 +269,16 @@ npm test -- --watch=false
 # Gerar bundle otimizado de produção
 npm run build
 ```
+
+### Integração Contínua (GitHub Actions)
+
+O workflow [`.github/workflows/ci.yml`](./.github/workflows/ci.yml) valida automaticamente o projeto:
+
+1. Em cada pull request destinado à `master`.
+2. Em cada push para `master`, inclusive após o merge de um pull request.
+3. Manualmente pela aba **Actions** do GitHub.
+
+A validação instala as versões exatas do `package-lock.json` com `npm ci`, executa os testes unitários e gera o bundle de produção. Nenhum secret é necessário para essa etapa de CI.
 
 ---
 
