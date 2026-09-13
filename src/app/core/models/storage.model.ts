@@ -1,3 +1,5 @@
+import { UiConfiguration } from './ui-configuration.model';
+
 export interface RecentApiEntry {
   id: string;
   openApiUrl: string;
@@ -11,4 +13,13 @@ export interface UserPreferences {
   sidebarCollapsed?: boolean;
   density?: 'compact' | 'comfortable';
   [key: string]: unknown;
+}
+
+export interface ApiStoredConfiguration {
+  id: string;
+  openApiUrl: string;
+  baseUrl?: string;
+  version: number | string;
+  updatedAt: number;
+  uiConfiguration: UiConfiguration;
 }

@@ -2,8 +2,10 @@ import {
   Component,
   computed,
   EventEmitter,
+  HostListener,
   inject,
   Input,
+  OnDestroy,
   OnInit,
   Output,
   signal
@@ -39,8 +41,8 @@ export interface KeyValueSummary {
     JsonViewerComponent
   ],
   template: `
-    <div class="dialog-backdrop" (click)="onBackdropClick($event)">
-      <div class="dialog-panel font-sans" role="dialog" aria-modal="true" aria-labelledby="delete-dialog-title">
+    <div class="dialog-backdrop" (click)="onBackdropClick($event)" role="presentation">
+      <div class="dialog-panel font-sans" role="alertdialog" aria-modal="true" aria-labelledby="delete-dialog-title">
         <!-- Dialog Header -->
         <header class="dialog-header">
           <div class="header-left">
@@ -54,19 +56,21 @@ export interface KeyValueSummary {
               type="button"
               class="icon-action-btn"
               (click)="onOpenFullOperation()"
-              title="Open full operation workbench in generic interface"
+              title="Abrir no Workbench"
+              aria-label="Abrir operação completa no workbench"
             >
-              <mat-icon class="icon-sm">open_in_new</mat-icon>
+              <mat-icon class="icon-sm" aria-hidden="true">open_in_new</mat-icon>
               <span>Workbench</span>
             </button>
 
             <button
               type="button"
               class="icon-action-btn close-btn"
-              (click)="close.emit()"
-              title="Cancel and close (Esc)"
+              (click)="onClose()"
+              title="Cancelar e fechar (Esc)"
+              aria-label="Cancelar e fechar"
             >
-              <mat-icon class="icon-sm">close</mat-icon>
+              <mat-icon class="icon-sm" aria-hidden="true">close</mat-icon>
             </button>
           </div>
         </header>
@@ -722,7 +726,7 @@ export interface KeyValueSummary {
     }
   `]
 })
-export class DeleteConfirmDialogComponent implements OnInit {
+export class DeleteConfirmDialogComponent implements OnInit, OnDestroy {
   private readonly session = inject(ApiSessionService);
   private readonly executor = inject(ApiExecutorService);
   private readonly router = inject(Router);
@@ -739,6 +743,15 @@ export class DeleteConfirmDialogComponent implements OnInit {
   isExecuting = signal<boolean>(false);
   executionResult = signal<ApiExecutionResult | null>(null);
   isErrorExpanded = signal<boolean>(false);
+
+  private previouslyFocusedElement: HTMLElement | null = null;
+
+  @HostListener('document:keydown.escape')
+  onEscapePressed(): void {
+    if (!this.isExecuting()) {
+      this.onClose();
+    }
+  }
 
   readonly hasMissingParams = computed<boolean>(() => {
     return this.missingParams.length > 0;
@@ -786,7 +799,26 @@ export class DeleteConfirmDialogComponent implements OnInit {
   });
 
   ngOnInit(): void {
+    if (typeof document !== 'undefined') {
+      this.previouslyFocusedElement = document.activeElement as HTMLElement | null;
+    }
     this.userParamValues.set({ ...this.initialParams });
+  }
+
+  ngOnDestroy(): void {
+    this.restoreFocus();
+  }
+
+  private restoreFocus(): void {
+    if (this.previouslyFocusedElement && typeof this.previouslyFocusedElement.focus === 'function') {
+      this.previouslyFocusedElement.focus();
+      this.previouslyFocusedElement = null;
+    }
+  }
+
+  onClose(): void {
+    this.restoreFocus();
+    this.close.emit();
   }
 
   onParamChange(name: string, value: string): void {
@@ -823,7 +855,7 @@ export class DeleteConfirmDialogComponent implements OnInit {
 
         if (result.isSuccess) {
           this.deleted.emit(result);
-          this.close.emit();
+          this.onClose();
         }
       },
       error: (err: unknown) => {
@@ -853,7 +885,7 @@ export class DeleteConfirmDialogComponent implements OnInit {
   onBackdropClick(event: MouseEvent): void {
     if ((event.target as HTMLElement).classList.contains('dialog-backdrop')) {
       if (!this.isExecuting()) {
-        this.close.emit();
+        this.onClose();
       }
     }
   }
@@ -861,7 +893,7 @@ export class DeleteConfirmDialogComponent implements OnInit {
   onOpenFullOperation(): void {
     const targetId = this.operation.operationId || this.operation.id;
     this.router.navigate(['/operation', targetId]);
-    this.close.emit();
+    this.onClose();
   }
 
   getErrorMessage(): string {

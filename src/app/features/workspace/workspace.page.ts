@@ -6,7 +6,7 @@ import { ResourceSidebarComponent } from './resource-sidebar.component';
 import { AuthConfigDialogComponent } from './auth-config-dialog.component';
 import { ApiResource } from '../../core/models/api-resource.model';
 import { ApiOperation } from '../../core/models/api-operation.model';
-import { StatusIndicatorComponent } from '../../shared/components/status-indicator/status-indicator.component';
+import { ApiContextBarComponent } from '../../shared/components/api-context-bar/api-context-bar.component';
 import { HttpBadgeComponent } from '../../shared/components/http-badge/http-badge.component';
 import { EmptyStateComponent } from '../../shared/components/empty-state/empty-state.component';
 import { ApiSessionService } from '../../core/services/api-session.service';
@@ -20,7 +20,7 @@ import { MatIconModule } from '@angular/material/icon';
     CommonModule,
     ResourceSidebarComponent,
     AuthConfigDialogComponent,
-    StatusIndicatorComponent,
+    ApiContextBarComponent,
     HttpBadgeComponent,
     EmptyStateComponent,
     MatButtonModule,
@@ -28,54 +28,11 @@ import { MatIconModule } from '@angular/material/icon';
   ],
   template: `
     <div class="workspace-layout">
-      <!-- Workspace Topbar: API Metadata -->
-      <header class="workspace-header">
-        <div class="api-meta">
-          <div class="api-identity">
-            <span class="api-title" [title]="apiTitle() || 'No API Connected'">
-              {{ apiTitle() || 'ApiCanvas Workspace' }}
-            </span>
-            @if (apiVersion()) {
-              <span class="api-version font-mono">v{{ apiVersion() }}</span>
-            }
-          </div>
-
-          @if (baseUrl()) {
-            <div class="api-endpoint" title="{{ baseUrl() }}">
-              <span class="endpoint-label">Base URL:</span>
-              <span class="endpoint-value font-mono">{{ baseUrl() }}</span>
-            </div>
-          }
-
-          <app-status-indicator
-            [connected]="hasActiveApi()"
-            [label]="hasActiveApi() ? 'Connected' : 'Disconnected'"
-          />
-        </div>
-
-        <div class="header-actions">
-          <button
-            type="button"
-            class="action-btn auth-btn"
-            [class.active]="hasAnyAuthCredential()"
-            (click)="isAuthDialogOpen.set(true)"
-            title="Configure API Authentication (Bearer Token & API Keys)"
-          >
-            <mat-icon class="btn-icon">{{ hasAnyAuthCredential() ? 'lock' : 'lock_outline' }}</mat-icon>
-            <span>{{ hasAnyAuthCredential() ? 'Auth: Active' : 'Auth' }}</span>
-          </button>
-
-          <button
-            type="button"
-            class="action-btn disconnect-btn"
-            (click)="onReconnect()"
-            title="Change connected API specification"
-          >
-            <mat-icon class="btn-icon">swap_horiz</mat-icon>
-            <span>Change API</span>
-          </button>
-        </div>
-      </header>
+      <!-- Context Bar: API Metadata, Auth & Change API -->
+      <app-api-context-bar
+        (authClick)="isAuthDialogOpen.set(true)"
+        (changeApiClick)="onReconnect()"
+      />
 
 
       <!-- Workspace Body: Navigation Sidebar + Content Area -->
@@ -186,136 +143,19 @@ import { MatIconModule } from '@angular/material/icon';
     .workspace-layout {
       display: flex;
       flex-direction: column;
-      height: 100vh;
+      height: 100%;
       background: var(--canvas-bg);
       color: var(--canvas-text-primary);
       overflow: hidden;
     }
 
-    .workspace-header {
-      height: 48px;
-      min-height: 48px;
-      background: var(--canvas-surface);
-      border-bottom: 1px solid var(--canvas-border);
-      padding: 0 16px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 16px;
-      z-index: 10;
 
-      .api-meta {
-        display: flex;
-        align-items: center;
-        gap: 14px;
-        overflow: hidden;
-        flex: 1;
-
-        .api-identity {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          flex-shrink: 0;
-
-          .api-title {
-            font-size: 14px;
-            font-weight: 600;
-            color: var(--canvas-text-primary);
-            white-space: nowrap;
-          }
-
-          .api-version {
-            font-size: 11px;
-            background: var(--canvas-surface-elevated);
-            color: var(--canvas-text-secondary);
-            padding: 1px 6px;
-            border-radius: var(--radius-sm);
-            border: 1px solid var(--canvas-border-subtle);
-          }
-        }
-
-        .api-endpoint {
-          display: flex;
-          align-items: center;
-          gap: 6px;
-          min-width: 0;
-          overflow: hidden;
-
-          .endpoint-label {
-            font-size: 11px;
-            color: var(--canvas-text-muted);
-            text-transform: uppercase;
-            font-weight: 600;
-            white-space: nowrap;
-          }
-
-          .endpoint-value {
-            font-size: 12px;
-            color: var(--canvas-text-secondary);
-            background: var(--canvas-bg);
-            padding: 2px 6px;
-            border-radius: var(--radius-sm);
-            border: 1px solid var(--canvas-border-subtle);
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-          }
-        }
-      }
-
-      .header-actions {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        flex-shrink: 0;
-
-        .action-btn {
-          height: 28px;
-          padding: 0 10px;
-          font-size: 12px;
-          font-weight: 500;
-          color: var(--canvas-text-secondary);
-          background: var(--canvas-surface-elevated);
-          border: 1px solid var(--canvas-border);
-          border-radius: var(--radius-sm);
-          cursor: pointer;
-          display: flex;
-          align-items: center;
-          gap: 6px;
-          transition: all 0.15s ease;
-
-          &:hover {
-            color: var(--canvas-text-primary);
-            border-color: var(--canvas-text-muted);
-            background: #282e37;
-          }
-
-          &.auth-btn.active {
-            color: #34d399;
-            background: rgba(52, 211, 153, 0.08);
-            border-color: rgba(52, 211, 153, 0.3);
-
-            &:hover {
-              background: rgba(52, 211, 153, 0.15);
-              border-color: #34d399;
-            }
-          }
-
-          .btn-icon {
-            font-size: 16px;
-            width: 16px;
-            height: 16px;
-          }
-        }
-      }
-
-    }
 
     .workspace-body {
       display: flex;
       flex: 1;
-      height: calc(100vh - 48px);
       overflow: hidden;
+      min-height: 0;
     }
 
     .workspace-content {
@@ -577,11 +417,6 @@ import { MatIconModule } from '@angular/material/icon';
     }
 
     @media (max-width: 768px) {
-      .workspace-header {
-        .api-endpoint {
-          display: none !important;
-        }
-      }
       .workspace-content {
         padding: 16px;
       }
@@ -609,12 +444,7 @@ export class WorkspacePage implements OnInit, OnDestroy {
   private routeSub?: Subscription;
 
   readonly isAuthDialogOpen = signal<boolean>(false);
-  readonly hasBearerToken = this.sessionService.hasBearerToken;
-  readonly hasAnyAuthCredential = this.sessionService.hasAnyAuthCredential;
-  readonly hasActiveApi = this.sessionService.hasActiveApi;
-  readonly apiTitle = this.sessionService.apiTitle;
-  readonly apiVersion = this.sessionService.apiVersion;
-  readonly baseUrl = this.sessionService.baseUrl;
+
   readonly resources = this.sessionService.resources;
   readonly selectedResourceId = this.sessionService.selectedResourceId;
   readonly selectedResource = this.sessionService.selectedResource;

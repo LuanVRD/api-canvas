@@ -3,9 +3,11 @@ import { ApiDefinition, ApiSecurityScheme } from '../models/api-definition.model
 import { ApiOperation } from '../models/api-operation.model';
 import { ApiResource } from '../models/api-resource.model';
 import { ApiExecutionResult } from '../models/api-execution-result.model';
-import { UiConfiguration } from '../models/ui-configuration.model';
+import { UiConfiguration, UiPageConfiguration } from '../models/ui-configuration.model';
+import { ResolvedResourcePage } from '../models/resolved-resource-page.model';
 import { ResourceOperationMatcherService } from './resource-operation-matcher.service';
 import { UiConfigurationService } from './ui-configuration.service';
+import { StorageService } from './storage.service';
 
 export interface ApiSessionMetadata {
   openApiUrl?: string;
@@ -27,6 +29,7 @@ export interface ApiResourceMutationEvent {
 export class ApiSessionService {
   private readonly matcher = inject(ResourceOperationMatcherService);
   private readonly uiConfigService = inject(UiConfigurationService);
+  private readonly storageService = inject(StorageService);
   private readonly _apiDefinition = signal<ApiDefinition | null>(null);
   private readonly _uiConfiguration = signal<UiConfiguration | null>(null);
   private readonly _selectedResourceId = signal<string | null>(null);
@@ -183,19 +186,28 @@ export class ApiSessionService {
 
   /**
    * Sets the active API session with a normalized definition and optional metadata.
+   * Automatically recovers and applies stored UI configuration for the API if available.
    * Automatically selects the first available resource if none is explicitly specified.
    */
   setSession(definition: ApiDefinition, metadata?: ApiSessionMetadata): void {
     this._apiDefinition.set(definition);
-    this._uiConfiguration.set(metadata?.uiConfiguration ?? null);
     this._openApiUrl.set(metadata?.openApiUrl ?? null);
     this._rawSpec.set(metadata?.rawSpec ?? null);
     this._bearerToken.set(null);
     this._apiKeys.set({});
 
+    let resolvedConfig: UiConfiguration | null = metadata?.uiConfiguration ?? null;
+    if (!resolvedConfig && metadata?.openApiUrl) {
+      resolvedConfig = this.storageService.getApiUiConfiguration(
+        metadata.openApiUrl,
+        definition.baseUrl
+      );
+    }
+    this._uiConfiguration.set(resolvedConfig);
+
     const availableResources = this.uiConfigService.mergeResources(
       definition.resources ?? [],
-      metadata?.uiConfiguration
+      resolvedConfig
     );
     if (metadata?.defaultResourceId && availableResources.some((r) => r.id === metadata.defaultResourceId)) {
       this._selectedResourceId.set(metadata.defaultResourceId);
@@ -218,6 +230,69 @@ export class ApiSessionService {
    */
   getUiConfiguration(): UiConfiguration | null {
     return this._uiConfiguration();
+  }
+
+  /**
+   * Saves the current session UI configuration to storage under the active API's key.
+   * Returns true if saved, false otherwise.
+   */
+  saveCurrentUiConfiguration(): boolean {
+    const config = this._uiConfiguration();
+    const openApiUrl = this._openApiUrl();
+    const baseUrl = this.baseUrl();
+
+    if (!config || !openApiUrl) {
+      return false;
+    }
+
+    return this.storageService.saveApiUiConfiguration(openApiUrl, baseUrl, config);
+  }
+
+  /**
+   * Explicitly replaces and persists the UI configuration for the active API session.
+   */
+  replaceUiConfiguration(config: UiConfiguration): boolean {
+    this._uiConfiguration.set(config);
+    const openApiUrl = this._openApiUrl();
+    const baseUrl = this.baseUrl();
+
+    if (openApiUrl) {
+      return this.storageService.replaceApiUiConfiguration(openApiUrl, baseUrl, config);
+    }
+    return false;
+  }
+
+  /**
+   * Restores default UI configuration by removing persisted customizations and resetting session overlay.
+   */
+  restoreDefaultUiConfiguration(): void {
+    const openApiUrl = this._openApiUrl();
+    const baseUrl = this.baseUrl();
+    if (openApiUrl) {
+      this.storageService.restoreDefaultApiUiConfiguration(openApiUrl, baseUrl);
+    }
+    this._uiConfiguration.set(null);
+  }
+
+  /**
+   * Removes saved UI configuration for active API.
+   */
+  removeUiConfiguration(): void {
+    this.restoreDefaultUiConfiguration();
+  }
+
+  /**
+   * Explicitly loads saved UI configuration from storage for active API into session.
+   */
+  loadSavedUiConfiguration(): UiConfiguration | null {
+    const openApiUrl = this._openApiUrl();
+    const baseUrl = this.baseUrl();
+    if (!openApiUrl) {
+      return null;
+    }
+    const saved = this.storageService.getApiUiConfiguration(openApiUrl, baseUrl);
+    this._uiConfiguration.set(saved);
+    return saved;
   }
 
   /**
@@ -433,18 +508,23 @@ export class ApiSessionService {
     const resource = def.resources.find((r) => r.id === resourceId);
     if (!resource) return null;
 
-    // 1. First priority: explicit 'list' type operation
-    const listOp = resource.operations.find((op) => op.type === 'list');
-    if (listOp) return listOp;
+    return this.matcher.findCompatibleListOperation(resource, undefined, def);
+  }
 
-    // 2. Second priority: GET operation without path parameters
-    const getCollectionOp = resource.operations.find(
-      (op) => op.method === 'GET' && !op.parameters.some((p) => p.location === 'path')
-    );
-    if (getCollectionOp) return getCollectionOp;
+  /**
+   * Finds a compatible create (POST) operation for the specified resource.
+   */
+  getCompatibleCreateOperation(
+    resourceId: string,
+    sourceListOperation?: ApiOperation | null
+  ): ApiOperation | null {
+    const def = this._apiDefinition();
+    if (!def || !resourceId) return null;
 
-    // 3. Fallback: Any GET operation in resource
-    return resource.operations.find((op) => op.method === 'GET') ?? null;
+    const resource = def.resources.find((r) => r.id === resourceId);
+    if (!resource) return null;
+
+    return this.matcher.findCompatibleCreateOperation(resource, sourceListOperation, undefined, def);
   }
 
   /**
@@ -477,6 +557,48 @@ export class ApiSessionService {
     if (!resource) return null;
 
     return this.matcher.findCompatibleDeleteOperation(resource, sourceOperation);
+  }
+
+  /**
+   * Finds compatible update operations (PUT/PATCH) for the specified resource.
+   */
+  getCompatibleUpdateOperations(
+    resourceId: string,
+    sourceOperation?: ApiOperation | null
+  ): ApiOperation[] {
+    const def = this._apiDefinition();
+    if (!def || !resourceId) return [];
+
+    const resource = def.resources.find((r) => r.id === resourceId);
+    if (!resource) return [];
+
+    return this.matcher.findCompatibleUpdateOperations(resource, sourceOperation);
+  }
+
+  /**
+   * Resolves the full canonical operation suite (list, create, details, update, delete, customActions, warnings)
+   * for a specified resource using active UI configuration and OpenAPI heuristics.
+   */
+  resolveResourcePage(
+    resourceId: string,
+    pageConfigOverride?: UiPageConfiguration | null
+  ): ResolvedResourcePage | null {
+    const def = this._apiDefinition();
+    if (!def || !resourceId) return null;
+
+    const resource = def.resources.find((r) => r.id === resourceId);
+    if (!resource) return null;
+
+    const uiConfig = this._uiConfiguration();
+    const pageConfig = pageConfigOverride ?? this.uiConfigService.getResourcePageConfig(uiConfig, resourceId);
+    const resourceConfig = this.uiConfigService.getResourceConfig(uiConfig, resourceId);
+
+    return this.matcher.resolveResourcePage({
+      resource,
+      pageConfig,
+      resourceConfig,
+      apiDefinition: def
+    });
   }
 
   /**

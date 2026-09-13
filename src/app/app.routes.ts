@@ -31,6 +31,18 @@ export const routes: Routes = [
       import('./features/operation/operation.page').then(m => m.OperationPage)
   },
   {
+    path: 'dashboard',
+    canActivate: [apiSessionGuard],
+    loadComponent: () =>
+      import('./features/dashboard/dashboard.page').then(m => m.DashboardPage)
+  },
+  {
+    path: 'dashboard/:pageSlug',
+    canActivate: [apiSessionGuard],
+    loadComponent: () =>
+      import('./features/dashboard/dashboard.page').then(m => m.DashboardPage)
+  },
+  {
     path: '**',
     redirectTo: 'connect'
   }
